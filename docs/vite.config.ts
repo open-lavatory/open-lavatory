@@ -33,6 +33,15 @@ export default defineConfig(async () => {
     build: {
       outDir: config.outDir,
     },
+    optimizeDeps: {
+      include: [
+        "websocket-mqtt",
+        "gun",
+        "solid-js",
+        "solid-js/store",
+        "lucide-solid",
+      ],
+    },
     server: {
       fs: { allow: [path.resolve(rootDir, "..")] },
     },

@@ -24,8 +24,8 @@
         "tailwindcss": "^4",
         "ts-pattern": "^5",
         "viem": "^2.44.1",
-        "wagmi": "^3.6.16",
         "vocs": "2.0.4",
+        "wagmi": "^3.6.16",
         "waku": "^1.0.0-beta.0"
     },
     "devDependencies": {
@@ -33,7 +33,9 @@
         "@types/react": "latest",
         "@vitejs/plugin-react": "^6.0.2",
         "classnames": "^2.5.1",
+        "gun": "0.2020.1241",
         "typescript": "^5.9.3",
-        "vite": "^8"
+        "vite": "^8",
+        "websocket-mqtt": "0.0.7"
     }
 }

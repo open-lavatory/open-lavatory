@@ -23,6 +23,7 @@ export type TransportState =
 
 export type TLayerEventMap = {
   state_change: (state: TransportState) => void;
+  error: (reason?: string) => void;
 };
 
 export type TransportLayerSetupParameters = {
@@ -72,6 +73,7 @@ export type TransportLayerBaseEventMap = {
   candidate: (candidate: string) => void;
   connected: () => void;
   message: (message: string) => void;
+  error: (reason?: string) => void;
 };
 export type TransportLayerBaseEmitter =
   EventEmitter<TransportLayerBaseEventMap>;
@@ -98,27 +100,35 @@ export const createTransportBase = (init: TransportLayerImplFn): TransportLayerF
     emitter.emit("state_change", newState);
   };
 
-  internalEmitter.on("offer", (offer) => {
-    log("onOffer", offer);
-    subsend({ type: "offer", payload: offer });
-  });
-  internalEmitter.on("answer", (answer) => {
-    log("onAnswer", answer);
-    subsend({ type: "answer", payload: answer });
-  });
-  internalEmitter.on("candidate", (candidate) => {
-    log("onCandidate", candidate);
-    subsend({ type: "candidate", payload: candidate });
-  });
+  const relay = (message: TransportMessage) => {
+    subsend(message).catch(error => log("failed to relay negotiation message", error));
+  };
+
+  internalEmitter.on("offer", offer => relay({ type: "offer", payload: offer }));
+  internalEmitter.on("answer", answer => relay({ type: "answer", payload: answer }));
+  internalEmitter.on("candidate", candidate => relay({ type: "candidate", payload: candidate }));
   internalEmitter.on("connected", () => {
     log("onConnected");
     setState(TRANSPORT_STATE.CONNECTED);
   });
+  internalEmitter.on("error", (reason) => {
+    log("transport error", reason);
+    // Surface the reason before the state flips so listeners reading
+    // state on state_change already see it.
+    emitter.emit("error", reason);
+    setState(TRANSPORT_STATE.ERROR);
+  });
   internalEmitter.on("message", async (message) => {
-    log("onMessage", message);
-    const data = await decrypt(message);
+    // Peer data is untrusted until decrypted AND parsed; drop anything that
+    // fails either step rather than surfacing an unhandled rejection.
+    try {
+      const data = await decrypt(message);
 
-    onmessage(JSON.parse(data) as { type: string; payload: object; messageId: string; });
+      onmessage(JSON.parse(data) as { type: string; payload: object; messageId: string; });
+    }
+    catch (error) {
+      log("dropping undecryptable transport message", error);
+    }
   });
 
   const {
@@ -144,11 +154,19 @@ export const createTransportBase = (init: TransportLayerImplFn): TransportLayerF
   const waitFor = async (targetState: TransportState) => {
     if (state === targetState) return;
 
-    return new Promise<void>((resolve) => {
+    if (state === TRANSPORT_STATE.ERROR) {
+      throw new Error("Transport is in error state");
+    }
+
+    return new Promise<void>((resolve, reject) => {
       const handler = (newState: TransportState) => {
         if (newState === targetState) {
           emitter.off("state_change", handler);
           resolve();
+        }
+        else if (newState === TRANSPORT_STATE.ERROR) {
+          emitter.off("state_change", handler);
+          reject(new Error("Transport is in error state"));
         }
       };
 

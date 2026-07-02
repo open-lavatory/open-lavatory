@@ -107,12 +107,18 @@ importers:
       classnames:
         specifier: ^2.5.1
         version: 2.5.1
+      gun:
+        specifier: 0.2020.1241
+        version: 0.2020.1241
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
       vite:
         specifier: ^8
         version: 8.0.16(@types/node@25.9.1)(esbuild@0.27.4)(jiti@2.7.0)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2)
+      websocket-mqtt:
+        specifier: 0.0.7
+        version: 0.0.7
 
   examples/react-dapp:
     dependencies:
@@ -189,12 +195,18 @@ importers:
       '@types/react-dom':
         specifier: ^19.1.6
         version: 19.2.3(@types/react@19.1.4)
+      gun:
+        specifier: 0.2020.1241
+        version: 0.2020.1241
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
       vite:
         specifier: ^7
         version: 7.3.5(@types/node@25.9.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2)
+      websocket-mqtt:
+        specifier: 0.0.7
+        version: 0.0.7
 
   examples/react-native:
     dependencies:
@@ -456,12 +468,18 @@ importers:
         specifier: ^3.6.16
         version: 3.6.16(@tanstack/query-core@5.100.14)(@tanstack/react-query@5.100.14(react@19.1.0))(@types/react@19.1.4)(react@19.1.0)(typescript@5.9.3)(viem@2.52.0(typescript@5.9.3)(zod@4.4.3))
     devDependencies:
+      gun:
+        specifier: 0.2020.1241
+        version: 0.2020.1241
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
       vite:
         specifier: ^7
         version: 7.3.5(@types/node@25.9.1)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2)
+      websocket-mqtt:
+        specifier: 0.0.7
+        version: 0.0.7
 
   packages/connector:
     dependencies:
@@ -733,6 +751,12 @@ importers:
       vitest:
         specifier: ^4
         version: 4.1.8(@types/node@25.9.1)(@vitest/browser-playwright@4.1.8)(esbuild@0.27.4)(jiti@2.7.0)(terser@5.44.1)(tsx@4.21.0)(yaml@2.8.2)
+
+  tests:
+    devDependencies:
+      '@playwright/test':
+        specifier: 1.58.1
+        version: 1.58.1
 
 packages:
 
@@ -2383,6 +2407,11 @@ packages:
   '@pkgr/core@0.3.6':
     resolution: {integrity: sha512-SEeaJLb3qBNF/OaXnaR1NmmBbFYk1zC0ZH/52fATcRPLFg/p791YrcyFFy44Bo9sLaGuSuLp5Q6axbb/O+v/RA==}
     engines: {node: ^14.18.0 || >=16.0.0}
+
+  '@playwright/test@1.58.1':
+    resolution: {integrity: sha512-6LdVIUERWxQMmUSSQi0I53GgCBYgM2RpGngCPY7hSeju+VrKjq3lvs7HpJoPbDiY5QM5EYRtRX5fvrinnMAz3w==}
+    engines: {node: '>=18'}
+    hasBin: true
 
   '@polka/url@1.0.0-next.29':
     resolution: {integrity: sha512-wwQAWhWSuHaag8c4q/KN/vCoeOJYshAIvMQwD4GpSb3OiZklFfvAgmj0VCBBImRpuF/aFgIRzllXlVX93Jevww==}
@@ -8683,6 +8712,7 @@ packages:
   tsconfck@3.1.6:
     resolution: {integrity: sha512-ks6Vjr/jEw0P1gmOVwutM3B7fWxoWBL2KRDb1JfqGVawBmO5UsvmWOQFGHBPl5yxYz4eERr19E6L7NMv+Fej4w==}
     engines: {node: ^18 || >=20}
+    deprecated: unmaintained
     hasBin: true
     peerDependencies:
       typescript: ^5.0.0
@@ -9325,18 +9355,6 @@ packages:
 
   ws@6.2.4:
     resolution: {integrity: sha512-PNIUUyLI5YpkJZj60YBzX1o0ByQ4ovvfmq9N/Kig/PAYbVlGyz4R6G0SEWrD0O9acc0sT2+IdMBVLFv8FSi0Nw==}
-    peerDependencies:
-      bufferutil: ^4.0.1
-      utf-8-validate: ^5.0.2
-    peerDependenciesMeta:
-      bufferutil:
-        optional: true
-      utf-8-validate:
-        optional: true
-
-  ws@7.5.10:
-    resolution: {integrity: sha512-+dbF1tHwZpXcbOJdVOkzLDxZP1ailvSxM6ZweXTegylPny803bFhA+vqBYw4s31NSAk4S2Qz+AKXK9a4wkdjcQ==}
-    engines: {node: '>=8.3.0'}
     peerDependencies:
       bufferutil: ^4.0.1
       utf-8-validate: ^5.0.2
@@ -11694,6 +11712,10 @@ snapshots:
     optional: true
 
   '@pkgr/core@0.3.6': {}
+
+  '@playwright/test@1.58.1':
+    dependencies:
+      playwright: 1.58.1
 
   '@polka/url@1.0.0-next.29': {}
 
@@ -15995,7 +16017,7 @@ snapshots:
 
   gun@0.2020.1241:
     dependencies:
-      ws: 7.5.10
+      ws: 7.5.11
     optionalDependencies:
       '@peculiar/webcrypto': 1.5.0
     transitivePeerDependencies:
@@ -18098,7 +18120,7 @@ snapshots:
   react-devtools-core@6.1.5:
     dependencies:
       shell-quote: 1.7.3
-      ws: 7.5.10
+      ws: 7.5.11
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -20071,8 +20093,6 @@ snapshots:
   ws@6.2.4:
     dependencies:
       async-limiter: 1.0.1
-
-  ws@7.5.10: {}
 
   ws@7.5.11: {}
 

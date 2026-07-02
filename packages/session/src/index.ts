@@ -47,6 +47,8 @@ export type SessionStateObject = {
   signaling?: {
     state: SignalState;
   };
+  /** Human-readable reason for the last disconnect/failure, if any. */
+  error?: string;
 };
 
 /**
@@ -109,13 +111,18 @@ export const createSession = async (
     encryptionKey,
   );
   let status: SessionState = SESSION_STATE.CREATED;
+  let lastError: string | undefined;
   const protocol = initParameters.p;
   const server = initParameters.s;
 
   const updateStatus = (newStatus: SessionState) => {
     log("updateStatus", newStatus);
     status = newStatus;
-    emitter.emit("state_change", { status, signaling: signal.getState() });
+    emitter.emit("state_change", {
+      status,
+      signaling: signal.getState(),
+      error: lastError,
+    });
   };
 
   const signaling = await signalLayer({
@@ -131,8 +138,6 @@ export const createSession = async (
       if (!relyingPublicKey) {
         throw new Error("Relying party public key not found");
       }
-
-      log(`encrypting to ${relyingPublicKey.toString()}`, message);
 
       return await relyingPublicKey.encrypt(message);
     },
@@ -165,22 +170,29 @@ export const createSession = async (
       if (message["type"] === "request") {
         const messageId = message["messageId"] as string;
 
-        // Immediately acknowledge receipt so the sender's ack-timeout does
-        // not fire while the handler (which may await user interaction) runs.
-        await transport.send({ type: "ack", messageId } satisfies SessionMessage);
+        try {
+          // Immediately acknowledge receipt so the sender's ack-timeout does
+          // not fire while the handler (which may await user interaction) runs.
+          await transport.send({ type: "ack", messageId } satisfies SessionMessage);
 
-        // Notify observers before processing (e.g. wallet UI can show a
-        // pending indicator before the handler resolves).
-        emitter.emit("request", message["payload"] as object);
+          // Notify observers before processing (e.g. wallet UI can show a
+          // pending indicator before the handler resolves).
+          emitter.emit("request", message["payload"] as object);
 
-        const data = await onMessage(message["payload"] as object);
-        const response: SessionMessage = {
-          type: "response",
-          messageId,
-          payload: data,
-        };
+          const data = await onMessage(message["payload"] as object)
+            // A throwing handler must still answer, otherwise the peer waits
+            // out its full response timeout.
+            .catch(() => ({ error: { code: -32_603, message: "Internal error" } }));
 
-        await transport.send(response);
+          await transport.send({
+            type: "response",
+            messageId,
+            payload: data,
+          } satisfies SessionMessage);
+        }
+        catch (error) {
+          log("failed to respond to peer request", error);
+        }
       }
 
       if (message["type"] === "response" || message["type"] === "ack") {
@@ -200,33 +212,104 @@ export const createSession = async (
     },
   });
 
-  transport.emitter.on("state_change", (state) => {
+  // Once both peers are present (signaling encrypted) the transport should
+  // connect promptly; if it cannot (e.g. no ICE candidates on a restricted
+  // network) fail loudly instead of sitting in "linking" forever.
+  const TRANSPORT_LINK_TIMEOUT_MS = 45_000;
+  let linkDeadline: ReturnType<typeof setTimeout> | undefined;
+
+  const clearLinkDeadline = () => {
+    clearTimeout(linkDeadline);
+    linkDeadline = undefined;
+  };
+
+  const onTransportStateChange = (state: string) => {
     log("transport state change", state);
 
     if (state === TRANSPORT_STATE.CONNECTED) {
+      clearLinkDeadline();
+      lastError = undefined;
       updateStatus(SESSION_STATE.CONNECTED);
     }
-  });
 
-  const startTransport = async () => {
-    await transport.setup();
+    if (state === TRANSPORT_STATE.ERROR) {
+      clearLinkDeadline();
+      lastError ??= "Peer-to-peer transport failed";
+      updateStatus(SESSION_STATE.DISCONNECTED);
+    }
   };
 
-  // let transport: TransportLayer | undefined;
+  const onTransportError = (reason?: string) => {
+    if (reason) lastError = reason;
+  };
+
+  transport.emitter.on("state_change", onTransportStateChange);
+  transport.emitter.on("error", onTransportError);
+
+  const startTransport = () => {
+    linkDeadline ??= setTimeout(() => {
+      if (status === SESSION_STATE.CONNECTED) return;
+
+      log("transport failed to connect in time");
+      lastError ??= "Timed out establishing the peer-to-peer connection";
+      updateStatus(SESSION_STATE.DISCONNECTED);
+    }, TRANSPORT_LINK_TIMEOUT_MS);
+
+    Promise.resolve(transport.setup()).catch((error) => {
+      log("transport setup failed", error);
+      clearLinkDeadline();
+      lastError ??= error instanceof Error ? error.message : "Transport setup failed";
+      updateStatus(SESSION_STATE.DISCONNECTED);
+    });
+  };
+
   const onSignalMessage = async (message: object) => {
     log("Session: received message from signaling", message);
 
     const sessionMsg = message as SessionMessage;
 
     if (sessionMsg.type === "response") {
-      log("Session: received data message", sessionMsg.payload);
       messages.emit("message", sessionMsg);
     }
 
     if (sessionMsg.type === "request") {
-      log("Session: received request message", sessionMsg.payload);
+      try {
+        await transport.handle(sessionMsg.payload as TransportMessage);
+      }
+      catch (error) {
+        // Negotiation payloads come from the (untrusted) relay; a malformed
+        // one must not become an unhandled rejection.
+        log("failed to handle negotiation message", error);
+      }
+    }
+  };
 
-      await transport.handle(sessionMsg.payload as TransportMessage);
+  const onSignalStateChange = (state: SignalState) => {
+    log("signal state change", state);
+
+    if (state === SIGNAL_STATE.READY) {
+      updateStatus(SESSION_STATE.READY);
+    }
+
+    if (
+      (
+        [
+          SIGNAL_STATE.HANDSHAKE,
+          SIGNAL_STATE.HANDSHAKE_PARTIAL,
+        ] as SignalState[]
+      ).includes(state)
+    ) {
+      updateStatus(SESSION_STATE.LINKING);
+    }
+
+    if (state === SIGNAL_STATE.ENCRYPTED) {
+      startTransport();
+    }
+
+    if (state === SIGNAL_STATE.ERROR) {
+      log("signaling error — marking session disconnected");
+      lastError ??= "Signaling failed or timed out";
+      updateStatus(SESSION_STATE.DISCONNECTED);
     }
   };
 
@@ -236,40 +319,17 @@ export const createSession = async (
       log("connecting to session, isHost:", isHost);
 
       signal.on("message", onSignalMessage);
-
-      signal.on("state_change", (state) => {
-        log("signal state change", state);
-
-        if (state === SIGNAL_STATE.READY) {
-          updateStatus(SESSION_STATE.READY);
-        }
-
-        if (
-          (
-            [
-              SIGNAL_STATE.HANDSHAKE,
-              SIGNAL_STATE.HANDSHAKE_PARTIAL,
-            ] as SignalState[]
-          ).includes(state)
-        ) {
-          updateStatus(SESSION_STATE.LINKING);
-        }
-
-        if (state === SIGNAL_STATE.ENCRYPTED) {
-          startTransport();
-        }
-
-        if (state === SIGNAL_STATE.ERROR) {
-          log("signaling error — marking session disconnected");
-          updateStatus(SESSION_STATE.DISCONNECTED);
-        }
-      });
+      signal.on("state_change", onSignalStateChange);
 
       await signal.setup();
     },
     async close() {
       log("session teardown");
+      clearLinkDeadline();
       signal.off("message", onSignalMessage);
+      signal.off("state_change", onSignalStateChange);
+      transport.emitter.off("state_change", onTransportStateChange);
+      transport.emitter.off("error", onTransportError);
       await Promise.all([
         transport.teardown(),
         signal.teardown(),
@@ -280,7 +340,7 @@ export const createSession = async (
       return {
         status,
         signaling: signal.getState(),
-        // transport: transport.getState(),
+        error: lastError,
       };
     },
     getHandshakeParameters() {
@@ -293,28 +353,23 @@ export const createSession = async (
         s: server,
       };
     },
-    waitForLink: async () => {
-      if (status === SESSION_STATE.CONNECTED) return;
+    waitForLink: async () => new Promise<void>((resolve, reject) => {
+      const handler = (state?: SessionStateObject) => {
+        if (state?.status === SESSION_STATE.CONNECTED) {
+          emitter.off("state_change", handler);
+          resolve();
+        }
+        else if (state?.status === SESSION_STATE.DISCONNECTED) {
+          emitter.off("state_change", handler);
+          reject(new Error(lastError ?? "Session failed to connect"));
+        }
+      };
 
-      if (status === SESSION_STATE.DISCONNECTED) {
-        throw new Error("Session failed to connect");
-      }
-
-      return new Promise<void>((resolve, reject) => {
-        const handler = (state?: SessionStateObject) => {
-          if (state?.status === SESSION_STATE.CONNECTED) {
-            emitter.off("state_change", handler);
-            resolve();
-          }
-          else if (state?.status === SESSION_STATE.DISCONNECTED) {
-            emitter.off("state_change", handler);
-            reject(new Error("Session failed to connect"));
-          }
-        };
-
-        emitter.on("state_change", handler);
-      });
-    },
+      // Subscribe before inspecting the current status so a transition
+      // between the check and the subscription cannot be missed.
+      emitter.on("state_change", handler);
+      handler({ status });
+    }),
     async send(
       message: object,
       ackTimeout: number = 10_000,

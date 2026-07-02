@@ -5,7 +5,7 @@ import { EventEmitter } from "eventemitter3";
 import { match } from "ts-pattern";
 import type { MaybePromise } from "viem";
 
-import type { SignalMessage } from "./messages.js";
+import { parseSignalMessage, type SignalMessage } from "./messages.js";
 import type { SignalingChannel } from "./protocol.js";
 import { log } from "./utils/log.js";
 
@@ -43,8 +43,6 @@ export type SignalingProperties = {
 
 export type SignalingContext = {
   type: string;
-  // waitForConnection: () => Promise<void>;
-  // reconnect: () => void;
 
   // Sending only works once keys are exchanged
   send: (message: object) => MaybePromise<void>;
@@ -62,6 +60,14 @@ export type SignalingLayerFn = (
 
 export const XR_PREFIX = "x";
 export const XR_H_PREFIX = "h";
+
+/**
+ * Relays are lossy (MQTT QoS 0, ntfy best-effort), so every handshake step
+ * is re-sent on an interval until the state machine observes progress.
+ * Receivers treat duplicates as no-ops, which keeps re-sends wire-compatible.
+ */
+const HANDSHAKE_RESEND_INTERVAL_MS = 2000;
+const HANDSHAKE_TIMEOUT_MS = 30_000;
 
 /**
  * Base Signaling Layer implementation
@@ -82,11 +88,32 @@ export const createSignalingLayer = (
 }: SignalingProperties) => {
   const emitter = new EventEmitter<SignalEventMap>();
   let state: SignalState = SIGNAL_STATE.STANDBY;
+  let peerKeyRecorded = false;
+  let resendTimer: ReturnType<typeof setInterval> | undefined;
+  let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+  const handshakeKey = k || undefined;
+
+  const stopResend = () => {
+    clearInterval(resendTimer);
+    resendTimer = undefined;
+  };
+  const stopTimers = () => {
+    stopResend();
+    clearTimeout(deadlineTimer);
+    deadlineTimer = undefined;
+  };
+
   const setState = (_state: SignalState) => {
+    if (state === _state) return;
+
     state = _state;
+
+    if (_state === SIGNAL_STATE.ENCRYPTED || _state === SIGNAL_STATE.ERROR) {
+      stopTimers();
+    }
+
     emitter.emit("state_change", _state);
   };
-  const handshakeKey = k || undefined;
 
   const send = async (
     method: "handshake" | "encrypted",
@@ -111,122 +138,173 @@ export const createSignalingLayer = (
       })
       .exhaustive();
 
+    if (message === undefined) {
+      throw new Error(`Cannot encrypt ${method} frame: key not available`);
+    }
+
     await init.publish(prefix + recipient + message);
   };
 
-  const handleReceive = async (payload: string) => {
-    const prefix = payload.slice(0, XR_H_PREFIX.length);
-    const recipient = payload.slice(
-      XR_H_PREFIX.length,
-      XR_H_PREFIX.length + 1,
-    );
-    const body = payload.slice(XR_PREFIX.length + 1);
-    const isRecipient = (isHost ? "h" : "c") === recipient;
+  /**
+   * Send a handshake step now, then keep re-sending it until the next step
+   * (or teardown) supersedes it. Errors are logged and swallowed — the next
+   * tick retries.
+   */
+  const sendRepeating = (
+    method: "handshake" | "encrypted",
+    recipient: "h" | "c",
+    payload: SignalMessage,
+  ) => {
+    stopResend();
 
-    log("isRecipient", isRecipient);
+    const attempt = () => send(method, recipient, payload)
+      .catch(error => log("handshake send failed, will retry", error));
 
-    if (!isRecipient) return;
+    resendTimer = setInterval(attempt, HANDSHAKE_RESEND_INTERVAL_MS);
 
-    await match({ prefix, body })
-      .with({ prefix: XR_H_PREFIX }, async () => {
-        if (!handshakeKey) return;
+    return attempt();
+  };
 
-        const message = await handshakeKey.decrypt(body);
-        const msg = JSON.parse(message) as SignalMessage;
+  const startHandshakeDeadline = () => {
+    if (deadlineTimer) return;
 
-        await match({ msg, state, isHost })
-          .with({ msg: { type: "flash" }, state: SIGNAL_STATE.READY, isHost: true }, async () => {
-            setState(SIGNAL_STATE.HANDSHAKE);
-            await send("handshake", "c", {
-              type: "pubkey",
-              payload: {
-                publicKey: publicKey.toString(),
-              },
-              timestamp: Date.now(),
-            });
-          })
-          .with({ msg: { type: "pubkey" }, isHost: false, state: SIGNAL_STATE.HANDSHAKE }, async ({ msg: { payload: msgPayload } }) => {
-            try {
-              const receivedKey = await parseEncryptionKey(msgPayload.publicKey);
+    deadlineTimer = setTimeout(() => {
+      if (state === SIGNAL_STATE.ENCRYPTED) return;
 
-              if (!await validatePublicKeyHash(receivedKey, h)) {
-                setState(SIGNAL_STATE.ERROR);
-                log("Received host public key does not match expected hash — possible tampering");
+      log("handshake timed out");
+      setState(SIGNAL_STATE.ERROR);
+    }, HANDSHAKE_TIMEOUT_MS);
+  };
 
-                return;
-              }
-            }
-            catch {
-              setState(SIGNAL_STATE.ERROR);
-              log("Failed to parse received host public key");
+  const recordPeerKey = async (key: string): Promise<boolean> => {
+    // Never overwrite an established peer key — a second, different pubkey
+    // mid-handshake is either a duplicate delivery or an injection attempt.
+    if (peerKeyRecorded) return false;
 
-              return;
-            }
+    peerKeyRecorded = true;
+    await rpDiscovered(key);
 
-            await rpDiscovered(msgPayload.publicKey);
-            setState(SIGNAL_STATE.HANDSHAKE_PARTIAL);
+    return true;
+  };
 
-            return await send("encrypted", "h", {
-              type: "pubkey",
-              payload: {
-                publicKey: publicKey.toString(),
-              },
-              timestamp: Date.now(),
-            });
-          })
-          .otherwise(() => {
-            log("Received invalid message H", msg);
-          });
+  const ackMessage = (): SignalMessage => ({
+    type: "ack",
+    payload: undefined,
+    timestamp: Date.now(),
+  });
+  const pubkeyMessage = (): SignalMessage => ({
+    type: "pubkey",
+    payload: { publicKey: publicKey.toString() },
+    timestamp: Date.now(),
+  });
+
+  const handleHandshakeFrame = async (msg: SignalMessage) => {
+    await match({ msg, state, isHost })
+      // Host: a client wants to connect. Re-entered on duplicate `flash`
+      // deliveries (client re-sends until it hears our pubkey).
+      .with({ msg: { type: "flash" }, state: SIGNAL_STATE.READY, isHost: true }, async () => {
+        setState(SIGNAL_STATE.HANDSHAKE);
+        startHandshakeDeadline();
+        await sendRepeating("handshake", "c", pubkeyMessage());
       })
-      .with({ prefix: XR_PREFIX }, async () => {
-        const message = await decrypt(body);
-        const msg = JSON.parse(message) as SignalMessage;
+      // Client: host announced its public key.
+      .with({ msg: { type: "pubkey" }, isHost: false, state: SIGNAL_STATE.HANDSHAKE }, async ({ msg: { payload: msgPayload } }) => {
+        try {
+          const receivedKey = await parseEncryptionKey(msgPayload.publicKey);
 
-        await match({ msg, state, isHost })
-          .with(
-            {
-              msg: { type: "pubkey" },
-              isHost: true,
-              state: SIGNAL_STATE.HANDSHAKE,
-            },
-            async ({ msg: { payload: msgPayload } }) => {
-              await rpDiscovered(msgPayload.publicKey);
-              setState(SIGNAL_STATE.HANDSHAKE_PARTIAL);
+          if (!await validatePublicKeyHash(receivedKey, h)) {
+            setState(SIGNAL_STATE.ERROR);
+            log("Received host public key does not match expected hash — possible tampering");
 
-              return await send("encrypted", "c", {
-                type: "ack",
-                payload: undefined,
-                timestamp: Date.now(),
-              });
-            },
-          )
-          .with(
-            {
-              msg: { type: "ack" },
-              state: SIGNAL_STATE.HANDSHAKE_PARTIAL,
-            },
-            async () => {
-              setState(SIGNAL_STATE.ENCRYPTED);
+            return;
+          }
+        }
+        catch {
+          setState(SIGNAL_STATE.ERROR);
+          log("Failed to parse received host public key");
 
-              if (isHost) return;
+          return;
+        }
 
-              return await send("encrypted", "h", {
-                type: "ack",
-                payload: undefined,
-                timestamp: Date.now(),
-              });
-            },
-          )
-          .with({ msg: { type: "data" }, state: SIGNAL_STATE.ENCRYPTED }, async () => {
-            emitter.emit("message", msg.payload as object);
-          })
-          .otherwise(() => {
-            log("Received invalid message X", msg);
-          });
+        if (!await recordPeerKey(msgPayload.publicKey)) return;
+
+        setState(SIGNAL_STATE.HANDSHAKE_PARTIAL);
+
+        return await sendRepeating("encrypted", "h", pubkeyMessage());
       })
       .otherwise(() => {
-        log("Received invalid message", payload);
+        log("Ignoring handshake frame", msg.type, "in state", state);
       });
+  };
+
+  const handleEncryptedFrame = async (msg: SignalMessage) => {
+    await match({ msg, state, isHost })
+      // Host: client responded with its public key.
+      .with(
+        { msg: { type: "pubkey" }, isHost: true, state: SIGNAL_STATE.HANDSHAKE },
+        async ({ msg: { payload: msgPayload } }) => {
+          if (!await recordPeerKey(msgPayload.publicKey)) return;
+
+          setState(SIGNAL_STATE.HANDSHAKE_PARTIAL);
+
+          return await sendRepeating("encrypted", "c", ackMessage());
+        },
+      )
+      .with(
+        { msg: { type: "ack" }, state: SIGNAL_STATE.HANDSHAKE_PARTIAL },
+        async () => {
+          setState(SIGNAL_STATE.ENCRYPTED);
+
+          if (isHost) return;
+
+          return await send("encrypted", "h", ackMessage());
+        },
+      )
+      // Client already encrypted, but the host is still re-sending its ack
+      // (our final ack was lost): answer again so the host can finish.
+      .with(
+        { msg: { type: "ack" }, state: SIGNAL_STATE.ENCRYPTED, isHost: false },
+        async () => await send("encrypted", "h", ackMessage()),
+      )
+      .with({ msg: { type: "data" }, state: SIGNAL_STATE.ENCRYPTED }, async () => {
+        emitter.emit("message", msg.payload as object);
+      })
+      .otherwise(() => {
+        log("Ignoring encrypted frame", msg.type, "in state", state);
+      });
+  };
+
+  const handleReceive = async (payload: string) => {
+    // The topic is public: anyone can publish garbage. Nothing in this
+    // handler may throw past this boundary, otherwise a single malformed
+    // frame becomes an unhandled rejection.
+    try {
+      const prefix = payload.slice(0, 1);
+      const recipient = payload.slice(1, 2);
+      const body = payload.slice(2);
+      const isRecipient = (isHost ? "h" : "c") === recipient;
+
+      if (!isRecipient) return;
+
+      if (prefix === XR_H_PREFIX) {
+        if (!handshakeKey) return;
+
+        const msg = parseSignalMessage(await handshakeKey.decrypt(body));
+
+        if (msg) await handleHandshakeFrame(msg);
+      }
+      else if (prefix === XR_PREFIX) {
+        const msg = parseSignalMessage(await decrypt(body));
+
+        if (msg) await handleEncryptedFrame(msg);
+      }
+      else {
+        log("Dropping frame with unknown prefix");
+      }
+    }
+    catch (error) {
+      log("Dropping undecryptable or malformed frame", error);
+    }
   };
 
   return make(emitter, {
@@ -238,24 +316,27 @@ export const createSignalingLayer = (
 
       if (canEncrypt()) {
         setState(SIGNAL_STATE.ENCRYPTED);
+
+        return;
       }
-      else {
-        if (isHost) {
-          setState(SIGNAL_STATE.READY);
-        }
-        else {
-          setState(SIGNAL_STATE.READY);
-          await send("handshake", "h", {
-            type: "flash",
-            payload: {},
-            timestamp: Date.now(),
-          });
-          setState(SIGNAL_STATE.HANDSHAKE);
-        }
+
+      setState(SIGNAL_STATE.READY);
+
+      if (!isHost) {
+        // Enter HANDSHAKE before publishing: the host's pubkey reply can
+        // arrive while the publish is still in flight.
+        setState(SIGNAL_STATE.HANDSHAKE);
+        startHandshakeDeadline();
+        await sendRepeating("handshake", "h", {
+          type: "flash",
+          payload: {},
+          timestamp: Date.now(),
+        });
       }
     },
     async teardown() {
       log("teardown");
+      stopTimers();
       await init.teardown?.();
     },
     send(message: object) {

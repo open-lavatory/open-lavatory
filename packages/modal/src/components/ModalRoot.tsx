@@ -319,6 +319,7 @@ export const ModalRoot = (props: { onClose: () => void; }) => {
           PROVIDER_STATUS.CREATING,
           PROVIDER_STATUS.CONNECTING,
           PROVIDER_STATUS.CONNECTED,
+          PROVIDER_STATUS.ERROR,
         ),
         () => (
           <ConnectionFlow onClose={props.onClose} onCopy={handleCopy} />

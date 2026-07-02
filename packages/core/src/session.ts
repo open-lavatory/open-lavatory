@@ -14,8 +14,8 @@ export type SessionHandshakeParameters = {
   sessionId: Hex<16>;
   // Hash of peerA's public key
   h: Hex<16>;
-  // Shared key for symmetric encryption during handshake
-  k: Hex<16>;
+  // Shared key for symmetric encryption during handshake (32 hex chars = 16 bytes)
+  k: Hex<32>;
   // Protocol for signaling
   p: string;
   // Signaling server URL

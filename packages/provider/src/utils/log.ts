@@ -1,7 +1,3 @@
-export const log = (...x: Parameters<typeof console.log>) =>
-  console.log(
-    "%c[provider]%c",
-    "color: green; font-weight: bold",
-    "color: inherit; font-weight: normal",
-    ...x,
-  );
+import { createLogger } from "@openlv/core";
+
+export const log = createLogger("provider", "green");

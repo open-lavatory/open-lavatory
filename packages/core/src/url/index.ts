@@ -22,20 +22,13 @@ export const encodeConnectionURL = (payload: SessionHandshakeParameters) => {
 export const decodeConnectionURL = (
   url: string,
 ): SessionHandshakeParameters => {
-  // Type check and validation
-  if (typeof url !== "string") {
-    throw new TypeError(`Invalid URL type: expected string, got ${typeof url}`);
-  }
+  if (typeof url !== "string") throw new TypeError(`Invalid URL type: expected string, got ${typeof url}`);
 
-  if (!url || url.trim() === "") {
-    throw new Error("URL cannot be empty");
-  }
+  if (!url || url.trim() === "") throw new Error("URL cannot be empty");
 
-  if (!url.startsWith("openlv://")) {
-    throw new Error(
-      `Invalid URL format: must start with 'openlv://', got: ${url}`,
-    );
-  }
+  if (!url.startsWith("openlv://")) throw new Error(
+    `Invalid URL format: must start with 'openlv://', got: ${url}`,
+  );
 
   try {
     const urlObj = new URL(url);
@@ -52,8 +45,7 @@ export const decodeConnectionURL = (
     const k = urlObj.searchParams.get("k") || "";
     const s = urlObj.searchParams.get("s") || undefined;
 
-    const p
-      = (urlObj.searchParams.get("p") as "mqtt" | "waku" | "nostr") || "mqtt";
+    const p = urlObj.searchParams.get("p") || "mqtt";
 
     if (!sessionId) {
       throw new Error("Session ID is required in URL");
@@ -91,8 +83,7 @@ export const decodeConnectionURL = (
       sessionId,
       h,
       k,
-      // TODO: figure out why '' empty string and not undefined
-      s: s ? decodeURIComponent(s) : "",
+      s: s ?? "",
       p,
     };
   }

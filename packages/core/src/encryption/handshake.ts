@@ -1,15 +1,22 @@
+import { bytesToHex, hexToBytes } from "@noble/ciphers/utils.js";
+
 export type SymmetricKey = {
   toString: () => string;
   encrypt: (message: string) => Promise<string>;
   decrypt: (message: string) => Promise<string>;
 };
 
-const decodeHex = (value: string): Uint8Array<ArrayBuffer> => new Uint8Array(
-  value.match(/.{2}/g)!.map(byte => Number.parseInt(byte, 16)),
-);
+const HANDSHAKE_KEY_BYTES = 16;
+const IV_BYTES = 12;
 
 export const deriveSymmetricKey = async (k: string): Promise<SymmetricKey> => {
-  const baseKey = decodeHex(k);
+  const baseKey = Uint8Array.from(hexToBytes(k));
+
+  if (baseKey.length !== HANDSHAKE_KEY_BYTES) {
+    throw new Error(
+      `Handshake key must be ${HANDSHAKE_KEY_BYTES} bytes, got ${baseKey.length}`,
+    );
+  }
 
   const sharedSecret = await crypto.subtle.importKey(
     "raw",
@@ -22,7 +29,7 @@ export const deriveSymmetricKey = async (k: string): Promise<SymmetricKey> => {
   return {
     toString: () => k,
     encrypt: async (message: string) => {
-      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
       const encrypted = await crypto.subtle.encrypt(
         { name: "AES-GCM", iv },
         sharedSecret,
@@ -41,8 +48,8 @@ export const deriveSymmetricKey = async (k: string): Promise<SymmetricKey> => {
           .split("")
           .map(char => char.codePointAt(0)!),
       );
-      const iv = combined.slice(0, 12);
-      const encrypted = combined.slice(12);
+      const iv = combined.slice(0, IV_BYTES);
+      const encrypted = combined.slice(IV_BYTES);
       const decrypted = await crypto.subtle.decrypt(
         { name: "AES-GCM", iv },
         sharedSecret,
@@ -59,13 +66,9 @@ export const deriveSymmetricKey = async (k: string): Promise<SymmetricKey> => {
  * Generate a 16-byte random shared key and return as hex
  */
 export const generateHandshakeKey = async (): Promise<SymmetricKey> => {
-  const array = new Uint8Array(16);
+  const array = new Uint8Array(HANDSHAKE_KEY_BYTES);
 
   crypto.getRandomValues(array);
 
-  const keyHex = Array.from(array)
-    .map(b => b.toString(16).padStart(2, "0"))
-    .join("");
-
-  return await deriveSymmetricKey(keyHex);
+  return await deriveSymmetricKey(bytesToHex(array));
 };
