@@ -35,7 +35,7 @@ jobs:
         name: Tests
         runs-on: ubuntu-latest
         container:
-          image: mcr.microsoft.com/playwright:v1.58.1-noble
+          image: mcr.microsoft.com/playwright:v1.60.0-noble
           options: --user 1001
         timeout-minutes: 5
         permissions:
@@ -55,3 +55,27 @@ jobs:
             timeout_minutes: 10
             max_attempts: 3
             command: pnpm test
+    compat:
+        name: Compat vs npm latest
+        runs-on: ubuntu-latest
+        container:
+          image: mcr.microsoft.com/playwright:v1.60.0-noble
+          options: --user 1001
+        timeout-minutes: 15
+        permissions:
+            contents: read
+        steps:
+        - name: Checkout
+          uses: actions/checkout@v4
+        - name: Setup workspace
+          uses: ./.github/actions/setup-workspace
+          with:
+            build-packages: true
+        - name: Resolve latest published packages
+          run: pnpm --dir tests run update:latest
+        - name: Run compat tests
+          uses: nick-fields/retry@v3
+          with:
+            timeout_minutes: 12
+            max_attempts: 3
+            command: pnpm --dir tests run test:compat

@@ -9,7 +9,8 @@
     "changeset:version": "changeset version && pnpm install --ignore-scripts",
     "lint": "eslint",
     "lint:fix": "eslint --fix",
-    "test": "pnpm -r test"
+    "test": "pnpm -r test",
+    "test:compat": "pnpm --filter @openlv/compat-tests run test:compat"
   },
   "devDependencies": {
     "@changesets/cli": "^2.29.8",

@@ -1,0 +1,29 @@
+{
+  "name": "@openlv/compat-tests",
+  "version": "0.0.0",
+  "private": true,
+  "license": "LGPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "test:compat": "vitest run",
+    "test:compat:watch": "vitest",
+    "update:latest": "pnpm add latest-core@npm:@openlv/core@latest latest-session@npm:@openlv/session@latest latest-signaling@npm:@openlv/signaling@latest latest-transport@npm:@openlv/transport@latest"
+  },
+  "dependencies": {
+    "@openlv/core": "workspace:*",
+    "@openlv/session": "workspace:*",
+    "@openlv/signaling": "workspace:*",
+    "@openlv/transport": "workspace:*",
+    "latest-core": "npm:@openlv/core@^0.0.2",
+    "latest-session": "npm:@openlv/session@^0.0.3",
+    "latest-signaling": "npm:@openlv/signaling@^0.0.3",
+    "latest-transport": "npm:@openlv/transport@^0.0.3"
+  },
+  "devDependencies": {
+    "@vitest/browser-playwright": "^4.0.8",
+    "playwright": "1.60.0",
+    "typescript": "^5",
+    "vitest": "^4"
+  },
+  "packageManager": "pnpm@10.10.0"
+}
