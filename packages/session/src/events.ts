@@ -1,5 +1,3 @@
-import type { PeerInfo } from "@openlv/signaling";
-
 import type { SessionStateObject } from "./index.js";
 
 export type SessionEvents = {
@@ -10,9 +8,4 @@ export type SessionEvents = {
      * needing to intercept the `onMessage` callback.
      */
   request: (payload: object | string) => void;
-  /**
-     * Emitted when the peer's capabilities arrive during the handshake.
-     * Absent info means the peer chose not to identify itself.
-     */
-  peer_info: (info?: PeerInfo) => void;
 };

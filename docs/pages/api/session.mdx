@@ -51,15 +51,15 @@ const session = await connectSession(
 );
 ```
 
-The remote peer's info is available once the handshake completes:
+The remote peer's info is part of the session state, set the moment the capabilities exchange completes:
 
 ```typescript
-session.emitter.on("peer_info", (info) => {
-  console.log(info?.name, info?.identity);
+session.emitter.on("state_change", (state) => {
+  console.log(state?.peerInfo?.name, state?.peerInfo?.identity);
 });
 
-// or after connecting
-const peerInfo = session.getPeerInfo();
+// or read it directly
+const { peerInfo } = session.getState();
 ```
 
 ## Transport negotiation

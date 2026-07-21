@@ -30,9 +30,9 @@ export const ConnectionFlow = (props: ConnectionFlowProps) => {
   const { provider } = useModalContext();
 
   const [providerStatus, setProviderStatus] = createSignal<ProviderStatus>(provider.getState().status);
-  // Peer info is recorded during the handshake, so it is available by the
-  // time the status flips to CONNECTED and this accessor re-evaluates.
-  const peerInfo = () => provider.getSession()?.getPeerInfo();
+  // Peer info is recorded during the handshake, so it is in the session
+  // state by the time the status flips to CONNECTED and this re-evaluates.
+  const peerInfo = () => provider.getSession()?.getState().peerInfo;
   // The wire only bounds the icon's size — vetting what goes into an
   // <img src> is this renderer's job.
   const renderableIcon = () => {

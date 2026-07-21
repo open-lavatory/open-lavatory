@@ -54,6 +54,8 @@ export type SessionStateObject = {
   signaling?: {
     state: SignalState;
   };
+  /** The peer's self-description, set once capabilities are exchanged. */
+  peerInfo?: PeerInfo;
   /** Human-readable reason for the last disconnect/failure, if any. */
   error?: string;
 };
@@ -71,8 +73,6 @@ export type SessionOptions = {
 export type Session = {
   getState(): SessionStateObject;
   getHandshakeParameters(): SessionHandshakeParameters;
-  /** The peer's self-description, available once the handshake completes. */
-  getPeerInfo(): PeerInfo | undefined;
   connect(): Promise<void>;
   waitForLink(): Promise<void>;
   close(): Promise<void>;
@@ -154,6 +154,7 @@ export const createSession = async (
     emitter.emit("state_change", {
       status,
       signaling: signal.getState(),
+      peerInfo: peerCaps?.info,
       error: lastError,
     });
   };
@@ -188,7 +189,9 @@ export const createSession = async (
     peerCapabilities(received) {
       log("peer capabilities received", received);
       peerCaps = received;
-      emitter.emit("peer_info", received.info);
+      // Re-emit the current status so observers see peerInfo the moment the
+      // capabilities exchange completes, not at the next status transition.
+      updateStatus(status);
     },
     isHost,
   });
@@ -413,6 +416,7 @@ export const createSession = async (
       return {
         status,
         signaling: signal.getState(),
+        peerInfo: peerCaps?.info,
         error: lastError,
       };
     },
@@ -425,9 +429,6 @@ export const createSession = async (
         p: protocol,
         s: server,
       };
-    },
-    getPeerInfo() {
-      return peerCaps?.info;
     },
     waitForLink: async () => new Promise<void>((resolve, reject) => {
       const handler = (state?: SessionStateObject) => {
