@@ -73,11 +73,11 @@ export const webrtc: Transport = (
       match(state)
         .with("closed", () => {
           ready = false;
-          emitter.emit("error", new Error("WebRTC ICE connection closed"));
+          emitter.emit("error", "WebRTC ICE connection closed");
         })
         .with("failed", () => {
           ready = false;
-          emitter.emit("error", new Error("WebRTC ICE connection failed"));
+          emitter.emit("error", "WebRTC ICE connection failed");
         })
         .otherwise(() => {});
     };
@@ -107,7 +107,7 @@ export const webrtc: Transport = (
           + "the peer-to-peer connection cannot establish. "
           + "Check network/UDP access or configure reachable STUN/TURN servers.",
         );
-        emitter.emit("error", new Error("WebRTC gathered zero local ICE candidates"));
+        emitter.emit("error", "no local ICE candidates");
       }
     };
     const onDataChannel = (e: RTCDataChannelEvent) => {
@@ -122,7 +122,7 @@ export const webrtc: Transport = (
     };
     const onDataChannelClose = () => {
       ready = false;
-      emitter.emit("error", new Error("WebRTC data channel closed"));
+      emitter.emit("error", "Data channel closed");
     };
     const onDataChannelMessage = (e: MessageEvent<string>) => {
       emitter.emit("message", e.data);

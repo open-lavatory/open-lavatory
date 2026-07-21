@@ -23,10 +23,6 @@ export type OpenLVConnector = CreateConnectorFn<
   Record<string, unknown>
 >;
 
-const onAccounts = () => {
-  log("provider_accountsChanged");
-};
-
 /*
  * openlv connector
  * https://openlv.sh/
@@ -89,6 +85,10 @@ export const openlv = ({
             cleanup();
             resolve();
           }
+        };
+        // eslint-disable-next-line unicorn/consistent-function-scoping
+        const onAccounts = () => {
+          log("provider_accountsChanged");
         };
         const cleanup = () => {
           provider.off("status_change", onStatus);

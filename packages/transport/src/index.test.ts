@@ -1,6 +1,6 @@
 import { generateKeyPair } from "@openlv/core/encryption";
 import { EventEmitter } from "eventemitter3";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   createTransportBase,
@@ -98,8 +98,8 @@ describe("Transport", () => {
 
   it("requires an encrypted heartbeat round-trip before connecting", async () => {
     const { encryptionKey, decryptionKey } = await generateKeyPair();
-    const harnessA = createMemoryTransportHarness({ probeInterval: 10 });
-    const harnessB = createMemoryTransportHarness({ probeInterval: 10 });
+    const harnessA = createMemoryTransportHarness();
+    const harnessB = createMemoryTransportHarness();
 
     harnessA.peer = harnessB;
     harnessB.peer = harnessA;
@@ -132,16 +132,8 @@ describe("Transport", () => {
 
   it("moves to error when an updated peer stops responding to heartbeats", async () => {
     const { encryptionKey, decryptionKey } = await generateKeyPair();
-    const harnessA = createMemoryTransportHarness({
-      probeInterval: 10,
-      heartbeatInterval: 20,
-      heartbeatTimeout: 50,
-    });
-    const harnessB = createMemoryTransportHarness({
-      probeInterval: 10,
-      heartbeatInterval: 20,
-      heartbeatTimeout: 50,
-    });
+    const harnessA = createMemoryTransportHarness();
+    const harnessB = createMemoryTransportHarness();
 
     harnessA.peer = harnessB;
     harnessB.peer = harnessA;
@@ -159,11 +151,14 @@ describe("Transport", () => {
     harnessA.ready();
     harnessB.ready();
 
-    await new Promise(resolve => setTimeout(resolve, 30));
+    await new Promise(resolve => setTimeout(resolve, 300));
     harnessB.acceptInbound = false;
+    const now = Date.now();
+    const dateNow = vi.spyOn(Date, "now").mockReturnValue(now + 6000);
 
     await transportA.waitFor(TRANSPORT_STATE.ERROR);
     await transportB.teardown();
+    dateNow.mockRestore();
   });
 
   it("allows a close message before the transport is connected", async () => {
@@ -222,12 +217,6 @@ describe("Transport", () => {
   });
 });
 
-type LivenessConfig = {
-  probeInterval?: number;
-  heartbeatInterval?: number;
-  heartbeatTimeout?: number;
-};
-
 type MemoryTransportHarness = {
   acceptInbound: boolean;
   peer?: MemoryTransportHarness;
@@ -236,9 +225,7 @@ type MemoryTransportHarness = {
   receive: (message: string) => void;
 };
 
-const createMemoryTransportHarness = (
-  livenessConfig: LivenessConfig = {},
-): MemoryTransportHarness => {
+const createMemoryTransportHarness = (): MemoryTransportHarness => {
   let emitter: TransportLayerBaseEmitter | undefined;
   const harness: MemoryTransportHarness = {
     acceptInbound: false,
@@ -254,7 +241,7 @@ const createMemoryTransportHarness = (
             harness.peer?.receive(message);
           },
         };
-      }, livenessConfig).create(parameters);
+      }).create(parameters);
     },
     ready() {
       harness.acceptInbound = true;

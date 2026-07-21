@@ -209,13 +209,14 @@ export const createSession = async (
   });
 
   let transport: TransportLayer | undefined;
+
   const createTransport = (layer: TransportLayerFn): TransportLayer => layer.create({
     encrypt(message) {
       if (!relyingPublicKey) {
         throw new Error("Relying party public key not found");
       }
 
-      return relyingPublicKey.encrypt(message);
+      return relyingPublicKey?.encrypt(message);
     },
     decrypt,
     isHost,
@@ -235,9 +236,11 @@ export const createSession = async (
           // Immediately acknowledge receipt so the sender's ack-timeout does
           // not fire while the handler (which may await user interaction) runs.
           await transport?.send({ type: "ack", messageId } satisfies SessionMessage);
+
           // Notify observers before processing (e.g. wallet UI can show a
           // pending indicator before the handler resolves).
           emitter.emit("request", message["payload"] as object);
+
           const data = await onMessage(message["payload"] as object)
             // A throwing handler must still answer, otherwise the peer waits
             // out its full response timeout.
@@ -271,6 +274,21 @@ export const createSession = async (
     },
   });
 
+  /**
+   * Sessions resumed with a known peer key never exchange capabilities and
+   * keep the first configured transport.
+   */
+  const selectTransportLayer = (): TransportLayerFn | undefined => {
+    if (!peerCaps) return transportLayers[0];
+
+    const selected = selectTransportId(isHost, capabilities.transports, peerCaps.transports);
+
+    return transportLayers.find(layer => layer.transportId === selected);
+  };
+
+  // Once both peers are present (signaling encrypted) the transport should
+  // connect promptly; if it cannot (e.g. no ICE candidates on a restricted
+  // network) fail loudly instead of sitting in "linking" forever.
   const TRANSPORT_LINK_TIMEOUT_MS = 45_000;
   let linkDeadline: ReturnType<typeof setTimeout> | undefined;
   let transportSetup: Promise<void> | undefined;
@@ -331,18 +349,12 @@ export const createSession = async (
       void disconnect(false);
     }
   };
-  const onTransportError = (reason?: unknown) => {
-    if (reason instanceof Error) lastError = reason.message;
-    else if (typeof reason === "string") lastError = reason;
+  const onTransportError = (reason?: string) => {
+    if (reason) lastError = reason;
   };
   const startTransport = () => {
     if (!transport) {
-      const selectedTransport = peerCaps
-        ? selectTransportId(isHost, capabilities.transports, peerCaps.transports)
-        : undefined;
-      const layer = peerCaps
-        ? transportLayers.find(candidate => candidate.transportId === selectedTransport)
-        : transportLayers[0];
+      const layer = selectTransportLayer();
 
       if (!layer) {
         log("no common transport with peer", capabilities.transports, peerCaps?.transports);
@@ -395,13 +407,14 @@ export const createSession = async (
         await transport.handle(sessionMsg.payload as TransportMessage);
       }
       catch (error) {
-        // Negotiation payloads come from the (untrusted) relay; a malformed one must not become an unhandled rejection.
+        // Negotiation payloads come from the (untrusted) relay; a malformed
+        // one must not become an unhandled rejection.
         log("failed to handle negotiation message", error);
       }
     }
   };
 
-  const onSignalState = (state: SignalState) => {
+  const onSignalStateChange = (state: SignalState) => {
     log("signal state change", state);
 
     if (state === SIGNAL_STATE.READY) {
@@ -443,8 +456,8 @@ export const createSession = async (
 
       signal.on("message", onSignalMessage);
 
-      signal.on("state_change", onSignalState);
-      detachSignalState = () => signal.off("state_change", onSignalState);
+      signal.on("state_change", onSignalStateChange);
+      detachSignalState = () => signal.off("state_change", onSignalStateChange);
 
       await signal.setup();
     },
@@ -482,7 +495,7 @@ export const createSession = async (
       // Subscribe before inspecting the current status so a transition
       // between the check and the subscription cannot be missed.
       emitter.on("state_change", handler);
-      handler({ status, error: lastError });
+      handler({ status });
     }),
     async send(
       message: object,

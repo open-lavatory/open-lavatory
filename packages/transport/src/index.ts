@@ -24,7 +24,7 @@ export type TransportState =
 
 export type TLayerEventMap = {
   state_change: (state: TransportState) => void;
-  error: (reason?: unknown) => void;
+  error: (reason?: string) => void;
 };
 
 export type TransportLayerSetupParameters = {
@@ -73,7 +73,7 @@ export type TransportLayerImpl = {
 export type TransportLayerBaseEventMap = {
   negotiate: (message: TransportMessage) => void;
   ready: () => void;
-  error: (error?: unknown) => void;
+  error: (reason?: string) => void;
   message: (message: string) => void;
 };
 export type TransportLayerBaseEmitter =
@@ -85,12 +85,6 @@ export type TransportLayerBaseParameters = {
 export type TransportLayerImplFn = (
   parameters: TransportLayerBaseParameters,
 ) => TransportLayerImpl;
-
-type TransportLivenessConfig = {
-  probeInterval?: number;
-  heartbeatInterval?: number;
-  heartbeatTimeout?: number;
-};
 
 const CONTROL_TYPE = "__openlv_transport";
 const DEFAULT_PROBE_INTERVAL = 250;
@@ -105,7 +99,6 @@ const DEFAULT_HEARTBEAT_TIMEOUT = 5000;
 export const createTransportBase = (
   transportId: TransportProtocol,
   init: TransportLayerImplFn,
-  liveness: TransportLivenessConfig = {},
 ): TransportLayerFn => ({
   transportId,
   create: ({ encrypt, decrypt, subsend, isHost, onmessage }) => {
@@ -115,12 +108,6 @@ export const createTransportBase = (
     let timer: ReturnType<typeof setTimeout> | undefined;
     let lastPeerActivity: number | undefined;
     let livenessGeneration = 0;
-    const {
-      probeInterval = DEFAULT_PROBE_INTERVAL,
-      heartbeatInterval = DEFAULT_HEARTBEAT_INTERVAL,
-      heartbeatTimeout = DEFAULT_HEARTBEAT_TIMEOUT,
-    } = liveness;
-
     const setState = (newState: TransportState) => {
       if (state === newState) return;
 
@@ -153,7 +140,7 @@ export const createTransportBase = (
 
       if (
         lastPeerActivity !== undefined
-        && Date.now() - lastPeerActivity > heartbeatTimeout
+        && Date.now() - lastPeerActivity > DEFAULT_HEARTBEAT_TIMEOUT
       ) {
         failLiveness();
 
@@ -166,8 +153,8 @@ export const createTransportBase = (
         if (generation === livenessGeneration) failLiveness();
       });
       const interval = state === TRANSPORT_STATE.CONNECTED
-        ? heartbeatInterval
-        : probeInterval;
+        ? DEFAULT_HEARTBEAT_INTERVAL
+        : DEFAULT_PROBE_INTERVAL;
 
       if (interval > 0) timer = setTimeout(checkLiveness, interval);
     };
@@ -183,12 +170,14 @@ export const createTransportBase = (
     internalEmitter.on("ready", () => {
       lastPeerActivity = Date.now();
 
-      if (!timer && probeInterval > 0) timer = setTimeout(checkLiveness, probeInterval);
+      if (!timer) timer = setTimeout(checkLiveness, DEFAULT_PROBE_INTERVAL);
     });
-    internalEmitter.on("error", (error) => {
-      log("onError", error);
+    internalEmitter.on("error", (reason) => {
+      log("transport error", reason);
       stopLiveness();
-      emitter.emit("error", error);
+      // Surface the reason before the state flips so listeners reading
+      // state on state_change already see it.
+      emitter.emit("error", reason);
       setState(TRANSPORT_STATE.ERROR);
     });
     internalEmitter.on("message", async (message) => {
