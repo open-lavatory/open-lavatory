@@ -26,7 +26,7 @@
     "postcss": "^8.5.1",
     "postcss-nested": "^7.0.2",
     "prettier": "^3.5.3",
-    "protobufjs": "^7.5.3",
+    "protobufjs": "^7.6.5",
     "qrcode.react": "^4.2.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
