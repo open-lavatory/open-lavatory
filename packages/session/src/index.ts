@@ -14,10 +14,13 @@ import {
   parseEncryptionKey,
 } from "@openlv/core/encryption";
 import {
+  type PeerCapabilities,
+  type PeerInfo,
   SIGNAL_STATE,
   type SignalingLayer,
   type SignalingProtocol,
   type SignalState,
+  validatePeerInfo,
 } from "@openlv/signaling";
 import { dynamicSignalingLayer } from "@openlv/signaling/dynamic";
 import {
@@ -29,8 +32,12 @@ import {
 import { EventEmitter } from "eventemitter3";
 
 import type { SessionEvents } from "./events.js";
+import { awaitCorrelatedResponse } from "./messages/correlate.js";
 import type { SessionMessage } from "./messages/index.js";
+import { selectTransportId } from "./transports.js";
 import { log } from "./utils/log.js";
+
+export type { PeerCapabilities, PeerInfo } from "@openlv/signaling";
 
 export const SESSION_STATE = {
   CREATED: "created",
@@ -47,8 +54,15 @@ export type SessionStateObject = {
   signaling?: {
     state: SignalState;
   };
+  /** The peer's self-description, set once capabilities are exchanged. */
+  peerInfo?: PeerInfo;
   /** Human-readable reason for the last disconnect/failure, if any. */
   error?: string;
+};
+
+export type SessionOptions = {
+  /** Shared with the peer during the handshake and shown in its UI. */
+  info?: PeerInfo;
 };
 
 /**
@@ -76,7 +90,8 @@ export type Session = {
   emitter: EventEmitter<SessionEvents>;
   _internal: {
     signal: SignalingLayer;
-    transport: TransportLayer;
+    /** Instantiated when signaling reaches ENCRYPTED and a transport is selected. */
+    transport: TransportLayer | undefined;
   };
 };
 
@@ -88,9 +103,22 @@ export type Session = {
 export const createSession = async (
   initParameters: SessionLinkParameters,
   signalLayer: SignalingProtocol,
-  transportLayer: TransportLayerFn[],
+  transportLayers: TransportLayerFn[],
   onMessage: (message: object) => Promise<object | string>,
+  options?: SessionOptions,
 ): Promise<Session> => {
+  if (transportLayers.length === 0) {
+    throw new Error("At least one transport is required");
+  }
+
+  if (options?.info) {
+    // A receiver silently drops out-of-bounds info with the whole packet,
+    // which would surface only as a handshake timeout — fail loudly here.
+    const problem = validatePeerInfo(options.info);
+
+    if (problem) throw new Error(`Invalid session info: ${problem}`);
+  }
+
   const emitter = new EventEmitter<SessionEvents>();
   const messages = new EventEmitter<{ message: SessionMessage; }>();
   const sessionId
@@ -114,6 +142,11 @@ export const createSession = async (
   let lastError: string | undefined;
   const protocol = initParameters.p;
   const server = initParameters.s;
+  const capabilities: PeerCapabilities = {
+    transports: transportLayers.map(layer => layer.transportId),
+    ...(options?.info ? { info: options.info } : {}),
+  };
+  let peerCaps: PeerCapabilities | undefined;
 
   const updateStatus = (newStatus: SessionState) => {
     log("updateStatus", newStatus);
@@ -121,6 +154,7 @@ export const createSession = async (
     emitter.emit("state_change", {
       status,
       signaling: signal.getState(),
+      peerInfo: peerCaps?.info,
       error: lastError,
     });
   };
@@ -151,10 +185,20 @@ export const createSession = async (
 
       relyingPublicKey = await parseEncryptionKey(rpKey);
     },
+    capabilities,
+    peerCapabilities(received) {
+      log("peer capabilities received", received);
+      peerCaps = received;
+      // Re-emit the current status so observers see peerInfo the moment the
+      // capabilities exchange completes, not at the next status transition.
+      updateStatus(status);
+    },
     isHost,
   });
 
-  const transport = transportLayer[0]({
+  let transport: TransportLayer | undefined;
+
+  const createTransport = (layer: TransportLayerFn): TransportLayer => layer.create({
     encrypt(message) {
       if (!relyingPublicKey) {
         throw new Error("Relying party public key not found");
@@ -173,7 +217,7 @@ export const createSession = async (
         try {
           // Immediately acknowledge receipt so the sender's ack-timeout does
           // not fire while the handler (which may await user interaction) runs.
-          await transport.send({ type: "ack", messageId } satisfies SessionMessage);
+          await transport?.send({ type: "ack", messageId } satisfies SessionMessage);
 
           // Notify observers before processing (e.g. wallet UI can show a
           // pending indicator before the handler resolves).
@@ -184,7 +228,7 @@ export const createSession = async (
             // out its full response timeout.
             .catch(() => ({ error: { code: -32_603, message: "Internal error" } }));
 
-          await transport.send({
+          await transport?.send({
             type: "response",
             messageId,
             payload: data,
@@ -211,6 +255,18 @@ export const createSession = async (
       await signal.send(sessionMessage);
     },
   });
+
+  /**
+   * Sessions resumed with a known peer key never exchange capabilities and
+   * keep the first configured transport.
+   */
+  const selectTransportLayer = (): TransportLayerFn | undefined => {
+    if (!peerCaps) return transportLayers[0];
+
+    const selected = selectTransportId(isHost, capabilities.transports, peerCaps.transports);
+
+    return transportLayers.find(layer => layer.transportId === selected);
+  };
 
   // Once both peers are present (signaling encrypted) the transport should
   // connect promptly; if it cannot (e.g. no ICE candidates on a restricted
@@ -243,10 +299,24 @@ export const createSession = async (
     if (reason) lastError = reason;
   };
 
-  transport.emitter.on("state_change", onTransportStateChange);
-  transport.emitter.on("error", onTransportError);
-
   const startTransport = () => {
+    if (!transport) {
+      const layer = selectTransportLayer();
+
+      if (!layer) {
+        log("no common transport with peer", capabilities.transports, peerCaps?.transports);
+        lastError ??= "No common transport with peer";
+        updateStatus(SESSION_STATE.DISCONNECTED);
+
+        return;
+      }
+
+      log("selected transport", layer.transportId);
+      transport = createTransport(layer);
+      transport.emitter.on("state_change", onTransportStateChange);
+      transport.emitter.on("error", onTransportError);
+    }
+
     linkDeadline ??= setTimeout(() => {
       if (status === SESSION_STATE.CONNECTED) return;
 
@@ -273,6 +343,12 @@ export const createSession = async (
     }
 
     if (sessionMsg.type === "request") {
+      if (!transport) {
+        log("dropping negotiation message: transport not selected yet");
+
+        return;
+      }
+
       try {
         await transport.handle(sessionMsg.payload as TransportMessage);
       }
@@ -328,10 +404,10 @@ export const createSession = async (
       clearLinkDeadline();
       signal.off("message", onSignalMessage);
       signal.off("state_change", onSignalStateChange);
-      transport.emitter.off("state_change", onTransportStateChange);
-      transport.emitter.off("error", onTransportError);
+      transport?.emitter.off("state_change", onTransportStateChange);
+      transport?.emitter.off("error", onTransportError);
       await Promise.all([
-        transport.teardown(),
+        transport?.teardown(),
         signal.teardown(),
       ]);
       updateStatus(SESSION_STATE.DISCONNECTED);
@@ -340,6 +416,7 @@ export const createSession = async (
       return {
         status,
         signaling: signal.getState(),
+        peerInfo: peerCaps?.info,
         error: lastError,
       };
     },
@@ -375,7 +452,7 @@ export const createSession = async (
       ackTimeout: number = 10_000,
       responseTimeout: number = 60 * 60_000,
     ) {
-      if (signal.getState().state !== SIGNAL_STATE.ENCRYPTED) {
+      if (!transport || signal.getState().state !== SIGNAL_STATE.ENCRYPTED) {
         throw new Error("Session not ready");
       }
 
@@ -388,53 +465,13 @@ export const createSession = async (
 
       await transport.send(sessionMessage);
 
-      return new Promise<unknown>((resolve, reject) => {
-        let ackReceived = false;
-        // eslint-disable-next-line prefer-const
-        let ackTimer: ReturnType<typeof setTimeout> | undefined;
-        let responseTimer: ReturnType<typeof setTimeout> | undefined;
-
-        const cleanup = () => {
-          clearTimeout(ackTimer);
-          clearTimeout(responseTimer);
-          messages.off("message", handler);
-        };
-
-        const handler = (msg: SessionMessage) => {
-          if (msg.messageId !== messageId) return;
-
-          if (msg.type === "ack" && !ackReceived) {
-            ackReceived = true;
-            clearTimeout(ackTimer);
-            // The other side confirmed receipt; wait for the full response.
-            responseTimer = setTimeout(() => {
-              cleanup();
-              reject(new Error("Request timed out: no response after acknowledgement"));
-            }, responseTimeout);
-
-            return;
-          }
-
-          if (msg.type === "response") {
-            cleanup();
-            resolve(msg.payload);
-          }
-        };
-
-        messages.on("message", handler);
-
-        // Short window for the ack — tells us the peer is alive and processing.
-        ackTimer = setTimeout(() => {
-          if (!ackReceived) {
-            cleanup();
-            reject(new Error("Request timed out: remote peer did not acknowledge"));
-          }
-        }, ackTimeout);
-      });
+      return awaitCorrelatedResponse(messages, messageId, ackTimeout, responseTimeout);
     },
     _internal: {
       signal,
-      transport,
+      get transport() {
+        return transport;
+      },
     },
     emitter,
   };
@@ -446,7 +483,8 @@ export const createSession = async (
 export const connectSession = async (
   connectionUrl: string,
   onMessage: (message: object) => Promise<object | string>,
-  transport: TransportLayerFn[],
+  transports: TransportLayerFn[],
+  options?: SessionOptions,
 ): Promise<Session> => {
   const initParameters = decodeConnectionURL(connectionUrl);
 
@@ -456,5 +494,5 @@ export const connectSession = async (
     throw new Error(`Invalid signaling protocol: ${initParameters.p}`);
   }
 
-  return createSession(initParameters, signaling, transport, onMessage);
+  return createSession(initParameters, signaling, transports, onMessage, options);
 };

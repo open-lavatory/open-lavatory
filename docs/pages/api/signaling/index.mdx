@@ -4,6 +4,8 @@ In openlv, signaling is the initial phase of the connection process.
 It occurs on public infrastructure and involves a cryptographic handshake to establish a secure connection.
 Once this is done transport negotiation can occur, and signaling can be disconnected.
 
+The packets exchanged during this phase, their order, and the frame format are documented on the [handshake protocol](/api/handshake) page.
+
 ## Supported Protocols
 
 In the current implementation we support the following three protocols:

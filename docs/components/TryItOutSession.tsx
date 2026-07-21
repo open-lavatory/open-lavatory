@@ -1,13 +1,16 @@
 "use client";
 
 import {
+  type PeerInfo,
   type Session,
   SESSION_STATE,
   type SessionStateObject,
 } from "@openlv/session";
 import {
   createContext,
+  type Dispatch,
   type ReactNode,
+  type SetStateAction,
   useCallback,
   useContext,
   useEffect,
@@ -27,19 +30,14 @@ export type ConnectionPhase =
   | "connected"
   | "error";
 
-export type DappPeerInfo = {
-  name?: string;
-  url?: string;
-  icon?: string;
-};
-
 export type TryItPeerInfo = {
   role: TryItRole;
   connectionUrl?: string;
   sessionId?: string;
   protocol?: string;
   signalingServer?: string;
-  dapp?: DappPeerInfo;
+  /** The remote peer's self-description from the capabilities handshake. */
+  remote?: PeerInfo;
 };
 
 export type TryItLogEntry = {
@@ -56,7 +54,7 @@ export type TryItLogEntry = {
 export type TryItSessionActions = {
   appendEntry: (entry: Omit<TryItLogEntry, "logId" | "at">) => void;
   setPhase: (phase: ConnectionPhase) => void;
-  setPeer: (peer: TryItPeerInfo | null) => void;
+  setPeer: Dispatch<SetStateAction<TryItPeerInfo | null>>;
   clearLog: () => void;
   resetSession: () => void;
 };
@@ -225,11 +223,27 @@ export const attachTryItSession = (
   options?: { logRequests?: boolean; },
 ) => {
   let lastSessionLogKey = "";
+  let peerInfoLogged = false;
 
   const logSessionState = (state?: SessionStateObject) => {
     if (!state) return;
 
     actions.setPhase(sessionToPhase(state.status));
+
+    const remote = state.peerInfo;
+
+    actions.setPeer(prev => (prev && prev.remote !== remote ? { ...prev, remote } : prev));
+
+    if (remote && !peerInfoLogged) {
+      peerInfoLogged = true;
+      actions.appendEntry({
+        role,
+        direction: "in",
+        kind: "info",
+        summary: `Peer identified · ${remote.name}`,
+        payload: { identity: remote.identity, name: remote.name },
+      });
+    }
 
     const signaling = state.signaling?.state;
     const logKey = `${state.status}:${signaling ?? ""}`;
@@ -360,9 +374,17 @@ const peerMetaLine = (peer: TryItPeerInfo) => {
 
   if (peer.protocol) parts.push(peer.protocol);
 
-  if (peer.dapp?.name) parts.push(peer.dapp.name);
-
   return parts.join(" · ");
+};
+
+// The wire only bounds the icon's size — vetting what goes into an
+// <img src> is this renderer's job.
+const renderableRemoteIcon = (remote?: PeerInfo) => {
+  const icon = remote?.icon;
+
+  return icon && (icon.startsWith("data:image/") || icon.startsWith("https://"))
+    ? icon
+    : undefined;
 };
 
 const ConnectionStatusBar = () => {
@@ -389,11 +411,23 @@ const ConnectionStatusBar = () => {
         aria-hidden
       />
       <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
+        <div className="flex flex-wrap items-center gap-x-2 text-sm">
           <span className="font-medium">{phaseLabel[phase]}</span>
           {peer && (
             <span className="text-xs text-[var(--vocs-color_textSecondary)]">
               {peer.role === "dapp" ? "dApp" : "Wallet"}
+            </span>
+          )}
+          {peer?.remote && (
+            <span className="inline-flex items-center gap-1.5 text-xs">
+              {renderableRemoteIcon(peer.remote) && (
+                <img
+                  src={renderableRemoteIcon(peer.remote)}
+                  alt=""
+                  className="h-4 w-4 rounded"
+                />
+              )}
+              <span>{peer.remote.name}</span>
             </span>
           )}
         </div>

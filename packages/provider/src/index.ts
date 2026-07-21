@@ -2,6 +2,7 @@
 import { encodeConnectionURL, type SessionLinkParameters } from "@openlv/core";
 import {
   createSession,
+  type PeerInfo,
   type Session,
   type SessionStateObject,
 } from "@openlv/session";
@@ -49,6 +50,8 @@ const unwrapSessionResponse = (payload: unknown): unknown => {
 export type TransportProtocol = "webrtc";
 
 export type OpenLVProviderConfig = {
+  /** Shared with the wallet during the handshake and shown in its UI. */
+  info?: PeerInfo;
   signaling?: {
     p?: SignalingProtocol;
     s?: Record<SignalingProtocol, string>;
@@ -233,6 +236,7 @@ export const createProvider = (
         await dynamicSignalingLayer(linkParameters.p),
         [webrtc(transportOptions)],
         onMessage,
+        { info: config?.info },
       );
       updateStatus(PROVIDER_STATUS.CONNECTING);
 

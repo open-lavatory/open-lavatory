@@ -133,16 +133,32 @@ Receivers MUST ignore frames where `recipient` does not match the local role.
 
 After decryption, a signaling payload MUST be valid JSON containing:
 
-- `type`: one of `flash`, `pubkey`, `ack`, or `data`
+- `type`: one of `flash`, `pubkey`, `capabilities`, or `data`
 - `payload`
 - `timestamp`
 
 The signaling message types have the following meanings:
 
 - `flash`: sent by the joining peer to begin the handshake
-- `pubkey`: carries a peer public key and optional descriptive metadata
-- `ack`: confirms transition into peer public-key signaling
+- `pubkey`: carries a peer public key
+- `capabilities`: acknowledges the previous handshake step, negotiates the transport, and carries optional peer metadata
 - `data`: carries post-handshake signaling payloads, including transport negotiation objects
+
+The `capabilities` payload is:
+
+```json
+{
+  "transports": ["wrtc"],
+  "info": {
+    "identity": "com.example.wallet",
+    "name": "Example Wallet",
+    "icon": "data:image/png;base64,..."
+  }
+}
+```
+
+- `transports`: REQUIRED, a non-empty array of transport identifiers in preference order. Version 1 defines `wrtc` (WebRTC) and reserves `ws` (relayed WebSocket). Receivers MUST skip unknown identifiers rather than reject the message.
+- `info`: OPTIONAL self-description shown in the other peer's UI. When present, `identity` (a reverse-DNS application identifier) and `name` are REQUIRED; `icon` is OPTIONAL and MAY be a data URI or an image URL. Receivers MUST enforce size limits and MUST treat `info` as untrusted display data: an implementation that renders or fetches `icon` is responsible for validating it first. Senders MUST keep `icon` within the size limits, which are chosen to survive relay message limits.
 
 ### Handshake Sequence
 
@@ -151,11 +167,17 @@ The version 1 handshake sequence is:
 1. The joining peer sends `flash` to the advertising peer using a handshake-key encrypted frame.
 2. The advertising peer sends `pubkey` to the joining peer using a handshake-key encrypted frame.
 3. The joining peer records the advertising peer public key and sends `pubkey` using a peer public-key encrypted frame.
-4. The advertising peer records the joining peer public key and sends `ack` using a peer public-key encrypted frame.
-5. The joining peer sends `ack` using a peer public-key encrypted frame.
+4. The advertising peer records the joining peer public key and sends `capabilities` using a peer public-key encrypted frame. This message doubles as the delivery receipt for the joining peer's `pubkey`.
+5. The joining peer records the advertising peer capabilities and sends `capabilities` using a peer public-key encrypted frame. This message doubles as the delivery receipt for the advertising peer's `capabilities`.
 6. Both peers treat subsequent signaling data as peer public-key encrypted.
 
+Signaling infrastructure is lossy, so each handshake step MAY be re-sent until the next inbound message confirms progress; receivers MUST treat duplicate deliveries as no-ops. A joining peer that continues to receive `capabilities` after completing the handshake MUST answer each duplicate, since its own final message may have been lost.
+
 After the handshake, signaling application payloads MUST be carried in `data` messages inside peer public-key encrypted frames.
+
+### Transport Selection
+
+Both `transports` lists are preference-ordered. The selected transport is the first entry in the advertising peer's list that also appears in the joining peer's list. Both peers compute this independently once they hold both lists; no additional confirmation message is exchanged. If the intersection is empty, the session MUST fail with a no-common-transport error.
 
 ### Cryptography
 
@@ -188,10 +210,11 @@ These cryptographic mechanisms define the current interoperable behavior, but fu
 
 ### Transport Negotiation
 
-After peer key exchange, peers negotiate a direct transport through the signaling layer.
+After the handshake selects a transport, peers negotiate the direct connection through the signaling layer.
 These negotiation objects are carried over signaling before the direct transport exists.
+The shape of negotiation payloads is owned by the selected transport; receivers MUST ignore unknown negotiation message types.
 
-Version 1 standardizes carriage of WebRTC negotiation payloads as signaling `data` messages whose payload is one of:
+For the `wrtc` transport, version 1 standardizes carriage of WebRTC negotiation payloads as signaling `data` messages whose payload is one of:
 
 ```json
 { "type": "offer", "payload": "<sdp-json-string>" }
@@ -214,10 +237,15 @@ Once transport is established, ordinary application traffic uses the following e
 ```
 
 ```json
+{ "type": "ack", "messageId": "<id>" }
+```
+
+```json
 { "type": "response", "messageId": "<id>", "payload": ["0x1234567890abcdef1234567890abcdef12345678"] }
 ```
 
 `messageId` MUST uniquely identify a request within the active session.
+A receiver SHOULD send `ack` immediately on receipt of a request, before the (possibly user-interactive) handler produces the `response`.
 A `response.messageId` MUST match a prior request.
 All session `payload` values are EIP-1193 request or response payloads.
 This specification transports those payloads, and does not redefine its semantics.

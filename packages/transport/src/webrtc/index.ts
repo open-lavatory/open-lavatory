@@ -32,7 +32,7 @@ export const webrtc: Transport = (
 ) => {
   const { iceServers = defaultConfig.iceServers } = config;
 
-  return createTransportBase(({ emitter, isHost }) => {
+  return createTransportBase("wrtc", ({ emitter, isHost }) => {
     const rtcConfig: RTCConfiguration = { iceServers };
     let connection: RTCPeerConnection | undefined;
     let channel: RTCDataChannel | undefined;
@@ -74,7 +74,10 @@ export const webrtc: Transport = (
 
       localCandidates += 1;
       log("local ICE candidate", c.candidate.type, c.candidate.protocol);
-      emitter.emit("candidate", JSON.stringify(c.candidate.toJSON()));
+      emitter.emit("negotiate", {
+        type: "candidate",
+        payload: JSON.stringify(c.candidate.toJSON()),
+      });
     };
     const onIceGatheringStateChange = () => {
       log("iceGatheringState", connection?.iceGatheringState);
@@ -112,8 +115,12 @@ export const webrtc: Transport = (
       if (isHost && connection) {
         await connection.setLocalDescription();
 
-        if (connection.localDescription)
-          emitter.emit("offer", JSON.stringify(connection.localDescription));
+        if (connection.localDescription) {
+          emitter.emit("negotiate", {
+            type: "offer",
+            payload: JSON.stringify(connection.localDescription),
+          });
+        }
       }
     };
 
@@ -140,7 +147,7 @@ export const webrtc: Transport = (
           const answer = await connection!.createAnswer();
 
           await connection!.setLocalDescription(answer);
-          emitter.emit("answer", JSON.stringify(answer));
+          emitter.emit("negotiate", { type: "answer", payload: JSON.stringify(answer) });
         })
         .with({ type: "answer" }, async ({ payload }) => {
           const answer = JSON.parse(payload) as RTCSessionDescriptionInit;
@@ -177,7 +184,6 @@ export const webrtc: Transport = (
     };
 
     return {
-      type: "webrtc",
       async setup() {
         log("webrtc setup");
 

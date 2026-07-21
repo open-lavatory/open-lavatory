@@ -5,10 +5,15 @@ import { EventEmitter } from "eventemitter3";
 import { match } from "ts-pattern";
 import type { MaybePromise } from "viem";
 
-import { parseSignalMessage, type SignalMessage } from "./messages.js";
+import {
+  parseSignalMessage,
+  type PeerCapabilities,
+  type SignalMessage,
+} from "./messages.js";
 import type { SignalingChannel } from "./protocol.js";
 import { log } from "./utils/log.js";
 
+export * from "./messages.js";
 export * from "./protocol.js";
 
 export const SIGNAL_STATE = {
@@ -32,6 +37,9 @@ export type SignalingProperties = {
   h: string;
   k?: SymmetricKey;
   rpDiscovered: (rpKey: string) => MaybePromise<void>;
+  // Our capabilities, advertised to the peer during the handshake
+  capabilities: PeerCapabilities;
+  peerCapabilities: (capabilities: PeerCapabilities) => MaybePromise<void>;
   // Decrypt using our private key
   decrypt: (message: string) => MaybePromise<string>;
   // Encrypt to relying party
@@ -81,6 +89,8 @@ export const createSignalingLayer = (
   encrypt,
   decrypt,
   rpDiscovered,
+  capabilities,
+  peerCapabilities,
   h,
   k,
   publicKey,
@@ -89,6 +99,7 @@ export const createSignalingLayer = (
   const emitter = new EventEmitter<SignalEventMap>();
   let state: SignalState = SIGNAL_STATE.STANDBY;
   let peerKeyRecorded = false;
+  let peerCapabilitiesRecorded = false;
   let resendTimer: ReturnType<typeof setInterval> | undefined;
   let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
   const handshakeKey = k || undefined;
@@ -187,9 +198,20 @@ export const createSignalingLayer = (
     return true;
   };
 
-  const ackMessage = (): SignalMessage => ({
-    type: "ack",
-    payload: undefined,
+  const recordPeerCapabilities = async (
+    peerCaps: PeerCapabilities,
+  ): Promise<void> => {
+    // Same overwrite guard as the peer key: only the first delivery counts,
+    // re-sent duplicates are no-ops.
+    if (peerCapabilitiesRecorded) return;
+
+    peerCapabilitiesRecorded = true;
+    await peerCapabilities(peerCaps);
+  };
+
+  const capabilitiesMessage = (): SignalMessage => ({
+    type: "capabilities",
+    payload: capabilities,
     timestamp: Date.now(),
   });
   const pubkeyMessage = (): SignalMessage => ({
@@ -247,24 +269,26 @@ export const createSignalingLayer = (
 
           setState(SIGNAL_STATE.HANDSHAKE_PARTIAL);
 
-          return await sendRepeating("encrypted", "c", ackMessage());
+          return await sendRepeating("encrypted", "c", capabilitiesMessage());
         },
       )
       .with(
-        { msg: { type: "ack" }, state: SIGNAL_STATE.HANDSHAKE_PARTIAL },
-        async () => {
+        { msg: { type: "capabilities" }, state: SIGNAL_STATE.HANDSHAKE_PARTIAL },
+        async ({ msg: { payload: msgPayload } }) => {
+          await recordPeerCapabilities(msgPayload);
           setState(SIGNAL_STATE.ENCRYPTED);
 
           if (isHost) return;
 
-          return await send("encrypted", "h", ackMessage());
+          return await send("encrypted", "h", capabilitiesMessage());
         },
       )
-      // Client already encrypted, but the host is still re-sending its ack
-      // (our final ack was lost): answer again so the host can finish.
+      // Client already encrypted, but the host is still re-sending its
+      // capabilities (our final packet was lost): answer again so the host
+      // can finish.
       .with(
-        { msg: { type: "ack" }, state: SIGNAL_STATE.ENCRYPTED, isHost: false },
-        async () => await send("encrypted", "h", ackMessage()),
+        { msg: { type: "capabilities" }, state: SIGNAL_STATE.ENCRYPTED, isHost: false },
+        async () => await send("encrypted", "h", capabilitiesMessage()),
       )
       .with({ msg: { type: "data" }, state: SIGNAL_STATE.ENCRYPTED }, async () => {
         emitter.emit("message", msg.payload as object);

@@ -88,6 +88,8 @@ const testSignalingLayer = async (
   const signalA = await signalingLayer({
     h,
     rpDiscovered: v => log("rpKey", v),
+    capabilities: { transports: ["wrtc"] },
+    peerCapabilities: v => log("peerCapabilities", v),
     canEncrypt: () => true,
     encrypt: publicKey.encrypt,
     decrypt: decryptionKey.decrypt,
@@ -97,6 +99,8 @@ const testSignalingLayer = async (
   const signalB = await signalingLayer({
     h,
     rpDiscovered: v => log("rpKey", v),
+    capabilities: { transports: ["wrtc"] },
+    peerCapabilities: v => log("peerCapabilities", v),
     canEncrypt: () => true,
     encrypt: publicKey.encrypt,
     decrypt: decryptionKey.decrypt,

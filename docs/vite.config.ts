@@ -42,6 +42,13 @@ export default defineConfig(async () => {
         "lucide-solid",
       ],
     },
+    environments: {
+      client: {
+        optimizeDeps: {
+          include: ["vocs > mermaid"],
+        },
+      },
+    },
     server: {
       fs: { allow: [path.resolve(rootDir, "..")] },
     },

@@ -41,7 +41,17 @@ const queryClient = new QueryClient();
 
 const config = createConfig({
   chains: [mainnet, sepolia, holesky],
-  connectors: [openlv()],
+  connectors: [
+    openlv({
+      config: {
+        info: {
+          identity: "sh.openlv.docs",
+          name: "OpenLV Docs",
+          icon: "https://openlv.sh/openlavatory.png",
+        },
+      },
+    }),
+  ],
   transports: {
     [mainnet.id]: http(),
     [sepolia.id]: http(),
@@ -165,11 +175,27 @@ const WalletUrlConnect = () => {
             session.setPeer(peerInfoFromConnectionUrl("wallet", url));
 
             try {
-              const client = (await connections[0]?.connector?.getProvider()) as EIP1193Provider;
+              const walletConnector = connections[0]?.connector;
+              const client = (await walletConnector?.getProvider()) as EIP1193Provider;
+              // EIP-6963 icons are data URIs of arbitrary size; anything over
+              // the 8 KB wire limit would make connectSession throw.
+              const walletIcon
+                = walletConnector?.icon && walletConnector.icon.length <= 8192
+                  ? walletConnector.icon
+                  : undefined;
               const s = await connectSession(
                 url,
                 shimWalletOnMessage("wallet", msg => client.request(msg as never), session),
                 [webrtc()],
+                walletConnector
+                  ? {
+                      info: {
+                        identity: `sh.openlv.docs.${walletConnector.id}`,
+                        name: walletConnector.name,
+                        ...(walletIcon ? { icon: walletIcon } : {}),
+                      },
+                    }
+                  : undefined,
               );
 
               walletSessionRef.current = s;
@@ -313,13 +339,16 @@ const TryItOutInner = () => {
           const h = s.getHandshakeParameters();
           const connectionUrl = encodeConnectionURL(h);
 
-          session.setPeer({
+          // Rebinding happens after the handshake too — carry the already
+          // known peer info over instead of clobbering it.
+          session.setPeer(prev => ({
             role: "dapp",
             connectionUrl,
             sessionId: h.sessionId,
             protocol: h.p,
             signalingServer: h.s,
-          });
+            remote: prev?.remote ?? s.getState().peerInfo,
+          }));
         }}
       />
       {match(isConnected)
