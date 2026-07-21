@@ -92,8 +92,7 @@ type SignalMessageCapabilities = {
       /** Reverse-DNS application identifier. */
       identity: string;   // "com.example.wallet"
       name: string;       // "Example Wallet"
-      icon?: string;      // base64 data URI — keep small, see below
-      url?: string;
+      icon?: string;      // data URI or image URL — see below
     };
   };
   timestamp: number;
@@ -118,14 +117,15 @@ type SignalMessageCapabilities = {
 Transport identifiers: `wrtc` ([WebRTC](/api/transport/webrtc)) and `ws` (relayed WebSocket, planned as a fallback for ICE-hostile networks).
 Unknown identifiers are skipped, not fatal — a peer can advertise transports the other side has never heard of.
 
-Some signaling protocols enforce small message limits (ntfy in particular), and the whole packet must survive base64 + encryption overhead.
-Icons should therefore be tiny (a few KB at most — think 64×64 PNG) or omitted in favor of `url`, from which a peer can fetch richer metadata after the transport is up.
+The `icon` may be a data URI or an image URL.
+The wire only enforces its size (8 KB max — a receiver drops the whole packet beyond that, and a sender must refuse to send it); whoever renders or fetches the icon is responsible for sanity-checking it first, since it comes from the remote peer.
+Some signaling protocols enforce small message limits (ntfy in particular), and the whole packet must survive base64 + encryption overhead — inline icons should be tiny (think 64×64 PNG), with a URL as the alternative for richer artwork.
 
 #### Transport selection
 
 Both `transports` lists are preference-ordered. The selected transport is the **first entry in the host's list that also appears in the client's list**.
 Both sides compute this independently once they hold both packets — no extra confirmation round trip is needed.
-An empty intersection puts signaling in the `ERROR` state with a "no common transport" reason.
+An empty intersection fails the session with a "no common transport" error (signaling itself stays `ENCRYPTED`; the session disconnects).
 
 ### `data`
 

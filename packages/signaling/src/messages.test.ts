@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseSignalMessage } from "./messages.js";
+import { MAX_ICON_LENGTH, parseSignalMessage, validatePeerInfo } from "./messages.js";
 
 const frame = (type: string, payload: unknown) =>
   JSON.stringify({ type, payload, timestamp: 1_750_000_000_000 });
@@ -14,7 +14,6 @@ describe("parseSignalMessage", () => {
           identity: "com.example.wallet",
           name: "Example Wallet",
           icon: "data:image/png;base64,aaaa",
-          url: "https://example.com",
         },
       }),
     );
@@ -27,10 +26,26 @@ describe("parseSignalMessage", () => {
           identity: "com.example.wallet",
           name: "Example Wallet",
           icon: "data:image/png;base64,aaaa",
-          url: "https://example.com",
         },
       },
       timestamp: 1_750_000_000_000,
+    });
+  });
+
+  it("accepts an icon that is a URL — content vetting is the renderer's job", () => {
+    const message = parseSignalMessage(
+      frame("capabilities", {
+        transports: ["wrtc"],
+        info: {
+          identity: "com.example.wallet",
+          name: "Example Wallet",
+          icon: "https://example.com/icon.png",
+        },
+      }),
+    );
+
+    expect(message?.payload).toMatchObject({
+      info: { icon: "https://example.com/icon.png" },
     });
   });
 
@@ -80,6 +95,25 @@ describe("parseSignalMessage", () => {
     expect(parseSignalMessage(frame("ack", undefined))).toBeUndefined();
     expect(parseSignalMessage(frame("nonsense", {}))).toBeUndefined();
     expect(parseSignalMessage("not json")).toBeUndefined();
+  });
+
+  it("validates outgoing peer info with descriptive reasons", () => {
+    expect(validatePeerInfo({ identity: "com.example.wallet", name: "Example Wallet" }))
+      .toBeUndefined();
+    expect(validatePeerInfo({
+      identity: "com.example.wallet",
+      name: "Example Wallet",
+      icon: "data:image/png;base64,aaaa",
+    })).toBeUndefined();
+    expect(validatePeerInfo({ identity: "", name: "Example Wallet" }))
+      .toMatch(/identity/);
+    expect(validatePeerInfo({ identity: "com.example.wallet", name: "x".repeat(200) }))
+      .toMatch(/name/);
+    expect(validatePeerInfo({
+      identity: "com.example.wallet",
+      name: "Example Wallet",
+      icon: "x".repeat(MAX_ICON_LENGTH + 1),
+    })).toMatch(/icon/);
   });
 
   it("still parses flash, pubkey, and data", () => {

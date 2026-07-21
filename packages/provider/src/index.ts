@@ -139,13 +139,6 @@ const convertStoredWebRTCSettings = (
   return iceServers.length > 0 ? { iceServers } : undefined;
 };
 
-/** Fill in the origin when the dApp identifies itself but omits its URL. */
-const withDefaultUrl = (info?: PeerInfo): PeerInfo | undefined => {
-  if (!info || info.url || typeof location === "undefined") return info;
-
-  return { ...info, url: location.origin };
-};
-
 /**
  * OpenLV Provider
  *
@@ -243,7 +236,7 @@ export const createProvider = (
         await dynamicSignalingLayer(linkParameters.p),
         [webrtc(transportOptions)],
         onMessage,
-        { info: withDefaultUrl(config?.info) },
+        { info: config?.info },
       );
       updateStatus(PROVIDER_STATUS.CONNECTING);
 

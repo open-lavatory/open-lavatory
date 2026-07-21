@@ -20,6 +20,7 @@ import {
   type SignalingLayer,
   type SignalingProtocol,
   type SignalState,
+  validatePeerInfo,
 } from "@openlv/signaling";
 import { dynamicSignalingLayer } from "@openlv/signaling/dynamic";
 import {
@@ -33,6 +34,7 @@ import { EventEmitter } from "eventemitter3";
 import type { SessionEvents } from "./events.js";
 import { awaitCorrelatedResponse } from "./messages/correlate.js";
 import type { SessionMessage } from "./messages/index.js";
+import { selectTransportId } from "./transports.js";
 import { log } from "./utils/log.js";
 
 export type { PeerCapabilities, PeerInfo } from "@openlv/signaling";
@@ -56,16 +58,16 @@ export type SessionStateObject = {
   error?: string;
 };
 
-/**
- * an OpenLV Session
- *
- * https://openlv.sh/api/session
- */
 export type SessionOptions = {
   /** Shared with the peer during the handshake and shown in its UI. */
   info?: PeerInfo;
 };
 
+/**
+ * an OpenLV Session
+ *
+ * https://openlv.sh/api/session
+ */
 export type Session = {
   getState(): SessionStateObject;
   getHandshakeParameters(): SessionHandshakeParameters;
@@ -88,7 +90,7 @@ export type Session = {
   emitter: EventEmitter<SessionEvents>;
   _internal: {
     signal: SignalingLayer;
-    /** Instantiated only after transport negotiation completes. */
+    /** Instantiated when signaling reaches ENCRYPTED and a transport is selected. */
     transport: TransportLayer | undefined;
   };
 };
@@ -105,6 +107,18 @@ export const createSession = async (
   onMessage: (message: object) => Promise<object | string>,
   options?: SessionOptions,
 ): Promise<Session> => {
+  if (transportLayers.length === 0) {
+    throw new Error("At least one transport is required");
+  }
+
+  if (options?.info) {
+    // A receiver silently drops out-of-bounds info with the whole packet,
+    // which would surface only as a handshake timeout — fail loudly here.
+    const problem = validatePeerInfo(options.info);
+
+    if (problem) throw new Error(`Invalid session info: ${problem}`);
+  }
+
   const emitter = new EventEmitter<SessionEvents>();
   const messages = new EventEmitter<{ message: SessionMessage; }>();
   const sessionId
@@ -240,17 +254,13 @@ export const createSession = async (
   });
 
   /**
-   * Pick the transport once both capability lists are known: the first entry
-   * in the host's preference list that the client also supports. Both peers
-   * compute the same result independently. Sessions resumed with a known peer
-   * key never exchange capabilities and keep the first configured transport.
+   * Sessions resumed with a known peer key never exchange capabilities and
+   * keep the first configured transport.
    */
   const selectTransportLayer = (): TransportLayerFn | undefined => {
     if (!peerCaps) return transportLayers[0];
 
-    const hostPreference = isHost ? capabilities.transports : peerCaps.transports;
-    const clientSupported = new Set(isHost ? peerCaps.transports : capabilities.transports);
-    const selected = hostPreference.find(transportId => clientSupported.has(transportId));
+    const selected = selectTransportId(isHost, capabilities.transports, peerCaps.transports);
 
     return transportLayers.find(layer => layer.transportId === selected);
   };

@@ -33,6 +33,15 @@ export const ConnectionFlow = (props: ConnectionFlowProps) => {
   // Peer info is recorded during the handshake, so it is available by the
   // time the status flips to CONNECTED and this accessor re-evaluates.
   const peerInfo = () => provider.getSession()?.getPeerInfo();
+  // The wire only bounds the icon's size — vetting what goes into an
+  // <img src> is this renderer's job.
+  const renderableIcon = () => {
+    const icon = peerInfo()?.icon;
+
+    return icon && (icon.startsWith("data:image/") || icon.startsWith("https://"))
+      ? icon
+      : undefined;
+  };
 
   onMount(() => {
     provider.on("status_change", setProviderStatus);
@@ -70,7 +79,7 @@ export const ConnectionFlow = (props: ConnectionFlowProps) => {
                 {info => (
                   <div class="mb-4 flex flex-col items-center gap-2">
                     <Show
-                      when={info().icon}
+                      when={renderableIcon()}
                       fallback={<div class="text-4xl">✅</div>}
                     >
                       {icon => (

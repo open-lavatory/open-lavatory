@@ -100,7 +100,7 @@ const setupPair = async (topic: ReturnType<typeof createTopic>) => {
 
   const HOST_CAPABILITIES: PeerCapabilities = {
     transports: ["wrtc", "ws"],
-    info: { identity: "com.example.dapp", name: "Example dApp", url: "https://example.com" },
+    info: { identity: "com.example.dapp", name: "Example dApp" },
   };
 
   let hostRelying: EncryptionKey | undefined;

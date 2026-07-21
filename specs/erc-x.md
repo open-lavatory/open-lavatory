@@ -152,14 +152,13 @@ The `capabilities` payload is:
   "info": {
     "identity": "com.example.wallet",
     "name": "Example Wallet",
-    "icon": "data:image/png;base64,...",
-    "url": "https://example.com"
+    "icon": "data:image/png;base64,..."
   }
 }
 ```
 
 - `transports`: REQUIRED, a non-empty array of transport identifiers in preference order. Version 1 defines `wrtc` (WebRTC) and reserves `ws` (relayed WebSocket). Receivers MUST skip unknown identifiers rather than reject the message.
-- `info`: OPTIONAL self-description shown in the other peer's UI. When present, `identity` (a reverse-DNS application identifier) and `name` are REQUIRED; `icon` (a data URI) and `url` are OPTIONAL. Receivers SHOULD enforce size limits on all fields; senders SHOULD keep `icon` small enough to survive relay message limits.
+- `info`: OPTIONAL self-description shown in the other peer's UI. When present, `identity` (a reverse-DNS application identifier) and `name` are REQUIRED; `icon` is OPTIONAL and MAY be a data URI or an image URL. Receivers MUST enforce size limits and MUST treat `info` as untrusted display data: an implementation that renders or fetches `icon` is responsible for validating it first. Senders MUST keep `icon` within the size limits, which are chosen to survive relay message limits.
 
 ### Handshake Sequence
 
