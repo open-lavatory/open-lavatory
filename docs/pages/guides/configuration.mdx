@@ -59,3 +59,20 @@ export const wagmiConfig = createConfig({
 
 It is important to keep in mind this sets the defaults for your app.
 Users at any time retain the freedom to choose their own signaling server and protocol.
+
+## Identify your app to wallets
+
+You can describe your dApp in the `info` config; it is shared with the wallet during the [handshake](/api/handshake) (encrypted, only after key exchange completes) so the wallet can show your name and icon on its connection screen.
+
+```ts [wagmi-config.ts]
+openlv({
+  config: {
+    info: {
+      identity: 'com.example.dapp', // reverse-DNS identifier
+      name: 'Example dApp',
+      icon: 'data:image/png;base64,...', // keep small — a few KB at most
+      // url defaults to location.origin
+    },
+  },
+})
+```

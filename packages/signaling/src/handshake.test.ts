@@ -8,6 +8,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createSignalingLayer, SIGNAL_STATE, type SignalingLayer } from "./index.js";
+import type { PeerCapabilities } from "./messages.js";
 import type { SignalingChannel } from "./protocol.js";
 
 /**
@@ -52,12 +53,18 @@ const createTopic = () => {
   };
 };
 
+const CLIENT_CAPABILITIES: PeerCapabilities = {
+  transports: ["wrtc"],
+  info: { identity: "com.example.wallet", name: "Example Wallet" },
+};
+
 const createPeer = async (
   channel: SignalingChannel,
   { isHost, h, k }: { isHost: boolean; h: string; k: string; },
 ) => {
   const { encryptionKey, decryptionKey } = await generateKeyPair();
   let relyingKey: EncryptionKey | undefined;
+  let peerCapabilities: PeerCapabilities | undefined;
 
   const layer = await createSignalingLayer(channel)({
     isHost,
@@ -74,9 +81,13 @@ const createPeer = async (
     rpDiscovered: async (rpKey: string) => {
       relyingKey = await parseEncryptionKey(rpKey);
     },
+    capabilities: CLIENT_CAPABILITIES,
+    peerCapabilities: (capabilities) => {
+      peerCapabilities = capabilities;
+    },
   });
 
-  return { layer, encryptionKey };
+  return { layer, encryptionKey, getPeerCapabilities: () => peerCapabilities };
 };
 
 const K = "00112233445566778899aabbccddeeff";
@@ -87,7 +98,13 @@ const setupPair = async (topic: ReturnType<typeof createTopic>) => {
   const hostKeys = await generateKeyPair();
   const h = await hashPublicKey(hostKeys.encryptionKey);
 
+  const HOST_CAPABILITIES: PeerCapabilities = {
+    transports: ["wrtc", "ws"],
+    info: { identity: "com.example.dapp", name: "Example dApp", url: "https://example.com" },
+  };
+
   let hostRelying: EncryptionKey | undefined;
+  let hostPeerCapabilities: PeerCapabilities | undefined;
   const host = await createSignalingLayer(topic.channel())({
     isHost: true,
     h,
@@ -103,15 +120,26 @@ const setupPair = async (topic: ReturnType<typeof createTopic>) => {
     rpDiscovered: async (rpKey: string) => {
       hostRelying = await parseEncryptionKey(rpKey);
     },
+    capabilities: HOST_CAPABILITIES,
+    peerCapabilities: (capabilities) => {
+      hostPeerCapabilities = capabilities;
+    },
   });
 
-  const { layer: client } = await createPeer(topic.channel(), {
-    isHost: false,
-    h,
-    k: K,
-  });
+  const { layer: client, getPeerCapabilities: getClientPeerCapabilities }
+    = await createPeer(topic.channel(), {
+      isHost: false,
+      h,
+      k: K,
+    });
 
-  return { host, client };
+  return {
+    host,
+    client,
+    hostCapabilities: HOST_CAPABILITIES,
+    getHostPeerCapabilities: () => hostPeerCapabilities,
+    getClientPeerCapabilities,
+  };
 };
 
 const waitForState = (layer: SignalingLayer, target: string) =>
@@ -138,8 +166,9 @@ describe("signaling handshake (in-memory relay)", () => {
 
   it("completes and exchanges data on a reliable relay", async () => {
     const topic = createTopic();
+    const pair = await setupPair(topic);
 
-    ({ host, client } = await setupPair(topic));
+    ({ host, client } = pair);
 
     await host.setup();
 
@@ -155,6 +184,26 @@ describe("signaling handshake (in-memory relay)", () => {
 
     await client.send({ hello: "world" });
     expect(await received).toEqual({ hello: "world" });
+  });
+
+  it("exchanges capabilities in both directions during the handshake", async () => {
+    const topic = createTopic();
+    const pair = await setupPair(topic);
+
+    ({ host, client } = pair);
+
+    await host.setup();
+
+    const encrypted = Promise.all([
+      waitForState(host, SIGNAL_STATE.ENCRYPTED),
+      waitForState(client, SIGNAL_STATE.ENCRYPTED),
+    ]);
+
+    await client.setup();
+    await encrypted;
+
+    expect(pair.getClientPeerCapabilities()).toEqual(pair.hostCapabilities);
+    expect(pair.getHostPeerCapabilities()).toEqual(CLIENT_CAPABILITIES);
   });
 
   it("ignores garbage frames on the public topic", async () => {

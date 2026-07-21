@@ -4,6 +4,7 @@ import {
   Match,
   onCleanup,
   onMount,
+  Show,
   Switch,
 } from "solid-js";
 
@@ -29,6 +30,9 @@ export const ConnectionFlow = (props: ConnectionFlowProps) => {
   const { provider } = useModalContext();
 
   const [providerStatus, setProviderStatus] = createSignal<ProviderStatus>(provider.getState().status);
+  // Peer info is recorded during the handshake, so it is available by the
+  // time the status flips to CONNECTED and this accessor re-evaluates.
+  const peerInfo = () => provider.getSession()?.getPeerInfo();
 
   onMount(() => {
     provider.on("status_change", setProviderStatus);
@@ -59,7 +63,30 @@ export const ConnectionFlow = (props: ConnectionFlowProps) => {
         <Match when={providerStatus() === PROVIDER_STATUS.CONNECTED}>
           <div class="flex flex-col items-center gap-4 p-6">
             <div class="text-center">
-              <div class="mb-4 text-4xl">✅</div>
+              <Show
+                when={peerInfo()}
+                fallback={<div class="mb-4 text-4xl">✅</div>}
+              >
+                {info => (
+                  <div class="mb-4 flex flex-col items-center gap-2">
+                    <Show
+                      when={info().icon}
+                      fallback={<div class="text-4xl">✅</div>}
+                    >
+                      {icon => (
+                        <img
+                          src={icon()}
+                          alt=""
+                          class="h-12 w-12 rounded-xl"
+                        />
+                      )}
+                    </Show>
+                    <span class="font-medium text-(--lv-text-primary) text-sm">
+                      {info().name}
+                    </span>
+                  </div>
+                )}
+              </Show>
               <h3 class="mb-2 font-semibold text-(--lv-text-primary) text-lg">
                 {t("connectionFlow.connectedSuccessfully")}
               </h3>

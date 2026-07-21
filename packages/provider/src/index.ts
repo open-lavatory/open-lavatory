@@ -2,6 +2,7 @@
 import { encodeConnectionURL, type SessionLinkParameters } from "@openlv/core";
 import {
   createSession,
+  type PeerInfo,
   type Session,
   type SessionStateObject,
 } from "@openlv/session";
@@ -49,6 +50,8 @@ const unwrapSessionResponse = (payload: unknown): unknown => {
 export type TransportProtocol = "webrtc";
 
 export type OpenLVProviderConfig = {
+  /** Shared with the wallet during the handshake and shown in its UI. */
+  info?: PeerInfo;
   signaling?: {
     p?: SignalingProtocol;
     s?: Record<SignalingProtocol, string>;
@@ -134,6 +137,13 @@ const convertStoredWebRTCSettings = (
   const iceServers = [...stun, ...turn];
 
   return iceServers.length > 0 ? { iceServers } : undefined;
+};
+
+/** Fill in the origin when the dApp identifies itself but omits its URL. */
+const withDefaultUrl = (info?: PeerInfo): PeerInfo | undefined => {
+  if (!info || info.url || typeof location === "undefined") return info;
+
+  return { ...info, url: location.origin };
 };
 
 /**
@@ -233,6 +243,7 @@ export const createProvider = (
         await dynamicSignalingLayer(linkParameters.p),
         [webrtc(transportOptions)],
         onMessage,
+        { info: withDefaultUrl(config?.info) },
       );
       updateStatus(PROVIDER_STATUS.CONNECTING);
 

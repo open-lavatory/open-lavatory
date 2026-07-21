@@ -31,3 +31,38 @@ const session = await connectSession("openlv://...");
 
 await session.connect();
 ```
+
+## Identifying yourself to the peer
+
+Both sides can pass an optional `info` object; it is carried in the [`capabilities` handshake packet](/api/handshake#capabilities) and shown in the other peer's UI:
+
+```typescript
+const session = await connectSession(
+  "openlv://...",
+  onMessage,
+  [webrtc()],
+  {
+    info: {
+      identity: "com.example.wallet",
+      name: "Example Wallet",
+      icon: "data:image/png;base64,...",
+    },
+  },
+);
+```
+
+The remote peer's info is available once the handshake completes:
+
+```typescript
+session.emitter.on("peer_info", (info) => {
+  console.log(info?.name, info?.identity);
+});
+
+// or after connecting
+const peerInfo = session.getPeerInfo();
+```
+
+## Transport negotiation
+
+The transport array passed to `createSession`/`connectSession` doubles as your preference list.
+During the handshake both peers exchange their supported transports and the first entry in the dApp's list that the wallet also supports is used — see [transport selection](/api/handshake#transport-selection).

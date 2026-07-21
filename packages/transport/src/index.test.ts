@@ -13,7 +13,7 @@ describe("Transport", () => {
     const signalA = new EventEmitter<{ signal: string; message: object; }>();
     const signalB = new EventEmitter<{ signal: string; message: object; }>();
 
-    const transportA = webrtc()({
+    const transportA = webrtc().create({
       encrypt,
       decrypt,
       subsend: async (m) => {
@@ -24,7 +24,7 @@ describe("Transport", () => {
         signalA.emit("message", m);
       },
     });
-    const transportB = webrtc()({
+    const transportB = webrtc().create({
       encrypt,
       decrypt,
       subsend: async (m) => {

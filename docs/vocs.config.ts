@@ -71,6 +71,10 @@ export default defineConfig({
           link: "/api/uri",
         },
         {
+          text: "Handshake Protocol",
+          link: "/api/handshake",
+        },
+        {
           text: "Establishing a link",
           link: "/api/session",
         },

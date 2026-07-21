@@ -5,7 +5,7 @@
     "type": "module",
     "scripts": {
         "build": "vocs build",
-        "dev": "vocs dev",
+        "dev": "vite",
         "preview": "vocs preview"
     },
     "dependencies": {
@@ -15,6 +15,7 @@
         "@openlv/session": "workspace:*",
         "@openlv/transport": "workspace:*",
         "@tanstack/react-query": "^5.83.0",
+        "dayjs": "^1.11.21",
         "mqtt": "^5",
         "react": "latest",
         "react-dom": "latest",
@@ -34,6 +35,7 @@
         "@vitejs/plugin-react": "^6.0.2",
         "classnames": "^2.5.1",
         "gun": "0.2020.1241",
+        "mermaid": "^11.16.0",
         "typescript": "^5.9.3",
         "vite": "^8",
         "websocket-mqtt": "0.0.7"
