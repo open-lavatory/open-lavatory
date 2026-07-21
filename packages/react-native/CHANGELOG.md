@@ -1,5 +1,13 @@
 # @openlv/react-native
 
+## 0.0.4
+
+### Patch Changes
+
+- Updated dependencies [84c1637]
+- Updated dependencies [15af508]
+  - @openlv/session@0.1.0
+
 ## 0.0.3
 
 ### Patch Changes
