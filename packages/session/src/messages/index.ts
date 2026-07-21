@@ -1,7 +1,8 @@
 export type SessionMessage =
   | SessionMessageRequest
   | SessionMessageResponse
-  | SessionMessageAck;
+  | SessionMessageAck
+  | SessionMessageClose;
 
 export type SessionMessageRequest = {
   type: "request";
@@ -17,5 +18,10 @@ export type SessionMessageResponse = {
 
 export type SessionMessageAck = {
   type: "ack";
+  messageId: string;
+};
+
+export type SessionMessageClose = {
+  type: "close";
   messageId: string;
 };

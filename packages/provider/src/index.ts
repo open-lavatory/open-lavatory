@@ -4,6 +4,7 @@ import {
   createSession,
   type PeerInfo,
   type Session,
+  SESSION_STATE,
   type SessionStateObject,
 } from "@openlv/session";
 import { dynamicSignalingLayer } from "@openlv/signaling/dynamic";
@@ -152,6 +153,7 @@ export const createProvider = (
   let status: ProviderStatus = PROVIDER_STATUS.STANDBY;
   let lastError: string | undefined;
   let accounts: Address[] = [];
+  let detachSessionState: (() => void) | undefined;
   const storage = createProviderStorage({ storage: parameters.storage });
   const { openModal, config } = parameters;
 
@@ -159,6 +161,36 @@ export const createProvider = (
     status = newStatus;
     log("updateStatus", status);
     oxEmitter.emit("status_change", newStatus);
+  };
+  const clearSession = () => {
+    if (!session) return;
+
+    const hadAccounts = accounts.length > 0;
+
+    detachSessionState?.();
+    detachSessionState = undefined;
+    session = undefined;
+    accounts = [];
+    updateStatus(PROVIDER_STATUS.STANDBY);
+
+    if (hadAccounts) {
+      oxEmitter.emit("accountsChanged", accounts);
+    }
+  };
+  const watchSession = (createdSession: Session) => {
+    const onSessionState = (state?: SessionStateObject) => {
+      if (
+        state?.status === SESSION_STATE.DISCONNECTED
+        && session === createdSession
+      ) {
+        clearSession();
+        oxEmitter.emit("disconnect", new OxProvider.DisconnectedError());
+      }
+    };
+
+    detachSessionState?.();
+    createdSession.emitter.on("state_change", onSessionState);
+    detachSessionState = () => createdSession.emitter.off("state_change", onSessionState);
   };
 
   /**
@@ -231,54 +263,69 @@ export const createProvider = (
         ?? config?.transport?.s?.webrtc;
 
     try {
-      session = await createSession(
+      const createdSession = await createSession(
         linkParameters,
         await dynamicSignalingLayer(linkParameters.p),
         [webrtc(transportOptions)],
         onMessage,
         { info: config?.info },
       );
+
+      session = createdSession;
+      watchSession(createdSession);
       updateStatus(PROVIDER_STATUS.CONNECTING);
 
       log("session created");
-      await session.connect();
+      await createdSession.connect();
       log("session connected");
-      const handshakeParameters = session.getHandshakeParameters();
+      const handshakeParameters = createdSession.getHandshakeParameters();
       const url = encodeConnectionURL(handshakeParameters);
 
       log("session url", url);
-      oxEmitter.emit("session_started", session);
+      oxEmitter.emit("session_started", createdSession);
 
-      await session.waitForLink();
+      await createdSession.waitForLink();
       log("session linked");
-
       accounts = await getAccounts();
 
       const chainIdHex = unwrapSessionResponse(
-        await session.send({ method: "eth_chainId", params: [] }),
+        await createdSession.send({ method: "eth_chainId", params: [] }),
       ) as string;
 
       updateStatus(PROVIDER_STATUS.CONNECTED);
       oxEmitter.emit("connect", { chainId: chainIdHex });
       oxEmitter.emit("accountsChanged", accounts);
 
-      return session;
+      return createdSession;
     }
     catch (error) {
-      // Surface the failure to UI consumers (e.g. the modal) instead of
-      // leaving the provider stuck in "connecting".
-      lastError
-        = session?.getState().error
-          ?? (error instanceof Error ? error.message : "Connection failed");
+      const failureReason = session?.getState().error
+        ?? (error instanceof Error ? error.message : "Connection failed");
+
+      await closeSession();
+
+      lastError = failureReason;
       updateStatus(PROVIDER_STATUS.ERROR);
+
       throw error;
     }
   };
   const closeSession = async () => {
-    await session?.close();
-    session = undefined;
+    const currentSession = session;
+
+    if (currentSession) {
+      // A caller-requested close must not look like a provider disconnect.
+      detachSessionState?.();
+      detachSessionState = undefined;
+
+      await currentSession.close();
+    }
+
+    if (session === currentSession) {
+      clearSession();
+    }
+
     lastError = undefined;
-    updateStatus(PROVIDER_STATUS.STANDBY);
   };
 
   const request: OxProvider.from.Value<ProviderConfig>["request"] = async (

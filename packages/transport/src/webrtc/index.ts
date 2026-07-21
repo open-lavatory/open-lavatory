@@ -36,10 +36,19 @@ export const webrtc: Transport = (
     const rtcConfig: RTCConfiguration = { iceServers };
     let connection: RTCPeerConnection | undefined;
     let channel: RTCDataChannel | undefined;
+    let ready = false;
     // Candidates can arrive over signaling before the offer/answer has been
     // applied; addIceCandidate would reject, so they are buffered until a
     // remote description exists.
     let pendingCandidates: RTCIceCandidateInit[] = [];
+    let localCandidates = 0;
+
+    const markReadyIfOpen = () => {
+      if (ready || channel?.readyState !== "open") return;
+
+      ready = true;
+      emitter.emit("ready");
+    };
 
     const flushPendingCandidates = async () => {
       const queued = pendingCandidates;
@@ -52,19 +61,26 @@ export const webrtc: Transport = (
     };
 
     const onConnectionStateChange = () => {
-      const state = connection?.connectionState;
+      // ICE and data-channel handlers own terminal error reporting; emitting
+      // here too duplicates failure notifications for the same connection.
+      log("onConnectionStateChange", connection?.connectionState);
+    };
+    const onIceConnectionStateChange = () => {
+      const state = connection?.iceConnectionState;
 
-      log("onConnectionStateChange", state);
+      log("onIceConnectionStateChange", state);
 
       match(state)
-        // "disconnected" is transient and may recover on its own; only
-        // "failed"/"closed" are terminal.
-        .with("failed", () => emitter.emit("error", "WebRTC connection failed"))
-        .with("closed", () => emitter.emit("error", "WebRTC connection closed"))
+        .with("closed", () => {
+          ready = false;
+          emitter.emit("error", new Error("WebRTC ICE connection closed"));
+        })
+        .with("failed", () => {
+          ready = false;
+          emitter.emit("error", new Error("WebRTC ICE connection failed"));
+        })
         .otherwise(() => {});
     };
-    let localCandidates = 0;
-
     const onIceCandidate = (c: RTCPeerConnectionIceEvent) => {
       if (channel?.readyState === "open") return;
 
@@ -91,23 +107,25 @@ export const webrtc: Transport = (
           + "the peer-to-peer connection cannot establish. "
           + "Check network/UDP access or configure reachable STUN/TURN servers.",
         );
-        emitter.emit("error", "no local ICE candidates");
+        emitter.emit("error", new Error("WebRTC gathered zero local ICE candidates"));
       }
     };
     const onDataChannel = (e: RTCDataChannelEvent) => {
       channel = e.channel;
+      ready = false;
       hookChannel(channel);
       log("onDataChannel");
     };
     const onDataChannelOpen = () => {
       log("onDataChannelOpen");
-      emitter.emit("connected");
+      markReadyIfOpen();
+    };
+    const onDataChannelClose = () => {
+      ready = false;
+      emitter.emit("error", new Error("WebRTC data channel closed"));
     };
     const onDataChannelMessage = (e: MessageEvent<string>) => {
       emitter.emit("message", e.data);
-    };
-    const onDataChannelClose = () => {
-      emitter.emit("error", "Data channel closed");
     };
     const onNegotiationNeeded = async () => {
       log("onNegotiationNeeded");
@@ -128,6 +146,12 @@ export const webrtc: Transport = (
       channel.addEventListener("open", onDataChannelOpen);
       channel.addEventListener("message", onDataChannelMessage);
       channel.addEventListener("close", onDataChannelClose);
+      markReadyIfOpen();
+    };
+    const unhookChannel = (channel: RTCDataChannel) => {
+      channel.removeEventListener("open", onDataChannelOpen);
+      channel.removeEventListener("message", onDataChannelMessage);
+      channel.removeEventListener("close", onDataChannelClose);
     };
 
     const handle = async (message: TransportMessage): Promise<void> => {
@@ -189,6 +213,7 @@ export const webrtc: Transport = (
 
         connection = new RTCPeerConnection(rtcConfig);
         connection.onconnectionstatechange = onConnectionStateChange;
+        connection.oniceconnectionstatechange = onIceConnectionStateChange;
         connection.onicecandidate = onIceCandidate;
         connection.onicegatheringstatechange = onIceGatheringStateChange;
         connection.ondatachannel = onDataChannel;
@@ -201,18 +226,20 @@ export const webrtc: Transport = (
       },
       teardown() {
         log("webrtc teardown");
+
+        ready = false;
         pendingCandidates = [];
 
         if (channel) {
-          // Detach the close listener first: a deliberate teardown must not
-          // surface as a transport error.
-          channel.removeEventListener("close", onDataChannelClose);
+          unhookChannel(channel);
           channel.close();
           channel = undefined;
         }
 
         if (connection) {
           connection.onconnectionstatechange = null;
+          connection.oniceconnectionstatechange = null;
+          connection.onicegatheringstatechange = null;
           connection.close();
           connection = undefined;
         }

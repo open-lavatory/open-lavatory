@@ -2,7 +2,13 @@ import { generateKeyPair } from "@openlv/core/encryption";
 import { EventEmitter } from "eventemitter3";
 import { describe, expect, it } from "vitest";
 
-import { TRANSPORT_STATE } from "./index.js";
+import {
+  createTransportBase,
+  TRANSPORT_STATE,
+  type TransportLayer,
+  type TransportLayerBaseEmitter,
+  type TransportLayerSetupParameters,
+} from "./index.js";
 import { webrtc } from "./webrtc/index.js";
 
 describe("Transport", () => {
@@ -89,4 +95,177 @@ describe("Transport", () => {
     expect(transportA).toBeDefined();
     expect(transportB).toBeDefined();
   });
+
+  it("requires an encrypted heartbeat round-trip before connecting", async () => {
+    const { encryptionKey, decryptionKey } = await generateKeyPair();
+    const harnessA = createMemoryTransportHarness({ probeInterval: 10 });
+    const harnessB = createMemoryTransportHarness({ probeInterval: 10 });
+
+    harnessA.peer = harnessB;
+    harnessB.peer = harnessA;
+    const parameters: TransportLayerSetupParameters = {
+      encrypt: encryptionKey.encrypt,
+      decrypt: decryptionKey.decrypt,
+      subsend: async () => {},
+      isHost: true,
+      onmessage: () => {},
+    };
+    const transportA = harnessA.create(parameters);
+    const transportB = harnessB.create({ ...parameters, isHost: false });
+
+    await Promise.all([transportA.setup(), transportB.setup()]);
+    harnessA.ready();
+
+    await expect(Promise.race([
+      transportA.waitFor(TRANSPORT_STATE.CONNECTED).then(() => "connected"),
+      new Promise(resolve => setTimeout(resolve, 50)).then(() => "pending"),
+    ])).resolves.toBe("pending");
+
+    harnessB.ready();
+    await Promise.all([
+      transportA.waitFor(TRANSPORT_STATE.CONNECTED),
+      transportB.waitFor(TRANSPORT_STATE.CONNECTED),
+    ]);
+
+    await Promise.all([transportA.teardown(), transportB.teardown()]);
+  });
+
+  it("moves to error when an updated peer stops responding to heartbeats", async () => {
+    const { encryptionKey, decryptionKey } = await generateKeyPair();
+    const harnessA = createMemoryTransportHarness({
+      probeInterval: 10,
+      heartbeatInterval: 20,
+      heartbeatTimeout: 50,
+    });
+    const harnessB = createMemoryTransportHarness({
+      probeInterval: 10,
+      heartbeatInterval: 20,
+      heartbeatTimeout: 50,
+    });
+
+    harnessA.peer = harnessB;
+    harnessB.peer = harnessA;
+    const parameters: TransportLayerSetupParameters = {
+      encrypt: encryptionKey.encrypt,
+      decrypt: decryptionKey.decrypt,
+      subsend: async () => {},
+      isHost: true,
+      onmessage: () => {},
+    };
+    const transportA = harnessA.create(parameters);
+    const transportB = harnessB.create({ ...parameters, isHost: false });
+
+    await Promise.all([transportA.setup(), transportB.setup()]);
+    harnessA.ready();
+    harnessB.ready();
+
+    await new Promise(resolve => setTimeout(resolve, 30));
+    harnessB.acceptInbound = false;
+
+    await transportA.waitFor(TRANSPORT_STATE.ERROR);
+    await transportB.teardown();
+  });
+
+  it("allows a close message before the transport is connected", async () => {
+    const { encryptionKey, decryptionKey } = await generateKeyPair();
+    const received: object[] = [];
+    const harnessA = createMemoryTransportHarness();
+    const harnessB = createMemoryTransportHarness();
+
+    harnessA.peer = harnessB;
+    harnessB.peer = harnessA;
+    const parameters: TransportLayerSetupParameters = {
+      encrypt: encryptionKey.encrypt,
+      decrypt: decryptionKey.decrypt,
+      subsend: async () => {},
+      isHost: true,
+      onmessage: () => {},
+    };
+    const transportA = harnessA.create(parameters);
+    const transportB = harnessB.create({
+      ...parameters,
+      isHost: false,
+      onmessage: (message) => {
+        received.push(message);
+      },
+    });
+
+    await Promise.all([transportA.setup(), transportB.setup()]);
+    harnessB.acceptInbound = true;
+
+    await expect(transportA.send(
+      { type: "close", messageId: "close-1" },
+      { allowReady: true },
+    )).resolves.toBeUndefined();
+    expect(received).toEqual([{ type: "close", messageId: "close-1" }]);
+
+    await Promise.all([transportA.teardown(), transportB.teardown()]);
+  });
+
+  it("rejects waitFor when the transport reaches a terminal state first", async () => {
+    const { encryptionKey, decryptionKey } = await generateKeyPair();
+    const harness = createMemoryTransportHarness();
+    const transport = harness.create({
+      encrypt: encryptionKey.encrypt,
+      decrypt: decryptionKey.decrypt,
+      subsend: async () => {},
+      isHost: true,
+      onmessage: () => {},
+    });
+
+    await transport.setup();
+    const wait = transport.waitFor(TRANSPORT_STATE.CONNECTED);
+
+    await transport.teardown();
+
+    await expect(wait).rejects.toThrow("Transport reached terminal state: disconnected");
+  });
 });
+
+type LivenessConfig = {
+  probeInterval?: number;
+  heartbeatInterval?: number;
+  heartbeatTimeout?: number;
+};
+
+type MemoryTransportHarness = {
+  acceptInbound: boolean;
+  peer?: MemoryTransportHarness;
+  create: (parameters: TransportLayerSetupParameters) => TransportLayer;
+  ready: () => void;
+  receive: (message: string) => void;
+};
+
+const createMemoryTransportHarness = (
+  livenessConfig: LivenessConfig = {},
+): MemoryTransportHarness => {
+  let emitter: TransportLayerBaseEmitter | undefined;
+  const harness: MemoryTransportHarness = {
+    acceptInbound: false,
+    create(parameters) {
+      return createTransportBase("memory", ({ emitter: internalEmitter }) => {
+        emitter = internalEmitter;
+
+        return {
+          setup: () => {},
+          teardown: () => {},
+          handle: async () => {},
+          send: async (message) => {
+            harness.peer?.receive(message);
+          },
+        };
+      }, livenessConfig).create(parameters);
+    },
+    ready() {
+      harness.acceptInbound = true;
+      emitter?.emit("ready");
+    },
+    receive(message) {
+      if (!harness.acceptInbound) return;
+
+      emitter?.emit("message", message);
+    },
+  };
+
+  return harness;
+};

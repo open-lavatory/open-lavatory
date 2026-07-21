@@ -23,6 +23,10 @@ export type OpenLVConnector = CreateConnectorFn<
   Record<string, unknown>
 >;
 
+const onAccounts = () => {
+  log("provider_accountsChanged");
+};
+
 /*
  * openlv connector
  * https://openlv.sh/
@@ -54,6 +58,17 @@ export const openlv = ({
 
   return createConnector<OpenLVProvider>((wagmiConfig) => {
     const { chains } = wagmiConfig;
+    let isWatchingProviderDisconnect = false;
+    const forwardProviderDisconnect = () => {
+      wagmiConfig.emitter.emit("disconnect");
+      stopWatchingProviderDisconnect();
+    };
+    const stopWatchingProviderDisconnect = () => {
+      if (!isWatchingProviderDisconnect) return;
+
+      provider.off("disconnect", forwardProviderDisconnect);
+      isWatchingProviderDisconnect = false;
+    };
 
     const connect = async (
       { withCapabilities = false },
@@ -75,11 +90,6 @@ export const openlv = ({
             resolve();
           }
         };
-
-        const onAccounts = () => {
-          log("provider_accountsChanged");
-        };
-
         const cleanup = () => {
           provider.off("status_change", onStatus);
           provider.off("accountsChanged", onAccounts);
@@ -95,7 +105,7 @@ export const openlv = ({
         !provider.getSession()
         || provider.getState().status !== "connected"
       ) {
-        await provider.closeSession();
+        await onDisconnect();
 
         throw new UserRejectedRequestError(new Error("User closed modal"));
       }
@@ -106,6 +116,11 @@ export const openlv = ({
       const chainId = Number.parseInt(chainIdHex as string, 16);
 
       log("completing connect() call with chainId", chainId);
+
+      if (!isWatchingProviderDisconnect) {
+        provider.on("disconnect", forwardProviderDisconnect);
+        isWatchingProviderDisconnect = true;
+      }
 
       return {
         accounts: (withCapabilities
@@ -124,7 +139,10 @@ export const openlv = ({
       connect,
       async disconnect() {
         log("disconnect");
-        await onDisconnect();
+
+        stopWatchingProviderDisconnect();
+
+        await provider.closeSession();
       },
       getAccounts,
       /**

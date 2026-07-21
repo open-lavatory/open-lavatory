@@ -16,6 +16,7 @@ export const TRANSPORT_STATE = {
   CONNECTING: "connecting",
   READY: "ready",
   CONNECTED: "connected",
+  DISCONNECTED: "disconnected",
   ERROR: "error",
 } as const;
 export type TransportState =
@@ -23,7 +24,7 @@ export type TransportState =
 
 export type TLayerEventMap = {
   state_change: (state: TransportState) => void;
-  error: (reason?: string) => void;
+  error: (reason?: unknown) => void;
 };
 
 export type TransportLayerSetupParameters = {
@@ -31,7 +32,7 @@ export type TransportLayerSetupParameters = {
   encrypt: EncryptionKey["encrypt"];
   decrypt: DecryptionKey["decrypt"];
   subsend: (message: TransportMessage) => Promise<void>;
-  onmessage: (message: { type: string; payload: object; messageId: string; }) => void;
+  onmessage: (message: { type: string; payload?: object | string; messageId: string; }) => MaybePromise<void>;
 };
 
 /**
@@ -47,10 +48,13 @@ export type TransportLayer = {
   type: TransportProtocol;
   setup: () => MaybePromise<void>;
   teardown: () => MaybePromise<void>;
-  send: (message: object) => Promise<void>;
+  send: (message: object, options?: TransportSendOptions) => Promise<void>;
   handle: (message: TransportMessage) => Promise<void>;
   waitFor: (state: TransportState) => Promise<void>;
   emitter: EventEmitter<TLayerEventMap>;
+};
+export type TransportSendOptions = {
+  allowReady?: boolean;
 };
 /** Wire identifier advertised in the `capabilities` handshake packet. */
 export type TransportProtocol = "wrtc" | "ws" | (string & {});
@@ -68,9 +72,9 @@ export type TransportLayerImpl = {
 };
 export type TransportLayerBaseEventMap = {
   negotiate: (message: TransportMessage) => void;
-  connected: () => void;
+  ready: () => void;
+  error: (error?: unknown) => void;
   message: (message: string) => void;
-  error: (reason?: string) => void;
 };
 export type TransportLayerBaseEmitter =
   EventEmitter<TransportLayerBaseEventMap>;
@@ -82,6 +86,17 @@ export type TransportLayerImplFn = (
   parameters: TransportLayerBaseParameters,
 ) => TransportLayerImpl;
 
+type TransportLivenessConfig = {
+  probeInterval?: number;
+  heartbeatInterval?: number;
+  heartbeatTimeout?: number;
+};
+
+const CONTROL_TYPE = "__openlv_transport";
+const DEFAULT_PROBE_INTERVAL = 250;
+const DEFAULT_HEARTBEAT_INTERVAL = 2000;
+const DEFAULT_HEARTBEAT_TIMEOUT = 5000;
+
 /**
  * Base Transport Layer implementation
  *
@@ -90,42 +105,129 @@ export type TransportLayerImplFn = (
 export const createTransportBase = (
   transportId: TransportProtocol,
   init: TransportLayerImplFn,
+  liveness: TransportLivenessConfig = {},
 ): TransportLayerFn => ({
   transportId,
   create: ({ encrypt, decrypt, subsend, isHost, onmessage }) => {
     const emitter = new EventEmitter<TLayerEventMap>();
     const internalEmitter = new EventEmitter<TransportLayerBaseEventMap>();
     let state: TransportState = TRANSPORT_STATE.STANDBY;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let lastPeerActivity: number | undefined;
+    let livenessGeneration = 0;
+    const {
+      probeInterval = DEFAULT_PROBE_INTERVAL,
+      heartbeatInterval = DEFAULT_HEARTBEAT_INTERVAL,
+      heartbeatTimeout = DEFAULT_HEARTBEAT_TIMEOUT,
+    } = liveness;
 
     const setState = (newState: TransportState) => {
+      if (state === newState) return;
+
       state = newState;
       emitter.emit("state_change", newState);
+    };
+
+    const stopLiveness = () => {
+      livenessGeneration++;
+
+      if (timer) clearTimeout(timer);
+
+      timer = undefined;
+      lastPeerActivity = undefined;
+    };
+
+    const sendControl = async (action: "ping" | "pong") => {
+      const payload = await encrypt(JSON.stringify({ type: CONTROL_TYPE, action }));
+
+      await sendLayer(payload);
+    };
+
+    const failLiveness = () => {
+      stopLiveness();
+      setState(TRANSPORT_STATE.ERROR);
+    };
+
+    const checkLiveness = () => {
+      if (state !== TRANSPORT_STATE.READY && state !== TRANSPORT_STATE.CONNECTED) return;
+
+      if (
+        lastPeerActivity !== undefined
+        && Date.now() - lastPeerActivity > heartbeatTimeout
+      ) {
+        failLiveness();
+
+        return;
+      }
+
+      const generation = livenessGeneration;
+
+      void sendControl("ping").catch(() => {
+        if (generation === livenessGeneration) failLiveness();
+      });
+      const interval = state === TRANSPORT_STATE.CONNECTED
+        ? heartbeatInterval
+        : probeInterval;
+
+      if (interval > 0) timer = setTimeout(checkLiveness, interval);
+    };
+    const notePeerActivity = () => {
+      lastPeerActivity = Date.now();
+
+      if (state === TRANSPORT_STATE.READY) setState(TRANSPORT_STATE.CONNECTED);
     };
 
     internalEmitter.on("negotiate", (message) => {
       subsend(message).catch(error => log("failed to relay negotiation message", error));
     });
-    internalEmitter.on("connected", () => {
-      log("onConnected");
-      setState(TRANSPORT_STATE.CONNECTED);
+    internalEmitter.on("ready", () => {
+      lastPeerActivity = Date.now();
+
+      if (!timer && probeInterval > 0) timer = setTimeout(checkLiveness, probeInterval);
     });
-    internalEmitter.on("error", (reason) => {
-      log("transport error", reason);
-      // Surface the reason before the state flips so listeners reading
-      // state on state_change already see it.
-      emitter.emit("error", reason);
+    internalEmitter.on("error", (error) => {
+      log("onError", error);
+      stopLiveness();
+      emitter.emit("error", error);
       setState(TRANSPORT_STATE.ERROR);
     });
     internalEmitter.on("message", async (message) => {
-      // Peer data is untrusted until decrypted AND parsed; drop anything that
-      // fails either step rather than surfacing an unhandled rejection.
+      // Peer data is untrusted until decrypted and parsed. Invalid data is
+      // discarded rather than turning into an unhandled async rejection.
+      let parsed: {
+        type?: string;
+        action?: "ping" | "pong";
+        payload?: object | string;
+        messageId?: string;
+      };
+
       try {
         const data = await decrypt(message);
 
-        onmessage(JSON.parse(data) as { type: string; payload: object; messageId: string; });
+        parsed = JSON.parse(data) as typeof parsed;
       }
       catch (error) {
         log("dropping undecryptable transport message", error);
+
+        return;
+      }
+
+      try {
+        if (parsed.type === CONTROL_TYPE) {
+          notePeerActivity();
+
+          if (parsed.action === "ping") await sendControl("pong");
+
+          return;
+        }
+
+        // Promote before delivering so a peer that already finished probing can
+        // receive acknowledgements while this side is still READY.
+        notePeerActivity();
+        await onmessage(parsed as { type: string; payload?: object | string; messageId: string; });
+      }
+      catch (error) {
+        log("transport message handling failed", error);
       }
     });
 
@@ -139,8 +241,11 @@ export const createTransportBase = (
       isHost,
     });
 
-    const send = async (message: object) => {
-      if (state !== TRANSPORT_STATE.CONNECTED)
+    const send = async (
+      message: object,
+      { allowReady = false }: TransportSendOptions = {},
+    ) => {
+      if (state !== TRANSPORT_STATE.CONNECTED && !(allowReady && state === TRANSPORT_STATE.READY))
         throw new Error("Transport not connected");
 
       const payload = await encrypt(JSON.stringify(message));
@@ -151,19 +256,21 @@ export const createTransportBase = (
     const waitFor = async (targetState: TransportState) => {
       if (state === targetState) return;
 
-      if (state === TRANSPORT_STATE.ERROR) {
-        throw new Error("Transport is in error state");
-      }
+      if (state === TRANSPORT_STATE.DISCONNECTED || state === TRANSPORT_STATE.ERROR)
+        throw new Error(`Transport reached terminal state: ${state}`);
 
       return new Promise<void>((resolve, reject) => {
         const handler = (newState: TransportState) => {
           if (newState === targetState) {
             emitter.off("state_change", handler);
             resolve();
+
+            return;
           }
-          else if (newState === TRANSPORT_STATE.ERROR) {
+
+          if (newState === TRANSPORT_STATE.DISCONNECTED || newState === TRANSPORT_STATE.ERROR) {
             emitter.off("state_change", handler);
-            reject(new Error("Transport is in error state"));
+            reject(new Error(`Transport reached terminal state: ${newState}`));
           }
         };
 
@@ -176,9 +283,19 @@ export const createTransportBase = (
       async setup() {
         setState(TRANSPORT_STATE.CONNECTING);
         await setup();
-        setState(TRANSPORT_STATE.READY);
+
+        if (state === TRANSPORT_STATE.CONNECTING) setState(TRANSPORT_STATE.READY);
       },
-      teardown,
+      async teardown() {
+        stopLiveness();
+
+        try {
+          await teardown();
+        }
+        finally {
+          if (state !== TRANSPORT_STATE.ERROR) setState(TRANSPORT_STATE.DISCONNECTED);
+        }
+      },
       handle,
       send,
       waitFor,
