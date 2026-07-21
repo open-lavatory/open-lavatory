@@ -302,8 +302,6 @@ export const createProvider = (
       const failureReason = session?.getState().error
         ?? (error instanceof Error ? error.message : "Connection failed");
 
-      await closeSession();
-
       lastError = failureReason;
       updateStatus(PROVIDER_STATUS.ERROR);
 

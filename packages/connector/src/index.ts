@@ -105,7 +105,7 @@ export const openlv = ({
         !provider.getSession()
         || provider.getState().status !== "connected"
       ) {
-        await onDisconnect();
+        await provider.closeSession();
 
         throw new UserRejectedRequestError(new Error("User closed modal"));
       }
@@ -142,7 +142,7 @@ export const openlv = ({
 
         stopWatchingProviderDisconnect();
 
-        await provider.closeSession();
+        await onDisconnect();
       },
       getAccounts,
       /**
