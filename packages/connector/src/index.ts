@@ -95,7 +95,7 @@ export const openlv = ({
         !provider.getSession()
         || provider.getState().status !== "connected"
       ) {
-        provider.closeSession();
+        await provider.closeSession();
 
         throw new UserRejectedRequestError(new Error("User closed modal"));
       }

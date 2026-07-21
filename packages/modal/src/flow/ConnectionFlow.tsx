@@ -11,6 +11,7 @@ import { UnknownState } from "../components/UnknownState.js";
 import { useModalContext } from "../context.jsx";
 import { useTranslation } from "../utils/i18n.js";
 import { Connecting } from "./connecting.jsx";
+import { ErrorScreen } from "./ErrorScreen.jsx";
 
 interface ConnectionFlowProps {
   onClose: () => void;
@@ -53,7 +54,7 @@ export const ConnectionFlow = (props: ConnectionFlowProps) => {
           </div>
         </Match>
         <Match when={providerStatus() === PROVIDER_STATUS.CONNECTING}>
-          <Connecting />
+          <Connecting onClose={props.onClose} />
         </Match>
         <Match when={providerStatus() === PROVIDER_STATUS.CONNECTED}>
           <div class="flex flex-col items-center gap-4 p-6">
@@ -69,24 +70,7 @@ export const ConnectionFlow = (props: ConnectionFlowProps) => {
           </div>
         </Match>
         <Match when={providerStatus() === PROVIDER_STATUS.ERROR}>
-          <div class="flex flex-col items-center gap-4 p-6">
-            <div class="text-center">
-              <div class="mb-4 text-4xl">🔌</div>
-              <h3 class="mb-2 font-semibold text-(--lv-text-primary) text-lg">
-                {t("connectionFlow.disconnected")}
-              </h3>
-              <p class="mb-4 text-(--lv-text-muted) text-sm">
-                {t("connectionFlow.connectionClosed")}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={props.onClose}
-              class="w-full rounded-lg bg-(--lv-control-button-secondary-background) px-4 py-2 font-semibold text-(--lv-text-primary) text-sm transition hover:bg-(--lv-control-button-primary-background-hover)"
-            >
-              {t("common.close")}
-            </button>
-          </div>
+          <ErrorScreen onClose={props.onClose} />
         </Match>
       </Switch>
     </div>

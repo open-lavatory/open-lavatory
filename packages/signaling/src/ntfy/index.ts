@@ -34,7 +34,7 @@ export type NtfyMessage = {
  */
 export const ntfy: SignalingProtocol = ({ topic, url }) => {
   let connection: WebSocket | undefined;
-  const connectionInfo = parseNtfyUrl(url);
+  const connectionInfo = parseNtfyUrl(url || "https://ntfy.sh");
   const wsProtocol = match(connectionInfo.protocol)
     .with("https", () => "wss")
     .with("http", () => "ws")
@@ -58,35 +58,37 @@ export const ntfy: SignalingProtocol = ({ topic, url }) => {
       log("NTFY: Connecting to WebSocket", wsUrl);
       connection = new WebSocket(wsUrl);
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      connection?.addEventListener("error", (_event) => {});
+      // Resolves once the server confirms the subscription ("open" event);
+      // rejects on socket error/close so setup cannot hang forever.
+      await new Promise<void>((resolve, reject) => {
+        connection!.addEventListener("error", () => {
+          reject(new Error(`NTFY: WebSocket error connecting to ${connectionInfo.host}`));
+        });
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      connection.addEventListener("close", (_event) => {});
+        connection!.addEventListener("close", () => {
+          reject(new Error("NTFY: WebSocket closed before subscription was confirmed"));
+        });
 
-      const awaitOpenConfirm = new Promise<void>((resolve) => {
         connection!.addEventListener("message", (event) => {
-          log("NTFY: Received message:", event.data);
-          const data = JSON.parse(event.data) as NtfyMessage;
+          let data: NtfyMessage;
+
+          try {
+            data = JSON.parse(event.data) as NtfyMessage;
+          }
+          catch {
+            log("NTFY: Dropping non-JSON frame");
+
+            return;
+          }
 
           if (data.event === "open") {
             resolve();
           }
-          else if (data.event === "message") {
+          else if (data.event === "message" && typeof data.message === "string") {
             events.emit("message", data.message);
           }
         });
       });
-
-      const awaitOpen = new Promise<void>((resolve) => {
-        connection!.addEventListener("open", () => {
-          log("NTFY: Connected to WebSocket");
-          resolve();
-        });
-      });
-
-      await awaitOpen;
-      await awaitOpenConfirm;
     },
     teardown() {
       connection?.close();
@@ -94,13 +96,14 @@ export const ntfy: SignalingProtocol = ({ topic, url }) => {
     async publish(body) {
       const headers = { "Content-Type": "application/json" } as HeadersInit;
 
-      // TODO: Add response handling
-      // @ts-expect-error - TODO: Add response handling
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const _response = await fetch(
+      const response = await fetch(
         `${connectionInfo.protocol}://${connectionInfo.host}/${topic}`,
         { method: "POST", body, headers },
       );
+
+      if (!response.ok) {
+        throw new Error(`NTFY: publish failed with status ${response.status}`);
+      }
     },
     subscribe: (handler) => {
       events.on("message", handler);

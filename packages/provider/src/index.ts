@@ -80,6 +80,8 @@ export type ProviderStatus =
 export type ProviderState = {
   status: ProviderStatus;
   session?: SessionStateObject;
+  /** Human-readable reason for the last connection failure, if any. */
+  error?: string;
 };
 
 export type ProviderConfig = {
@@ -114,7 +116,14 @@ type transportInput =
   }
   | undefined;
 
-const convertTempV1 = (transport: transportInput): WebRTCConfig => {
+/**
+ * Convert stored WebRTC settings to a transport config. Returns undefined
+ * when nothing is configured so the transport falls back to its own
+ * defaults — an empty iceServers array would silently disable STUN/TURN.
+ */
+const convertStoredWebRTCSettings = (
+  transport: transportInput,
+): WebRTCConfig | undefined => {
   const stun = transport?.stun?.map(url => ({ urls: url })) || [];
   const turn
     = transport?.turn?.map(server => ({
@@ -122,10 +131,9 @@ const convertTempV1 = (transport: transportInput): WebRTCConfig => {
       username: server.username,
       credential: server.credential,
     })) || [];
+  const iceServers = [...stun, ...turn];
 
-  return {
-    iceServers: [...stun, ...turn],
-  };
+  return iceServers.length > 0 ? { iceServers } : undefined;
 };
 
 /**
@@ -139,6 +147,7 @@ export const createProvider = (
   const oxEmitter = OxProvider.createEmitter<ProviderEvents & EventMap>();
   let session: Session | undefined;
   let status: ProviderStatus = PROVIDER_STATUS.STANDBY;
+  let lastError: string | undefined;
   let accounts: Address[] = [];
   const storage = createProviderStorage({ storage: parameters.storage });
   const { openModal, config } = parameters;
@@ -183,53 +192,88 @@ export const createProvider = (
     throw new Error("No session");
   };
 
+  /** Derive default link parameters from stored signaling settings. */
+  const defaultLinkParameters = (): SessionLinkParameters | undefined => {
+    const signaling = storage.getSettings().signaling ?? config?.signaling;
+    const p = signaling?.p;
+    const s = p ? signaling?.s?.[p] : undefined;
+
+    return p && s ? { p, s } : undefined;
+  };
+
+  // Warm up the signaling module for the configured protocol. Backends are
+  // loaded via dynamic import; in dev servers (Vite) the first import can
+  // trigger a dependency re-optimization page reload — better at page load
+  // than mid-handshake.
+  const prefetchProtocol
+    = (storage.getSettings().signaling ?? config?.signaling)?.p;
+
+  if (prefetchProtocol) {
+    void dynamicSignalingLayer(prefetchProtocol).catch(() => {});
+  }
+
   const start = async (parameters?: SessionLinkParameters) => {
+    lastError = undefined;
     updateStatus(PROVIDER_STATUS.CREATING);
-    const linkParameters = parameters;
+    const linkParameters = parameters ?? defaultLinkParameters();
 
     if (!linkParameters) {
-      throw new Error("No link parameters");
+      throw new Error("No link parameters provided and no signaling defaults configured");
     }
 
+    // Stored user settings win over constructor config; both fall back to
+    // the transport's built-in defaults when absent.
     const transportOptions
-      = convertTempV1(storage.getSettings().transport?.s?.webrtc)
-        || config?.transport?.s?.webrtc;
+      = convertStoredWebRTCSettings(storage.getSettings().transport?.s?.webrtc)
+        ?? config?.transport?.s?.webrtc;
 
-    session = await createSession(
-      linkParameters,
-      await dynamicSignalingLayer(linkParameters.p),
-      [webrtc(transportOptions)],
-      onMessage,
-    );
-    updateStatus(PROVIDER_STATUS.CONNECTING);
+    try {
+      session = await createSession(
+        linkParameters,
+        await dynamicSignalingLayer(linkParameters.p),
+        [webrtc(transportOptions)],
+        onMessage,
+      );
+      updateStatus(PROVIDER_STATUS.CONNECTING);
 
-    log("session created");
-    await session.connect();
-    log("session connected");
-    const handshakeParameters = session.getHandshakeParameters();
-    const url = encodeConnectionURL(handshakeParameters);
+      log("session created");
+      await session.connect();
+      log("session connected");
+      const handshakeParameters = session.getHandshakeParameters();
+      const url = encodeConnectionURL(handshakeParameters);
 
-    log("session url", url);
-    oxEmitter.emit("session_started", session);
+      log("session url", url);
+      oxEmitter.emit("session_started", session);
 
-    await session.waitForLink();
-    log("session linked");
+      await session.waitForLink();
+      log("session linked");
 
-    accounts = await getAccounts();
+      accounts = await getAccounts();
 
-    const chainIdHex = unwrapSessionResponse(
-      await session.send({ method: "eth_chainId", params: [] }),
-    ) as string;
+      const chainIdHex = unwrapSessionResponse(
+        await session.send({ method: "eth_chainId", params: [] }),
+      ) as string;
 
-    updateStatus(PROVIDER_STATUS.CONNECTED);
-    oxEmitter.emit("connect", { chainId: chainIdHex });
-    oxEmitter.emit("accountsChanged", accounts);
+      updateStatus(PROVIDER_STATUS.CONNECTED);
+      oxEmitter.emit("connect", { chainId: chainIdHex });
+      oxEmitter.emit("accountsChanged", accounts);
 
-    return session;
+      return session;
+    }
+    catch (error) {
+      // Surface the failure to UI consumers (e.g. the modal) instead of
+      // leaving the provider stuck in "connecting".
+      lastError
+        = session?.getState().error
+          ?? (error instanceof Error ? error.message : "Connection failed");
+      updateStatus(PROVIDER_STATUS.ERROR);
+      throw error;
+    }
   };
   const closeSession = async () => {
     await session?.close();
     session = undefined;
+    lastError = undefined;
     updateStatus(PROVIDER_STATUS.STANDBY);
   };
 
@@ -258,12 +302,6 @@ export const createProvider = (
         })
         .with({ method: "wallet_requestPermissions" }, () => {
           throw new Error("Not implemented");
-          // console.log("wallet_requestPermissions", v.params);
-
-          // return [] as ExtractReturnType<
-          //   RpcSchema,
-          //   "wallet_requestPermissions"
-          // >;
         })
         .with({ method: "wallet_revokePermissions" }, async () => {
           await closeSession();
@@ -304,9 +342,7 @@ export const createProvider = (
             return await getAccounts();
           }
 
-          const x = await start();
-
-          log("x", x);
+          await start();
 
           return await getAccounts();
         })
@@ -344,7 +380,11 @@ export const createProvider = (
     getAccounts,
     createSession: start,
     closeSession,
-    getState: () => ({ status, session: session?.getState() ?? undefined }),
+    getState: () => ({
+      status,
+      session: session?.getState() ?? undefined,
+      error: lastError,
+    }),
   });
 
   return oxProvider as OpenLVProvider;

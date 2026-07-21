@@ -10,29 +10,23 @@ import { log } from "../utils/log.js";
  *
  * https://openlv.sh/api/signaling/mqtt
  */
-export const mqtt: SignalingProtocol = ({
-  url = "wss://test.mosquitto.org:8081/mqtt",
-  topic,
-}) => {
+export const mqtt: SignalingProtocol = ({ url, topic }) => {
+  // `url` may be an empty string when the session URI omits `s`.
+  const endpoint = url || "wss://test.mosquitto.org:8081/mqtt";
   let connection: MqttClient | undefined;
 
   return createSignalingLayer({
     type: "mqtt",
     setup() {
       return new Promise((resolve, reject) => {
-        connection = createMqtt({
-          url,
-          // reconnectOnConnackError: false,
-          // reconnectPeriod: 5000,
-          // connectTimeout: 5000,
-        });
+        connection = createMqtt({ url: endpoint });
 
         connection.on("connect", () => {
           resolve();
         });
         connection.on("error", (error) => {
-          console.error("MQTT: Error connecting to URL", error);
-          reject(error);
+          log("MQTT: Error connecting to URL", error);
+          reject(error instanceof Error ? error : new Error(String(error)));
         });
 
         connection.on("close", () => {

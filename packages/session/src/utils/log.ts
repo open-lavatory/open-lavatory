@@ -1,7 +1,3 @@
-export const log = (...x: Parameters<typeof console.log>) =>
-  console.log(
-    "[session]",
-    // "color: orange; font-weight: bold",
-    // "color: inherit; font-weight: normal",
-    ...x,
-  );
+import { createLogger } from "@openlv/core";
+
+export const log = createLogger("session", "mediumpurple");

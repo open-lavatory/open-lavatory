@@ -345,6 +345,8 @@ export const TryItOut = () => {
     return <div className="rounded-lg border vocs:border-primary" suppressHydrationWarning />;
   }
 
+  (globalThis as { OPENLV_DEBUG?: boolean; }).OPENLV_DEBUG ??= true;
+
   return (
     <TryItOutProviders>
       <div className="space-y-3" suppressHydrationWarning>
