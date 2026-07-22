@@ -12,7 +12,7 @@ jobs:
             contents: read
         steps:
         - name: Checkout
-          uses: actions/checkout@v4
+          uses: actions/checkout@v7
         - name: Setup workspace
           uses: ./.github/actions/setup-workspace
         - name: Audit dependencies
@@ -26,7 +26,7 @@ jobs:
             contents: read
         steps:
         - name: Checkout
-          uses: actions/checkout@v4
+          uses: actions/checkout@v7
         - name: Setup workspace
           uses: ./.github/actions/setup-workspace
           with:
@@ -42,7 +42,7 @@ jobs:
             contents: read
         steps:
         - name: Checkout
-          uses: actions/checkout@v4
+          uses: actions/checkout@v7
         - name: Setup workspace
           uses: ./.github/actions/setup-workspace
           with:
@@ -50,7 +50,7 @@ jobs:
         # - name: Install Test Dependencies
         #   run: pnpm -r test:install
         - name: Run tests
-          uses: nick-fields/retry@v3
+          uses: nick-fields/retry@v4
           with:
             timeout_minutes: 10
             max_attempts: 3
