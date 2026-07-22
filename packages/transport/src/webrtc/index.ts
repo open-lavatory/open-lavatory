@@ -101,7 +101,7 @@ export const webrtc: Transport = (
     };
     const onDataChannelOpen = () => {
       log("onDataChannelOpen");
-      emitter.emit("connected");
+      emitter.emit("ready");
     };
     const onDataChannelMessage = (e: MessageEvent<string>) => {
       emitter.emit("message", e.data);
@@ -128,6 +128,11 @@ export const webrtc: Transport = (
       channel.addEventListener("open", onDataChannelOpen);
       channel.addEventListener("message", onDataChannelMessage);
       channel.addEventListener("close", onDataChannelClose);
+    };
+    const unhookChannel = (channel: RTCDataChannel) => {
+      channel.removeEventListener("open", onDataChannelOpen);
+      channel.removeEventListener("message", onDataChannelMessage);
+      channel.removeEventListener("close", onDataChannelClose);
     };
 
     const handle = async (message: TransportMessage): Promise<void> => {
@@ -204,15 +209,14 @@ export const webrtc: Transport = (
         pendingCandidates = [];
 
         if (channel) {
-          // Detach the close listener first: a deliberate teardown must not
-          // surface as a transport error.
-          channel.removeEventListener("close", onDataChannelClose);
+          unhookChannel(channel);
           channel.close();
           channel = undefined;
         }
 
         if (connection) {
           connection.onconnectionstatechange = null;
+          connection.onicegatheringstatechange = null;
           connection.close();
           connection = undefined;
         }

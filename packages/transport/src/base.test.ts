@@ -87,7 +87,14 @@ describe("createTransportBase", () => {
     });
 
     await layer.setup();
-    getEmitter().emit("connected");
+    getEmitter().emit("ready");
+    getEmitter().emit(
+      "message",
+      await encryptionKey.encrypt(JSON.stringify({
+        type: "__openlv_transport",
+        action: "pong",
+      })),
+    );
     await layer.waitFor(TRANSPORT_STATE.CONNECTED);
 
     await layer.send({ type: "request", messageId: "1", payload: { a: 1 } });
@@ -98,6 +105,8 @@ describe("createTransportBase", () => {
     getEmitter().emit("message", sent[0]);
     await new Promise(resolve => setTimeout(resolve, 10));
     expect(received).toEqual([{ type: "request", messageId: "1", payload: { a: 1 } }]);
+
+    await layer.teardown();
   });
 
   it("rejects sends before the transport is connected", async () => {

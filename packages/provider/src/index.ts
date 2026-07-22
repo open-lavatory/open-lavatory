@@ -171,7 +171,7 @@ export const createProvider = (
    * "Method not found" error so the wallet receives a proper response rather
    * than a no-op stub.
    */
-  const onMessage = async (message: object): Promise<object> => {
+  const onMessage = async (message: object | string): Promise<object> => {
     log("onMessage received from remote peer", message);
 
     // Emit on the session emitter so observers (e.g. modal) can react.

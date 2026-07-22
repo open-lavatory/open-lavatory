@@ -86,7 +86,7 @@ export type Session = {
      *   (default 1 hour) — enough for user-interactive flows such as
      *   `eth_sendTransaction` or `personal_sign`.
      */
-  send(message: object, ackTimeout?: number, responseTimeout?: number): Promise<unknown>;
+  send(message: object | string, ackTimeout?: number, responseTimeout?: number): Promise<unknown>;
   emitter: EventEmitter<SessionEvents>;
   _internal: {
     signal: SignalingLayer;
@@ -104,7 +104,7 @@ export const createSession = async (
   initParameters: SessionLinkParameters,
   signalLayer: SignalingProtocol,
   transportLayers: TransportLayerFn[],
-  onMessage: (message: object) => Promise<object | string>,
+  onMessage: (message: object | string) => Promise<object | string>,
   options?: SessionOptions,
 ): Promise<Session> => {
   if (transportLayers.length === 0) {
@@ -208,11 +208,18 @@ export const createSession = async (
     },
     decrypt,
     isHost,
-    onmessage: async (message: { type: string; payload: object; messageId: string; }) => {
+    onmessage: async (message) => {
       log("Session: received message from transport", message);
 
       if (message["type"] === "request") {
         const messageId = message["messageId"] as string;
+        const { payload } = message;
+
+        if (payload === undefined) {
+          log("dropping request without payload", message);
+
+          return;
+        }
 
         try {
           // Immediately acknowledge receipt so the sender's ack-timeout does
@@ -221,9 +228,9 @@ export const createSession = async (
 
           // Notify observers before processing (e.g. wallet UI can show a
           // pending indicator before the handler resolves).
-          emitter.emit("request", message["payload"] as object);
+          emitter.emit("request", payload);
 
-          const data = await onMessage(message["payload"] as object)
+          const data = await onMessage(payload)
             // A throwing handler must still answer, otherwise the peer waits
             // out its full response timeout.
             .catch(() => ({ error: { code: -32_603, message: "Internal error" } }));
@@ -448,7 +455,7 @@ export const createSession = async (
       handler({ status });
     }),
     async send(
-      message: object,
+      message: object | string,
       ackTimeout: number = 10_000,
       responseTimeout: number = 60 * 60_000,
     ) {
@@ -482,7 +489,7 @@ export const createSession = async (
  */
 export const connectSession = async (
   connectionUrl: string,
-  onMessage: (message: object) => Promise<object | string>,
+  onMessage: (message: object | string) => Promise<object | string>,
   transports: TransportLayerFn[],
   options?: SessionOptions,
 ): Promise<Session> => {

@@ -289,7 +289,7 @@ export const attachTryItSession = (
 
 export const shimWalletOnMessage = (
   role: TryItRole,
-  handler: (message: object) => Promise<object | string>,
+  handler: (message: object | string) => Promise<object | string>,
   actions: TryItSessionActions,
 ) => async (message: object) => {
   const request = message as { method?: string; };
