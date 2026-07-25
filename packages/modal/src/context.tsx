@@ -6,7 +6,7 @@ import {
 } from "solid-js";
 
 import { ModalRoot } from "./components/ModalRoot.js";
-import { type OpenLVModalElementProps as OpenLVModalElementProperties } from "./element.js";
+import { type OpenLVModalElementProperties } from "./element.js";
 import type { ThemeConfig } from "./theme/types.js";
 import {
   TranslationProvider,

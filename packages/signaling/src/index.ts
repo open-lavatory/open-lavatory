@@ -62,7 +62,7 @@ export type SignalingContext = {
   };
 };
 export type SignalingLayer = EventEmitter<SignalEventMap> & SignalingContext;
-export type SignalingLayerFn = (
+export type SignalingLayerFunction = (
   properties: SignalingProperties,
 ) => Promise<SignalingLayer>;
 
@@ -84,7 +84,7 @@ const HANDSHAKE_TIMEOUT_MS = 30_000;
  */
 export const createSignalingLayer = (
   init: SignalingChannel,
-): SignalingLayerFn => async ({
+): SignalingLayerFunction => async ({
   canEncrypt,
   encrypt,
   decrypt,

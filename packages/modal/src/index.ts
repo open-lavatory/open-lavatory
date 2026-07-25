@@ -4,11 +4,11 @@
 /** biome-ignore-all lint/suspicious/noConsole: temp */
 
 export { ModalRoot } from "./components/ModalRoot.js";
-export { default, OpenLVModalElement, type OpenLVModalElementProps } from "./element.js";
+export { default, OpenLVModalElement, type OpenLVModalElementProperties } from "./element.js";
 export type { ThemeConfig } from "./theme/index.js";
 
 import OpenLVModalElementDefault, {
-  type OpenLVModalElementProps as OpenLVModalElementProperties,
+  type OpenLVModalElementProperties,
 } from "./element.js";
 import { log } from "./utils/log.js";
 export { OPENLV_ICON_128 } from "./assets/logo.js";

@@ -22,7 +22,7 @@ import { useTheme } from "../hooks/useTheme.js";
 import { useTranslation } from "../utils/i18n.js";
 import { Footer } from "./footer/Footer.js";
 import { Header } from "./Header.js";
-import { ModalSettings, type SettingsNavigationRef as SettingsNavigationReference } from "./settings/index.js";
+import { ModalSettings, type SettingsNavigationReference } from "./settings/index.js";
 import { UnknownState } from "./UnknownState.js";
 
 export interface ModalRootProps {

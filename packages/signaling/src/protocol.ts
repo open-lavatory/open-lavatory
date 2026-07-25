@@ -1,6 +1,6 @@
 import type { MaybePromise } from "viem";
 
-import type { SignalingLayerFn as SignalingLayerFunction } from "./index.js";
+import type { SignalingLayerFunction } from "./index.js";
 
 export type SignalingChannel = {
   type: string;

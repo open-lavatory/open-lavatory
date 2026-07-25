@@ -1,4 +1,4 @@
-import type { OpenLVModalElementProps } from "@openlv/modal";
+import type { OpenLVModalElementProperties } from "@openlv/modal";
 import {
   createProvider,
   type OpenLVProvider,
@@ -14,7 +14,7 @@ import { getTriggerModal } from "./modal.js";
 
 export type OpenLVConnectorParameters = Prettify<
   Pick<OpenLVProviderParameters, "config" | "storage">
-  & Pick<OpenLVModalElementProps, "theme">
+  & Pick<OpenLVModalElementProperties, "theme">
 >;
 
 export type OpenLVConnector = CreateConnectorFn<

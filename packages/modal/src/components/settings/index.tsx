@@ -9,14 +9,14 @@ import { TransportSettings } from "./connection/transport.js";
 
 export type SettingsScreen = "main" | "signaling" | "transport";
 
-export interface SettingsNavigationRef {
+export interface SettingsNavigationReference {
   goBack: () => void;
   isAtRoot: boolean;
 }
 
 export interface ModalSettingsProps {
   onTitleChange?: (titleKey: string) => void;
-  navigationRef?: { current: SettingsNavigationRef | null; };
+  navigationRef?: { current: SettingsNavigationReference | null; };
 }
 
 const getSettingsTitleKey = (screen: SettingsScreen): string => {
@@ -43,7 +43,7 @@ export const ModalSettings = (properties: ModalSettingsProps) => {
     isAtRoot,
   } = useNavigationStack<SettingsScreen>("main");
 
-  const internalReference: SettingsNavigationRef = {
+  const internalReference: SettingsNavigationReference = {
     goBack,
     get isAtRoot() {
       return isAtRoot();
