@@ -128,6 +128,8 @@ export const webrtc: Transport = (
       channel.addEventListener("open", onDataChannelOpen);
       channel.addEventListener("message", onDataChannelMessage);
       channel.addEventListener("close", onDataChannelClose);
+
+      if (channel.readyState === "open") onDataChannelOpen();
     };
     const unhookChannel = (channel: RTCDataChannel) => {
       channel.removeEventListener("open", onDataChannelOpen);
