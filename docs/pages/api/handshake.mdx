@@ -40,7 +40,7 @@ Every decrypted payload is a JSON object with three fields:
 ```typescript
 type SignalMessage = {
   type: "flash" | "pubkey" | "capabilities" | "data";
-  payload: object | string | undefined;
+  payload: unknown;
   timestamp: number; // Unix ms at send time
 };
 ```
@@ -163,7 +163,7 @@ sequenceDiagram
     D->>W: data { type: "candidate" } · repeated
     W->>D: data { type: "candidate" } · repeated
     Note over D,W: WebRTC data channel opens — transport CONNECTED
-    D-)W: session envelope (request / response / ack) · direct P2P
+    D-)W: session envelope (request / response / failed / ack) · direct P2P
 ```
 
 In packet order:
@@ -215,10 +215,12 @@ The host creates the [WebRTC](/api/transport/webrtc) data channel and sends the 
 From that point all application traffic flows over the direct transport using the session envelope:
 
 ```json
-{ "type": "request",  "messageId": "<uuid>", "payload": { "method": "eth_requestAccounts", "params": [] } }
+{ "type": "request",  "messageId": "<uuid>", "payload": { "jsonrpc": "2.0", "id": 1, "method": "eth_requestAccounts", "params": [] } }
 { "type": "ack",      "messageId": "<uuid>" }
-{ "type": "response", "messageId": "<uuid>", "payload": ["0x1234…"] }
+{ "type": "response", "messageId": "<uuid>", "payload": { "jsonrpc": "2.0", "id": 1, "result": ["0x1234…"] } }
+{ "type": "failed",   "messageId": "<uuid>" }
 ```
 
 The receiver acks a request immediately (so the sender knows the peer is alive while the user decides), then sends the correlated `response` when the handler resolves.
+If the handler throws, the receiver sends `failed` instead. It carries no detail.
 This session-envelope `ack` is a per-request receipt inside the established session — unrelated to the signaling handshake.

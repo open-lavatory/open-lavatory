@@ -2,7 +2,7 @@ import { decodeConnectionURL, encodeConnectionURL } from "@openlv/core";
 import { webrtc } from "@openlv/transport/webrtc";
 import { describe, expect, test } from "vitest";
 
-import { connectSession, createSession, SessionStatus } from "./index.js";
+import { connectSession, createSession, RequestFailedError, SessionStatus } from "./index.js";
 
 describe("Session", () => {
   test("Should be able to create a session", async () => {
@@ -44,6 +44,10 @@ describe("Session", () => {
       async (message) => {
         console.log("sessionB received message", message);
 
+        if (JSON.stringify(message).includes("boom")) {
+          throw new Error("failed to sign with privkey 12345");
+        }
+
         return { result: "success" };
       },
       [webrtc()],
@@ -65,5 +69,8 @@ describe("Session", () => {
     console.log("response", response);
 
     expect(response).toEqual({ result: "success" });
+
+    // A throwing handler fails the request at once instead of leaving it to time out.
+    await expect(sessionA.send({ data: "boom" })).rejects.toBeInstanceOf(RequestFailedError);
   });
 });

@@ -38,9 +38,11 @@ Then use it like `@openlv/session` (no extra polyfill calls):
 ```ts
 import { connectSession } from "@openlv/react-native";
 
-const session = await connectSession("openlv://...", async (msg) => {
-  // ...handle requests...
-  return "ok";
+const session = await connectSession("openlv://...", async (request) => {
+  const { id } = request as { id: number | string | null; };
+
+  // ...handle the JSON-RPC request...
+  return { jsonrpc: "2.0", id, result: "ok" };
 });
 
 await session.connect();

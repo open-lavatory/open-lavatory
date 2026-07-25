@@ -210,7 +210,7 @@ export const attachTryItSession = (
     });
   };
 
-  const onRequest = (payload: object | string) => {
+  const onRequest = (payload: unknown) => {
     const request = payload as { method?: string; };
 
     logRpc(actions, role, "in", payload, request.method);
@@ -254,17 +254,39 @@ export const attachTryItSession = (
   };
 };
 
+// EIP-1193 provider error codes with the spec's own texts; the injected
+// wallet's message is never forwarded, only these.
+const standardProviderErrors: Partial<Record<number, string>> = {
+  4001: "User Rejected Request",
+  4100: "Unauthorized",
+  4200: "Unsupported Method",
+  4900: "Disconnected",
+  4901: "Chain Disconnected",
+};
+
 export const shimWalletOnMessage = (
   role: TryItRole,
-  handler: (message: object) => Promise<object | string>,
+  handler: (message: unknown) => Promise<unknown>,
   actions: TryItSessionActions,
-) => async (message: object) => {
+) => async (message: unknown) => {
   const request = message as { method?: string; };
+  const identifier
+    = typeof message === "object"
+      && message !== null
+      && "id" in message
+      && (typeof message["id"] === "number" || typeof message["id"] === "string")
+      ? message["id"]
+      : null;
 
   logRpc(actions, role, "in", message, request.method);
 
   try {
-    const response = await handler(message);
+    const result = await handler(message);
+    const response = {
+      jsonrpc: "2.0",
+      ["id"]: identifier,
+      result,
+    };
 
     logRpc(actions, role, "out", response, request.method);
 
@@ -279,7 +301,22 @@ export const shimWalletOnMessage = (
       request.method,
       true,
     );
-    throw error;
+
+    const code = typeof error === "object" && error !== null && "code" in error
+      ? error.code
+      : undefined;
+    const standardMessage = typeof code === "number"
+      ? standardProviderErrors[code]
+      : undefined;
+
+    // Anything else stays a throw; the session tells the dApp only that the request failed.
+    if (typeof code !== "number" || standardMessage === undefined) throw error;
+
+    return {
+      jsonrpc: "2.0",
+      ["id"]: identifier,
+      error: { code, message: standardMessage },
+    };
   }
 };
 

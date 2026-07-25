@@ -32,6 +32,8 @@ const session = await connectSession("openlv://...");
 await session.connect();
 ```
 
+If `onMessage` throws, the session sends the peer `failed`. It carries no detail.
+
 ## Identifying yourself to the peer
 
 Both sides can pass an optional `info` object; it is carried in the [`capabilities` handshake packet](/api/handshake#capabilities) and shown in the other peer's UI:

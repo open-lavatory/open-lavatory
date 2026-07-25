@@ -214,14 +214,14 @@ When a protocol has negotiated a transport, both peers send `candidate` messages
 
 Once transport is established, peers exchange session messages over it.
 A session message is a JSON object with a string member `type`.
-Version 1 defines the types `request`, `ack`, `response`, and `close`.
+Version 1 defines the types `request`, `ack`, `response`, `failed`, and `close`.
 
 A receiver MUST ignore a session message whose `type` it does not recognise.
 
 The `payload` member of a session message is an opaque JSON value.
 The session layer MUST NOT inspect or modify `payload`.
 The application that uses the session defines what `payload` contains.
-For EIP-1193 traffic, each `payload` is an EIP-1193 request or response, carried unchanged.
+For EIP-1193 traffic, each `payload` is a JSON-RPC 2.0 request or response, carried unchanged.
 
 The examples in this section carry EIP-1193 payloads.
 These payloads only illustrate the envelope, and any JSON value can take their place.
@@ -243,14 +243,21 @@ The receiver SHOULD send `ack` as soon as it receives a `request`, before any us
 { "type": "ack", "messageId": "5b0e6f3c..." }
 ```
 
-The receiver MUST send exactly one `response` for each `request`, with the same `messageId`:
+The receiver MUST send exactly one `response` or `failed` for each `request`, with the same `messageId`:
 
 ```json
 { "type": "response", "messageId": "5b0e6f3c...", "payload": { "jsonrpc": "2.0", "id": 1, "result": ["0x1234567890abcdef1234567890abcdef12345678"] } }
 ```
 
-A sender MUST accept a `response` that arrives without a prior `ack`.
-A sender MUST ignore an `ack` or `response` whose `messageId` does not match one of its open requests.
+If the receiver cannot answer, it sends `failed` instead, and the sender MUST fail the request.
+A `failed` MUST NOT carry error details:
+
+```json
+{ "type": "failed", "messageId": "5b0e6f3c..." }
+```
+
+A sender MUST accept a `response` or `failed` that arrives without a prior `ack`.
+A sender MUST ignore an `ack`, `response` or `failed` whose `messageId` does not match one of its open requests.
 A sender SHOULD fail a request that receives no `ack` within a bounded interval.
 The `ack` separates a lost message from a slow user, so a sender SHOULD NOT apply a short deadline after the `ack` arrives.
 
@@ -346,7 +353,9 @@ import { webrtc } from "@openlv/transport/webrtc";
 const session = await connectSession(
   "openlv://...",
   async (message) => {
-    return { result: "ok" };
+    const { id } = message as { id: number | string | null };
+
+    return { jsonrpc: "2.0", id, result: "ok" };
   },
   [webrtc()],
 );

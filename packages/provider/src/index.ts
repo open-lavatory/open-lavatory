@@ -16,10 +16,13 @@ import { webrtc, type WebRTCConfig } from "@openlv/transport/webrtc";
 import { Provider as OxProvider } from "ox";
 import type { EventMap } from "ox/Provider";
 import type { ExtractReturnType } from "ox/RpcSchema";
-import { match } from "ts-pattern";
 import type { Address, Prettify } from "viem";
 
-import type { RpcSchema } from "./rpc.js";
+import {
+  createWalletRpcClient,
+  jsonRpcRequest,
+  type RpcSchema,
+} from "./rpc.js";
 import {
   createProviderStorage,
   type ProviderStorageParameters,
@@ -27,29 +30,6 @@ import {
 } from "./storage/index.js";
 import type { SignalingProtocol } from "./storage/version.js";
 import { log } from "./utils/log.js";
-
-/** Unwrap `{ result }` / `{ error }` envelopes from wallet session handlers. */
-const unwrapSessionResponse = (payload: unknown): unknown => {
-  if (typeof payload !== "object" || payload === null) {
-    return payload;
-  }
-
-  if ("error" in payload && payload.error) {
-    const rpcError = payload.error as {
-      code: number;
-      message: string;
-      data?: unknown;
-    };
-
-    throw Object.assign(new Error(rpcError.message), { code: rpcError.code });
-  }
-
-  if ("result" in payload) {
-    return (payload as { result: unknown; }).result;
-  }
-
-  return payload;
-};
 
 export type OpenLVProviderConfig = {
   /** Shared with the wallet during the handshake and shown in its UI. */
@@ -117,6 +97,13 @@ export const createProvider = (
   let accounts: Address[] = [];
   const storage = createProviderStorage({ storage: parameters.storage });
   const { openModal, config } = parameters;
+  const walletRpc = createWalletRpcClient(async (payload) => {
+    const current = session.get();
+
+    if (!current) throw new Error("No session");
+
+    return await current.send(payload);
+  });
 
   status.subscribe(current => log("status", current));
 
@@ -130,30 +117,22 @@ export const createProvider = (
    * "Method not found" error so the wallet receives a proper response rather
    * than a no-op stub.
    */
-  const onMessage = async (message: object): Promise<object> => {
+  const onMessage = async (message: unknown): Promise<unknown> => {
     log("onMessage received from remote peer", message);
 
     // Emit on the session emitter so observers (e.g. modal) can react.
     session.get()?.emitter.emit("request", message);
 
+    const requestIdentifier = jsonRpcRequest.safeParse(message).data?.["id"] ?? null;
+
     return {
+      jsonrpc: "2.0",
+      ["id"]: requestIdentifier,
       error: {
         code: -32_601,
         message: "Method not found",
       },
     };
-  };
-
-  const getAccounts = async (): Promise<Address[]> => {
-    const current = session.get();
-
-    if (current) {
-      return unwrapSessionResponse(
-        await current.send({ method: "eth_accounts", params: [] }),
-      ) as Address[];
-    }
-
-    throw new Error("No session");
   };
 
   /** Derive default link parameters from stored signaling settings. */
@@ -216,14 +195,12 @@ export const createProvider = (
 
       log("session linked");
 
-      accounts = await getAccounts();
+      accounts = [...await walletRpc.call({ method: "eth_accounts" })];
 
-      const chainIdHex = unwrapSessionResponse(
-        await next.send({ method: "eth_chainId", params: [] }),
-      ) as string;
+      const chainId = await walletRpc.call({ method: "eth_chainId" });
 
       setStatus(ProviderStatus.CONNECTED);
-      oxEmitter.emit("connect", { chainId: chainIdHex });
+      oxEmitter.emit("connect", { chainId });
       oxEmitter.emit("accountsChanged", accounts);
 
       return next;
@@ -242,6 +219,7 @@ export const createProvider = (
   const closeSession = async () => {
     await session.get()?.close();
     setSession(undefined);
+    accounts = [];
     setError(undefined);
     setStatus(ProviderStatus.STANDBY);
   };
@@ -251,93 +229,49 @@ export const createProvider = (
   ) => {
     log("ox request", request.method, request.params);
 
-    return (
-      match(request)
-        .with({ method: "eth_chainId" }, async () => {
-          log("eth_chainId");
+    if (request.method === "eth_chainId" && !session.get()) return "0x1";
 
-          const current = session.get();
+    if (request.method === "wallet_revokePermissions") return await closeSession();
 
-          if (current) {
-            log("sending eth_chainId to session");
-            const result = unwrapSessionResponse(
-              await current.send(request),
-            );
+    if (request.method === "eth_requestAccounts") {
+      log("eth_requestAccounts");
 
-            log("eth_chainId result from session", result);
+      if (openModal) {
+        await openModal(oxProvider as OpenLVProvider);
 
-            return result;
-          }
+        await new Promise<void>((resolve) => {
+          const onConnect = () => {
+            cleanup();
+            resolve();
+          };
+          const onDisconnect = () => {
+            cleanup();
+            resolve();
+          };
+          const cleanup = () => {
+            oxProvider.off("connect", onConnect);
+            oxProvider.off("disconnect", onDisconnect);
+          };
 
-          return "0x1";
-        })
-        .with({ method: "wallet_requestPermissions" }, () => {
-          throw new Error("Not implemented");
-        })
-        .with({ method: "wallet_revokePermissions" }, async () => {
-          await closeSession();
+          oxProvider.on("connect", onConnect);
+          oxProvider.on("disconnect", onDisconnect);
+        });
+      }
+      else {
+        await start();
+      }
 
-          return;
-        })
-        .with({ method: "eth_requestAccounts" }, async () => {
-          log("eth_requestAccounts");
+      return [...await walletRpc.call({ method: "eth_accounts" })];
+    }
 
-          let provider: OpenLVProvider | undefined;
+    if (!session.get()) throw new Error(`Method ${request.method} not supported`);
 
-          if (oxProvider) {
-            provider = oxProvider as OpenLVProvider;
-          }
+    log("sending request to session", request);
+    const result = await walletRpc.call(request);
 
-          if (openModal && provider) {
-            await openModal(provider);
+    log("result from session", result);
 
-            await new Promise<void>((resolve) => {
-              const onConnect = () => {
-                cleanup();
-                resolve();
-              };
-              const onDisconnect = () => {
-                cleanup();
-                resolve();
-              };
-              const cleanup = () => {
-                provider?.off("connect", onConnect);
-                provider?.off("disconnect", onDisconnect);
-              };
-
-              provider?.on("connect", onConnect);
-              provider?.on("disconnect", onDisconnect);
-            });
-
-            return await getAccounts();
-          }
-
-          await start();
-
-          return await getAccounts();
-        })
-        .with({ method: "eth_accounts" }, async () => {
-          log("eth_accounts");
-
-          return await getAccounts();
-        })
-        .otherwise(async (v) => {
-          const current = session.get();
-
-          if (current) {
-            log("sending request to session", request);
-            const result = unwrapSessionResponse(
-              await current.send(request),
-            );
-
-            log("result from session", result);
-
-            return result;
-          }
-
-          throw new Error(`Method ${v.method} not supported`);
-        }) as unknown as ExtractReturnType<RpcSchema, typeof request.method>
-    );
+    return result as ExtractReturnType<RpcSchema, typeof request.method>;
   };
   const oxProvider = OxProvider.from<
     ProviderConfig,
@@ -348,7 +282,9 @@ export const createProvider = (
     ...oxEmitter,
     storage,
     request,
-    getAccounts,
+    getAccounts: async () => (
+      [...await walletRpc.call({ method: "eth_accounts" })]
+    ),
     createSession: start,
     closeSession,
     status,

@@ -9,6 +9,22 @@ So you are intrigued 🤔, lets get you started.
 3. Implement EIP 1193-RPC request handling via`onMessage` just like you would expect.
 4. Optionally store previous sessions, to allow for resumption at a later time.
 
+## Handler responses
+
+`onMessage` returns a JSON-RPC 2.0 response, as with WalletKit's `respondSessionRequest`.
+
+```typescript
+const onMessage = async (request) => {
+  return { jsonrpc: "2.0", id: request.id, result: ["0x1234…"] };
+};
+```
+
+When the user rejects, return an error:
+
+```typescript
+return { jsonrpc: "2.0", id: request.id, error: { code: 4001, message: "User Rejected Request" } };
+```
+
 ## Important differences
 
 - You won't need an API key.

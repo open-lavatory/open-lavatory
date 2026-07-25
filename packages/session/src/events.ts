@@ -4,5 +4,5 @@ export type SessionEvents = {
    * is sent. Useful for observability, logging, or UI integration without
    * needing to intercept the `onMessage` callback.
    */
-  request: (payload: object | string) => void;
+  request: (payload: unknown) => void;
 };

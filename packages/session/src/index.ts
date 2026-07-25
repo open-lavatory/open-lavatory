@@ -31,14 +31,12 @@ import { EventEmitter } from "eventemitter3";
 import { loadSignaling } from "./dynamic.js";
 import type { SessionEvents } from "./events.js";
 import { awaitCorrelatedResponse, type CorrelationEvents } from "./messages/correlate.js";
-import type {
-  SessionMessage,
-  SessionMessageAck,
-  SessionMessageResponse,
-} from "./messages/index.js";
+import { isSessionMessage, type SessionMessage } from "./messages/index.js";
 import { log } from "./utils/log.js";
 
 export { loadSignaling, loadTransport } from "./dynamic.js";
+export { RequestFailedError } from "./messages/correlate.js";
+export type { SessionMessage } from "./messages/index.js";
 
 // `peerInfo` is part of the session's surface, so consumers must be able to
 // name its type without reaching into @openlv/signaling.
@@ -71,7 +69,11 @@ export type Session = {
   getHandshakeParameters(): SessionHandshakeParameters;
   connect(): Promise<void>;
   close(): Promise<void>;
-  send(message: object, ackTimeout?: number, responseTimeout?: number): Promise<unknown>;
+  send(
+    message: unknown,
+    ackTimeout?: number,
+    responseTimeout?: number,
+  ): Promise<unknown>;
   emitter: EventEmitter<SessionEvents>;
   _internal: {
     signal: SignalingLayer;
@@ -88,7 +90,7 @@ export type Session = {
 export const createSession = async (
   initParameters: SessionLinkParameters,
   transportLayers: TransportLayerFunction[],
-  onMessage: (message: object) => Promise<object | string>,
+  onMessage: (message: unknown) => Promise<unknown>,
   options?: SessionOptions,
 ): Promise<Session> => {
   if (transportLayers.length === 0) {
@@ -195,8 +197,14 @@ export const createSession = async (
     },
     decrypt,
     isHost,
-    onmessage: async (message: { type: string; payload: object; messageId: string; }) => {
+    onmessage: async (message) => {
       log("Session: received message from transport", message);
+
+      if (!isSessionMessage(message)) {
+        log("dropping invalid session message", message);
+
+        return;
+      }
 
       if (message["type"] === "close") {
         await teardown();
@@ -205,36 +213,43 @@ export const createSession = async (
       }
 
       if (message["type"] === "request") {
-        const messageId = message["messageId"] as string;
+        const messageId = message["messageId"];
 
         try {
           // Immediately acknowledge receipt so the sender's ack-timeout does
           // not fire while the handler (which may await user interaction) runs.
           await transport?.send({ type: "ack", messageId } satisfies SessionMessage);
 
-          // Notify observers before processing (e.g. wallet UI can show a
-          // pending indicator before the handler resolves).
-          emitter.emit("request", message["payload"] as object);
+          let answer: SessionMessage;
 
-          const data = await onMessage(message["payload"] as object)
-            // A throwing handler must still answer, otherwise the peer waits
-            // out its full response timeout.
-            .catch(() => ({ error: { code: -32_603, message: "Internal error" } }));
+          try {
+            // Notify observers before processing (e.g. wallet UI can show a
+            // pending indicator before the handler resolves).
+            emitter.emit("request", message["payload"]);
 
-          await transport?.send({
-            type: "response",
-            messageId,
-            payload: data,
-          } satisfies SessionMessage);
+            answer = {
+              type: "response",
+              messageId,
+              payload: await onMessage(message["payload"]),
+            };
+          }
+          catch (error) {
+            // Only the fact of failure goes to the peer; the thrown value
+            // may carry wallet-private details and stays in the local log.
+            log("request handler threw", error);
+            answer = { type: "failed", messageId };
+          }
+
+          await transport?.send(answer);
         }
         catch (error) {
           log("failed to respond to peer request", error);
         }
       }
 
-      if (message["type"] === "response" || message["type"] === "ack") {
-        // Both acks and responses are forwarded to the send() correlator.
-        messages.emit("message", message as SessionMessageAck | SessionMessageResponse);
+      else {
+        // What is left is an ack, a response or a failure: the send() correlator takes all three.
+        messages.emit("message", message);
       }
     },
     async subsend(message) {
@@ -434,7 +449,7 @@ export const createSession = async (
       };
     },
     async send(
-      message: object,
+      message: unknown,
       ackTimeout: number = 10_000,
       responseTimeout: number = 60 * 60_000,
     ) {
@@ -468,7 +483,7 @@ export const createSession = async (
  */
 export const connectSession = async (
   connectionUrl: string,
-  onMessage: (message: object) => Promise<object | string>,
+  onMessage: (message: unknown) => Promise<unknown>,
   transports: TransportLayerFunction[],
   options?: SessionOptions,
 ): Promise<Session> => {

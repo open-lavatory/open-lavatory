@@ -1,9 +1,18 @@
 import type { EventEmitter } from "eventemitter3";
 
-import type { SessionMessageAck, SessionMessageResponse } from "./index.js";
+import type { SessionMessageAck, SessionMessageFailed, SessionMessageResponse } from "./index.js";
+
+/** The peer's handler threw. The peer sends no detail, so there is none here. */
+export class RequestFailedError extends Error {
+  override name = "RequestFailedError";
+
+  constructor() {
+    super("The remote peer failed to handle the request");
+  }
+}
 
 export type CorrelationEvents = {
-  message: SessionMessageAck | SessionMessageResponse;
+  message: SessionMessageAck | SessionMessageFailed | SessionMessageResponse;
   /** The session ended; every open request fails with `reason`. */
   ended: (reason: string) => void;
 };
@@ -38,8 +47,15 @@ export const awaitCorrelatedResponse = (
     reject(new Error(reason));
   };
 
-  const handler = (message: SessionMessageAck | SessionMessageResponse) => {
+  const handler = (message: SessionMessageAck | SessionMessageFailed | SessionMessageResponse) => {
     if (message.messageId !== messageId) return;
+
+    if (message.type === "failed") {
+      cleanup();
+      reject(new RequestFailedError());
+
+      return;
+    }
 
     if (message.type === "ack" && !isAckReceived) {
       isAckReceived = true;
