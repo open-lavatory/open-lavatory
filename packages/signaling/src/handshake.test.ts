@@ -24,8 +24,8 @@ const createTopic = () => {
   let published = 0;
 
   return {
-    setDrop(fn: (payload: string, index: number) => boolean) {
-      drop = fn;
+    setDrop(function_: (payload: string, index: number) => boolean) {
+      drop = function_;
     },
     inject(payload: string) {
       for (const subscriber of subscribers) subscriber(payload);

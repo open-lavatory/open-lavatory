@@ -62,19 +62,19 @@ export type ProviderStorageV3 = {
 
 export type ProviderStorage = ProviderStorageV3;
 
-export type ProviderStorageVAny =
-  | ProviderStorageV0
-  | ProviderStorageV1
-  | ProviderStorageV2
-  | ProviderStorageV3;
+export type ProviderStorageVAny
+  = | ProviderStorageV0
+    | ProviderStorageV1
+    | ProviderStorageV2
+    | ProviderStorageV3;
 
 type JsonObject = Record<string, unknown>;
 
 const isObject = (v: unknown): v is JsonObject =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
-const fail = (msg: string): never => {
-  throw new TypeError(msg);
+const fail = (message: string): never => {
+  throw new TypeError(message);
 };
 
 const asObject = (v: unknown, label: string): JsonObject =>
@@ -83,7 +83,7 @@ const asObject = (v: unknown, label: string): JsonObject =>
 const asBool = (v: unknown, label: string): boolean =>
   (typeof v === "boolean" ? v : fail(`${label} must be a boolean`));
 
-const asStr = (v: unknown, label: string): string =>
+const asString = (v: unknown, label: string): string =>
   (typeof v === "string" ? v : fail(`${label} must be a string`));
 
 const asProtocol = (v: unknown): SignalingProtocol =>
@@ -112,7 +112,7 @@ const readCore = (o: JsonObject) => ({
 const readSignalingV0 = (v: unknown): SignalingSettingsV0 => {
   const o = asObject(v, "session");
 
-  return { p: asStr(o.p, "session.p"), s: asStr(o.s, "session.s") };
+  return { p: asString(o.p, "session.p"), s: asString(o.s, "session.s") };
 };
 
 const readSignalingV1 = (v: unknown): SignalingSettingsV1 => {
@@ -122,7 +122,7 @@ const readSignalingV1 = (v: unknown): SignalingSettingsV1 => {
 
   for (const protocol of SIGNALING_PROTOCOLS) {
     if (protocol in servers) {
-      s[protocol] = asStr(servers[protocol], `signaling.s.${protocol}`);
+      s[protocol] = asString(servers[protocol], `signaling.s.${protocol}`);
     }
   }
 
@@ -133,9 +133,9 @@ const readTurn = (v: unknown): TurnServer => {
   const o = asObject(v, "turn server");
 
   return {
-    urls: asStr(o.urls, "turn.urls"),
-    ...(typeof o.username === "string" ? { username: o.username } : {}),
-    ...(typeof o.credential === "string" ? { credential: o.credential } : {}),
+    urls: asString(o.urls, "turn.urls"),
+    ...((typeof o.username === "string") && { username: o.username }),
+    ...((typeof o.credential === "string") && { credential: o.credential }),
   };
 };
 
@@ -143,14 +143,14 @@ const readWebRTC = (v: unknown): WebRTCSettings => {
   const o = asObject(v, "webrtc");
 
   return {
-    ...(Array.isArray(o.stun) ? { stun: asStringArray(o.stun, "webrtc.stun") } : {}),
-    ...(Array.isArray(o.turn) ? { turn: o.turn.map(readTurn) } : {}),
+    ...(Array.isArray(o.stun) && { stun: asStringArray(o.stun, "webrtc.stun") }),
+    ...(Array.isArray(o.turn) && { turn: o.turn.map(readTurn) }),
   };
 };
 
 const readTransport = (v: unknown): TransportSettings => {
   const o = asObject(v, "transport");
-  const transport: TransportSettings = { p: asStr(o.p, "transport.p") };
+  const transport: TransportSettings = { p: asString(o.p, "transport.p") };
 
   if (isObject(o.s)) {
     transport.s = "webrtc" in o.s ? { webrtc: readWebRTC(o.s.webrtc) } : {};
@@ -182,7 +182,7 @@ const readV2 = (v: unknown): ProviderStorageV2 => {
     version: 2,
     ...readCore(o),
     signaling: readSignalingV1(o.signaling),
-    ...(typeof o.language === "string" ? { language: o.language } : {}),
+    ...((typeof o.language === "string") && { language: o.language }),
   };
 };
 
@@ -194,10 +194,10 @@ const readV3 = (v: unknown): ProviderStorageV3 => {
   return {
     version: 3,
     ...readCore(o),
-    ...(o.signaling === undefined ? {} : { signaling: readSignalingV1(o.signaling) }),
-    ...(typeof o.language === "string" ? { language: o.language } : {}),
-    ...(o.transport === undefined ? {} : { transport: readTransport(o.transport) }),
-    ...(o.theme === undefined ? {} : { theme: asTheme(o.theme) }),
+    ...(o.signaling !== undefined && { signaling: readSignalingV1(o.signaling) }),
+    ...((typeof o.language === "string") && { language: o.language }),
+    ...(o.transport !== undefined && { transport: readTransport(o.transport) }),
+    ...(o.theme !== undefined && { theme: asTheme(o.theme) }),
   };
 };
 

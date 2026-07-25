@@ -1,6 +1,6 @@
 import type { MaybePromise } from "viem";
 
-import type { SignalingLayerFn } from "./index.js";
+import type { SignalingLayerFn as SignalingLayerFunction } from "./index.js";
 
 export type SignalingChannel = {
   type: string;
@@ -17,4 +17,4 @@ export type SignalingProtocolOptions = {
 
 export type SignalingProtocol = (
   properties: SignalingProtocolOptions,
-) => MaybePromise<SignalingLayerFn>;
+) => MaybePromise<SignalingLayerFunction>;

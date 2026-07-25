@@ -9,7 +9,7 @@ export type ToggleProps = {
   onChange: (value: boolean) => void;
 };
 
-export const Toggle = (props: ToggleProps) => {
+export const Toggle = (properties: ToggleProps) => {
   const { t } = useTranslation();
 
   return (
@@ -18,8 +18,8 @@ export const Toggle = (props: ToggleProps) => {
         ["true", String(t("common.yes"))],
         ["false", String(t("common.no"))],
       ]}
-      value={props.value ? "true" : "false"}
-      onChange={value => props.onChange(value === "true")}
+      value={properties.value ? "true" : "false"}
+      onChange={value => properties.onChange(value === "true")}
     />
   );
 };

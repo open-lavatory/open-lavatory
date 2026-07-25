@@ -13,8 +13,8 @@ import { log } from "./log.js";
 import { getTriggerModal } from "./modal.js";
 
 export type OpenLVConnectorParameters = Prettify<
-  Pick<OpenLVProviderParameters, "config" | "storage"> &
-  Pick<OpenLVModalElementProps, "theme">
+  Pick<OpenLVProviderParameters, "config" | "storage">
+  & Pick<OpenLVModalElementProps, "theme">
 >;
 
 export type OpenLVConnector = CreateConnectorFn<

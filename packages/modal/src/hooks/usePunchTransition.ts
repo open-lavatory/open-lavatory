@@ -13,30 +13,30 @@ export const usePunchTransition = <T>(
   const initialValue = readValue();
   const [current, setCurrent] = createSignal<T>(initialValue);
   const [previous, setPrevious] = createSignal<T | undefined>(undefined);
-  let timeoutRef: ReturnType<typeof setTimeout> | undefined;
-  let lastValueRef = initialValue;
+  let timeoutReference: ReturnType<typeof setTimeout> | undefined;
+  let lastValueReference = initialValue;
 
   createEffect(() => {
     const nextValue = readValue();
 
-    if (Object.is(nextValue, lastValueRef)) return;
+    if (Object.is(nextValue, lastValueReference)) return;
 
-    if (timeoutRef) {
-      globalThis.clearTimeout(timeoutRef);
+    if (timeoutReference) {
+      globalThis.clearTimeout(timeoutReference);
     }
 
-    setPrevious(() => lastValueRef);
+    setPrevious(() => lastValueReference);
     setCurrent(() => nextValue);
-    lastValueRef = nextValue;
+    lastValueReference = nextValue;
 
-    timeoutRef = globalThis.setTimeout(() => {
+    timeoutReference = globalThis.setTimeout(() => {
       setPrevious(() => undefined);
-      timeoutRef = undefined;
+      timeoutReference = undefined;
     }, duration);
 
     onCleanup(() => {
-      if (timeoutRef) {
-        globalThis.clearTimeout(timeoutRef);
+      if (timeoutReference) {
+        globalThis.clearTimeout(timeoutReference);
       }
     });
   });

@@ -25,21 +25,21 @@ const isDebugEnabled = (): boolean => {
   }
 };
 
-const supportsColor = typeof document !== "undefined";
+const isSupportsColor = typeof document !== "undefined";
 
 export const createLogger = (scope: string, color = "gray") =>
-  (...args: Parameters<typeof console.log>) => {
+  (...arguments_: Parameters<typeof console.log>) => {
     if (!isDebugEnabled()) return;
 
-    if (supportsColor) {
+    if (isSupportsColor) {
       console.log(
         `%c[${scope}]%c`,
         `color: ${color}; font-weight: bold`,
         "color: inherit; font-weight: normal",
-        ...args,
+        ...arguments_,
       );
     }
     else {
-      console.log(`[${scope}]`, ...args);
+      console.log(`[${scope}]`, ...arguments_);
     }
   };

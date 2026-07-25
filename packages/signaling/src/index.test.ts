@@ -79,12 +79,12 @@ const providersByType: readonly [
 
 const testSignalingLayer = async (
   layer: SignalingProtocol,
-  props: SignalingProtocolOptions,
+  properties: SignalingProtocolOptions,
 ): Promise<void> => {
   const { encryptionKey: publicKey, decryptionKey } = await generateKeyPair();
   const h = hKey;
 
-  const signalingLayer = await layer(props);
+  const signalingLayer = await layer(properties);
   const signalA = await signalingLayer({
     h,
     rpDiscovered: v => log("rpKey", v),
@@ -142,13 +142,13 @@ const testSignalingLayer = async (
 
 const PROVIDER_TIMEOUT_MS = 5000;
 
-type ProviderResult =
-  | { url: string; ok: true; duration: number; }
-  | { url: string; ok: false; error: string; };
+type ProviderResult
+  = | { url: string; ok: true; duration: number; }
+    | { url: string; ok: false; error: string; };
 
 const testProvider = async (
   layer: SignalingProtocol,
-  props: SignalingProtocolOptions,
+  properties: SignalingProtocolOptions,
 ): Promise<ProviderResult> => {
   const timeout = new Promise<never>((_, reject) =>
     setTimeout(
@@ -160,14 +160,14 @@ const testProvider = async (
   const startTime = performance.now();
 
   try {
-    await Promise.race([testSignalingLayer(layer, props), timeout]);
+    await Promise.race([testSignalingLayer(layer, properties), timeout]);
     const duration = Math.round(performance.now() - startTime);
 
-    return { url: props.url, ok: true, duration };
+    return { url: properties.url, ok: true, duration };
   }
   catch (error) {
     return {
-      url: props.url,
+      url: properties.url,
       ok: false,
       error: (error as Error).message,
     };
@@ -192,7 +192,7 @@ describe.for(providersByType)("signaling: %s", ([typeName, providers]) => {
     { timeout: PROVIDER_TIMEOUT_MS * providers.length + 5000 },
     async () => {
       const results = await Promise.all(
-        providers.map(([, layer, props]) => testProvider(layer, props)),
+        providers.map(([, layer, properties]) => testProvider(layer, properties)),
       );
 
       const summary = formatResults(typeName, results);

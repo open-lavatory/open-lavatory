@@ -18,18 +18,18 @@ const testCases = [
 
 describe("URL Utilities", () => {
   test("should decode connection URL", () => {
-    testCases.forEach((testCase) => {
+    for (const testCase of testCases) {
       const result = decodeConnectionURL(testCase.url);
 
       expect(result).toEqual(testCase.expected);
-    });
+    }
   });
 
   test("should encode connection URL", () => {
-    testCases.forEach((testCase) => {
+    for (const testCase of testCases) {
       const result = encodeConnectionURL(testCase.expected);
 
       expect(result).toEqual(testCase.url);
-    });
+    }
   });
 });

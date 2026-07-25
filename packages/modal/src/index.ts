@@ -8,7 +8,7 @@ export { default, OpenLVModalElement, type OpenLVModalElementProps } from "./ele
 export type { ThemeConfig } from "./theme/index.js";
 
 import OpenLVModalElementDefault, {
-  type OpenLVModalElementProps,
+  type OpenLVModalElementProps as OpenLVModalElementProperties,
 } from "./element.js";
 import { log } from "./utils/log.js";
 export { OPENLV_ICON_128 } from "./assets/logo.js";
@@ -38,7 +38,7 @@ export const registerOpenLVModal = (tagName = "openlv-modal") => {
   return tagName;
 };
 
-export const triggerOpenModal = (props: OpenLVModalElementProps) => {
+export const triggerOpenModal = (properties: OpenLVModalElementProperties) => {
   const modal = document.querySelector("openlv-modal");
 
   if (modal) modal.remove();
@@ -49,10 +49,10 @@ export const triggerOpenModal = (props: OpenLVModalElementProps) => {
       onClose() {
         log("modal closed");
         x.remove();
-        props.onClose?.();
+        properties.onClose?.();
       },
-      provider: props.provider,
-      theme: props.theme,
+      provider: properties.provider,
+      theme: properties.theme,
     });
 
     document.body.append(x);

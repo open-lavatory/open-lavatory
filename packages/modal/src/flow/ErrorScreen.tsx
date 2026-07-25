@@ -8,7 +8,7 @@ import { useTranslation } from "../utils/i18n.jsx";
  * candidates" transport failure, since that one has a concrete user-side
  * remedy (WebRTC disabled/blocked by the browser, an extension, or a VPN).
  */
-export const ErrorScreen = (props: { onClose: () => void; }) => {
+export const ErrorScreen = (properties: { onClose: () => void; }) => {
   const { t } = useTranslation();
   const { provider } = useModalContext();
 
@@ -48,7 +48,7 @@ export const ErrorScreen = (props: { onClose: () => void; }) => {
         </button>
         <button
           type="button"
-          onClick={props.onClose}
+          onClick={properties.onClose}
           class="w-full rounded-lg bg-(--lv-control-button-secondary-background) px-4 py-2 font-semibold text-(--lv-text-primary) text-sm transition hover:bg-(--lv-control-button-primary-background-hover)"
         >
           {t("common.close")}

@@ -51,7 +51,7 @@ const App = () => {
     "session_started",
     (session: {
       emitter: {
-        on: (event: "state_change", cb: (state: SessionStateObject) => void) => void;
+        on: (event: "state_change", callback: (state: SessionStateObject) => void) => void;
       };
     }) => {
       session.emitter.on("state_change", (state: SessionStateObject) => {

@@ -18,8 +18,8 @@ export const TRANSPORT_STATE = {
   CONNECTED: "connected",
   ERROR: "error",
 } as const;
-export type TransportState =
-  (typeof TRANSPORT_STATE)[keyof typeof TRANSPORT_STATE];
+export type TransportState
+  = (typeof TRANSPORT_STATE)[keyof typeof TRANSPORT_STATE];
 
 export type TLayerEventMap = {
   state_change: (state: TransportState) => void;
@@ -72,8 +72,8 @@ export type TransportLayerBaseEventMap = {
   message: (message: string) => void;
   error: (reason?: string) => void;
 };
-export type TransportLayerBaseEmitter =
-  EventEmitter<TransportLayerBaseEventMap>;
+export type TransportLayerBaseEmitter
+  = EventEmitter<TransportLayerBaseEventMap>;
 export type TransportLayerBaseParameters = {
   emitter: TransportLayerBaseEmitter;
   isHost: boolean;

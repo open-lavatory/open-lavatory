@@ -44,10 +44,12 @@ const Body = ({
         <Scanner
           sound={false}
           onScan={(result) => {
-            if (result[0].format === "qr_code") {
-              setUri(result[0].rawValue);
-              setIsConnecting(true);
+            if (result[0].format !== "qr_code") {
+              return;
             }
+
+            setUri(result[0].rawValue);
+            setIsConnecting(true);
           }}
         />
         {!isConnecting && (

@@ -9,7 +9,7 @@ import { Toggle } from "../../../ui/Toggle.js";
 import { useTranslation } from "../../../utils/i18n.js";
 import type { SettingsScreen } from "../index.js";
 
-export const ConnectionPreferences = (props: {
+export const ConnectionPreferences = (properties: {
   onNavigate: (screen: SettingsScreen) => void;
 }) => {
   const { t } = useTranslation();
@@ -26,7 +26,7 @@ export const ConnectionPreferences = (props: {
             </InfoTooltip>
           </>
         )}
-        onClick={() => props.onNavigate("signaling")}
+        onClick={() => properties.onNavigate("signaling")}
         value={settings()?.signaling?.p}
       />
       <MenuLink
@@ -38,7 +38,7 @@ export const ConnectionPreferences = (props: {
             </InfoTooltip>
           </>
         )}
-        onClick={() => props.onNavigate("transport")}
+        onClick={() => properties.onNavigate("transport")}
         value="WebRTC"
       />
       <For

@@ -16,7 +16,7 @@ export const NTFY_URL_REGEX
 /*
  * URL format supports the ?auth= parameter
  * example: https://ntfy.sh/?auth=mytoken
- * example: http://authtoken123@myserver.example.com/
+ * example: https://authtoken123@myserver.example.com/
  *
  * The same goes for apprise ntfy urls
  * example: ntfy://{token}@{host}/

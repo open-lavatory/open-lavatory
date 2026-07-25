@@ -9,14 +9,14 @@ import { Input } from "../../../ui/Input.js";
 import { MenuGroup } from "../../../ui/menu/MenuGroup.js";
 import { useTranslation } from "../../../utils/i18n.js";
 
-const ServerListItem = (props: {
+const ServerListItem = (properties: {
   children: JSX.Element;
   onRemove: () => void;
 }) => (
   <div class="flex items-center gap-2">
-    <div class="flex-1">{props.children}</div>
+    <div class="flex-1">{properties.children}</div>
     <Button
-      onClick={props.onRemove}
+      onClick={properties.onRemove}
       $variant="tertiary"
       $aspect="square"
       $size="sm"
@@ -26,17 +26,17 @@ const ServerListItem = (props: {
   </div>
 );
 
-const AddServerButton = (props: {
+const AddServerButton = (properties: {
   label: JSX.Element;
   onClick: () => void;
 }) => (
   <button
     type="button"
-    onClick={props.onClick}
+    onClick={properties.onClick}
     class="flex w-full cursor-pointer items-center justify-center gap-1 rounded-md border border-dashed border-(--lv-control-input-border) py-2 text-sm text-(--lv-text-muted) hover:bg-(--lv-card-background)"
   >
     <LucidePlus class="h-4 w-4" />
-    {props.label}
+    {properties.label}
   </button>
 );
 
@@ -55,11 +55,11 @@ export const TransportSettings = () => {
   };
 
   const handleRemoveStun = (index: number) => {
-    setStunServers(stunServers().filter((_, i) => i !== index));
+    setStunServers(stunServers().filter((_, index_) => index_ !== index));
   };
 
   const handleStunChange = (index: number, value: string) => {
-    setStunServers(stunServers().map((server, i) => (i === index ? value : server)));
+    setStunServers(stunServers().map((server, index_) => (index_ === index ? value : server)));
   };
 
   const handleAddTurn = () => {
@@ -67,11 +67,11 @@ export const TransportSettings = () => {
   };
 
   const handleRemoveTurn = (index: number) => {
-    setTurnServers(turnServers().filter((_, i) => i !== index));
+    setTurnServers(turnServers().filter((_, index_) => index_ !== index));
   };
 
   const handleTurnChange = (index: number, field: keyof TurnServer, value: string) => {
-    setTurnServers(turnServers().map((server, i) => (i === index ? { ...server, [field]: value } : server)));
+    setTurnServers(turnServers().map((server, index_) => (index_ === index ? { ...server, [field]: value } : server)));
   };
 
   // createEffect(() => {

@@ -20,12 +20,12 @@ const importOrPassthrough = async (
     if (theme === "simple") {
       return await import("./simple.js").then(m => m.simpleTheme);
     }
-    else if (theme === "openlv") {
+
+    if (theme === "openlv") {
       return await import("./openlv.js").then(m => m.openlvTheme);
     }
-    else {
-      throw new Error(`Unknown theme: ${theme}`);
-    }
+
+    throw new Error(`Unknown theme: ${theme}`);
   }
 
   return theme;
@@ -34,17 +34,17 @@ const importOrPassthrough = async (
 type Primitive = string | number | boolean | null | undefined;
 type Leaf = Primitive; // extend if you want to allow Date, bigint, etc.
 
-type FlatCssVars = Record<`--${string}`, Leaf>;
+type FlatCssVariables = Record<`--${string}`, Leaf>;
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 export const flattenToCssVars = <T extends Record<string, unknown>>(
-  obj: T,
+  object: T,
   prefix: readonly string[] = [],
-  out: FlatCssVars = {},
-): FlatCssVars => {
-  for (const [key, value] of Object.entries(obj)) {
+  out: FlatCssVariables = {},
+): FlatCssVariables => {
+  for (const [key, value] of Object.entries(object)) {
     const path = [...prefix, key];
 
     if (isPlainObject(value)) {

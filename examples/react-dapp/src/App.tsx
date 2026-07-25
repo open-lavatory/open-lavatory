@@ -53,7 +53,7 @@ const App = () => {
   }, [isConnected, address, connector, chainId]);
 
   const refreshWallets = () => {
-    setRefreshKey(prev => prev + 1);
+    setRefreshKey(previous => previous + 1);
   };
 
   const formatAddress = (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-4)}`;

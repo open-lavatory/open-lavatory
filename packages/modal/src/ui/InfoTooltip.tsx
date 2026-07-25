@@ -39,25 +39,25 @@ const styles = tv({
 
 export type InfoTooltipProps = VariantProps<typeof styles>;
 
-export const InfoTooltip = (rawProps: ParentProps<InfoTooltipProps>) => {
-  const props = mergeProps(
+export const InfoTooltip = (rawProperties: ParentProps<InfoTooltipProps>) => {
+  const properties = mergeProps(
     { variant: "icon" as const, size: "lg" as const },
-    rawProps,
+    rawProperties,
   );
   const { root, box, popover, icon } = styles({
-    size: props.size,
-    variant: props.variant,
+    size: properties.size,
+    variant: properties.variant,
   });
 
   return (
     <div class={root()}>
       <div class={box()}>
-        {match(props.variant)
+        {match(properties.variant)
           .with("icon", () => <LucideCircleQuestionMark class={icon()} />)
           .with("text", () => <div>Text</div>)
           .exhaustive()}
       </div>
-      <div class={popover()}>{props.children}</div>
+      <div class={popover()}>{properties.children}</div>
     </div>
   );
 };

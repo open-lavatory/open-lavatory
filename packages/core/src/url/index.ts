@@ -3,20 +3,20 @@ import type { SessionHandshakeParameters } from "../session.js";
 export const OPENLV_PROTOCOL_VERSION = 1;
 
 export const encodeConnectionURL = (payload: SessionHandshakeParameters) => {
-  const params = new URLSearchParams();
+  const parameters = new URLSearchParams();
 
-  params.set("h", payload.h);
-  params.set("k", payload.k);
+  parameters.set("h", payload.h);
+  parameters.set("k", payload.k);
 
   if (payload.p) {
-    params.set("p", payload.p);
+    parameters.set("p", payload.p);
   }
 
   if (payload.s) {
-    params.set("s", payload.s);
+    parameters.set("s", payload.s);
   }
 
-  return `openlv://${payload.sessionId}@${OPENLV_PROTOCOL_VERSION}?${params.toString()}`;
+  return `openlv://${payload.sessionId}@${OPENLV_PROTOCOL_VERSION}?${parameters.toString()}`;
 };
 
 export const decodeConnectionURL = (
@@ -31,9 +31,9 @@ export const decodeConnectionURL = (
   );
 
   try {
-    const urlObj = new URL(url);
-    const sessionId = urlObj.username;
-    const version = Number(urlObj.hostname || urlObj.pathname.replace("/", ""));
+    const urlObject = new URL(url);
+    const sessionId = urlObject.username;
+    const version = Number(urlObject.hostname || urlObject.pathname.replace("/", ""));
 
     if (version !== OPENLV_PROTOCOL_VERSION) {
       throw new Error(
@@ -41,11 +41,11 @@ export const decodeConnectionURL = (
       );
     }
 
-    const h = urlObj.searchParams.get("h") || "";
-    const k = urlObj.searchParams.get("k") || "";
-    const s = urlObj.searchParams.get("s") || undefined;
+    const h = urlObject.searchParams.get("h") || "";
+    const k = urlObject.searchParams.get("k") || "";
+    const s = urlObject.searchParams.get("s") || undefined;
 
-    const p = urlObj.searchParams.get("p") || "mqtt";
+    const p = urlObject.searchParams.get("p") || "mqtt";
 
     if (!sessionId) {
       throw new Error("Session ID is required in URL");

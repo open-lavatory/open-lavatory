@@ -30,10 +30,12 @@ const captureConsole = (page: Page): Capture => {
     lines.push(text);
 
     for (const [index, waiter] of [...waiters.entries()].reverse()) {
-      if (waiter.pattern.test(text)) {
-        waiters.splice(index, 1);
-        waiter.resolve(text);
+      if (!waiter.pattern.test(text)) {
+        continue;
       }
+
+      waiters.splice(index, 1);
+      waiter.resolve(text);
     }
   });
 

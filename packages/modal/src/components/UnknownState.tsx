@@ -1,18 +1,18 @@
 import { useSession } from "../hooks/useSession.js";
 
-export const UnknownState = (props: { state: unknown; }) => {
+export const UnknownState = (properties: { state: unknown; }) => {
   const { uri, status } = useSession();
 
   // biome-ignore lint/suspicious/noConsole: debug
   console.error("Unknown state:", {
-    state: props.state,
+    state: properties.state,
   });
 
   return (
     <div class="rounded-md bg-(--lv-control-button-secondary-background) p-2 text-(--lv-text-muted)">
       <div>
         Unknown state:
-        {JSON.stringify(props.state)}
+        {JSON.stringify(properties.state)}
       </div>
       <div>
         URI:

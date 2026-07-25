@@ -29,9 +29,9 @@ export const updateStyles = async (
   };
 
   if (themeConfig) {
-    const themeStr = await buildTheme(themeConfig, userTheme);
+    const themeString = await buildTheme(themeConfig, userTheme);
 
-    style.textContent = `:root, :host {\n${themeStr}\n}\n` + cssContent;
+    style.textContent = `:root, :host {\n${themeString}\n}\n` + cssContent;
   }
   else {
     style.textContent = cssContent;

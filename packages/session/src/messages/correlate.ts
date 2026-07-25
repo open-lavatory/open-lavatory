@@ -15,7 +15,7 @@ export const awaitCorrelatedResponse = (
   ackTimeoutMs: number,
   responseTimeoutMs: number,
 ): Promise<unknown> => new Promise((resolve, reject) => {
-  let ackReceived = false;
+  let isAckReceived = false;
   // eslint-disable-next-line prefer-const
   let ackTimer: ReturnType<typeof setTimeout> | undefined;
   let responseTimer: ReturnType<typeof setTimeout> | undefined;
@@ -26,11 +26,11 @@ export const awaitCorrelatedResponse = (
     messages.off("message", handler);
   };
 
-  const handler = (msg: SessionMessage) => {
-    if (msg.messageId !== messageId) return;
+  const handler = (message: SessionMessage) => {
+    if (message.messageId !== messageId) return;
 
-    if (msg.type === "ack" && !ackReceived) {
-      ackReceived = true;
+    if (message.type === "ack" && !isAckReceived) {
+      isAckReceived = true;
       clearTimeout(ackTimer);
       // The other side confirmed receipt; wait for the full response.
       responseTimer = setTimeout(() => {
@@ -41,9 +41,9 @@ export const awaitCorrelatedResponse = (
       return;
     }
 
-    if (msg.type === "response") {
+    if (message.type === "response") {
       cleanup();
-      resolve(msg.payload);
+      resolve(message.payload);
     }
   };
 
@@ -51,9 +51,11 @@ export const awaitCorrelatedResponse = (
 
   // Short window for the ack — tells us the peer is alive and processing.
   ackTimer = setTimeout(() => {
-    if (!ackReceived) {
-      cleanup();
-      reject(new Error("Request timed out: remote peer did not acknowledge"));
+    if (isAckReceived) {
+      return;
     }
+
+    cleanup();
+    reject(new Error("Request timed out: remote peer did not acknowledge"));
   }, ackTimeoutMs);
 });
