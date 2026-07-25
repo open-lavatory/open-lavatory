@@ -11,6 +11,7 @@ export default defineConfig([
       "**/.wxt/**",
       "**/.expo/**",
       "**/*.gen.*",
+      "examples/react-native/**",
     ],
   },
   ...v3xlint.configs.recommended,
