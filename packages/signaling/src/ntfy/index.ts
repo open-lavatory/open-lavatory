@@ -6,6 +6,13 @@ import type { SignalingProtocol } from "../protocol.js";
 import { log } from "../utils/log.js";
 import { parseNtfyUrl } from "./url.js";
 
+type NtfyAttachment = {
+  url: string;
+  name: string;
+  size: number;
+  type: string;
+};
+
 export type NtfyMessage = {
   // eslint-disable-next-line no-restricted-syntax
   id: string;
@@ -14,6 +21,7 @@ export type NtfyMessage = {
   event: string;
   topic: string;
   message: string;
+  attachment?: NtfyAttachment;
 };
 
 /**
@@ -85,7 +93,17 @@ export const ntfy: SignalingProtocol = ({ topic, url }) => {
             resolve();
           }
           else if (data.event === "message" && typeof data.message === "string") {
-            events.emit("message", data.message);
+            ((async () => {
+              if (data.attachment) {
+                const response = await fetch(data.attachment.url);
+                const text = await response.text();
+
+                events.emit("message", text);
+              }
+              else {
+                events.emit("message", data.message);
+              }
+            })());
           }
         });
       });
