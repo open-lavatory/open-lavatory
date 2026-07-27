@@ -1,5 +1,11 @@
 # @openlv/signaling
 
+## 0.1.1
+
+### Patch Changes
+
+- 4514d4f: Fix ntfy handling of large messages by downloading attachments
+
 ## 0.1.0
 
 ### Minor Changes
