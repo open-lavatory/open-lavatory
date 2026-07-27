@@ -20,7 +20,7 @@
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-icons": "^5.7.0",
-    "react-server-dom-webpack": "~19.2.7",
+    "react-server-dom-webpack": "~19.2.8",
     "solid-js": "^1.9.14",
     "tailwindcss": "^4.3.3",
     "ts-pattern": "^5.9.0",
