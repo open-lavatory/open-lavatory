@@ -9,7 +9,7 @@ export default defineConfig({
   srcDir: ".",
   editLink: {
     pattern:
-      "https://github.com/v3xlabs/open-lavatory/edit/master/docs/pages/:path",
+      "https://github.com/open-lavatory/open-lavatory/edit/master/docs/pages/:path",
     text: "Suggest changes to this page",
   },
   sidebar: [
@@ -125,13 +125,13 @@ export default defineConfig({
     },
     {
       text: "GitHub",
-      link: "https://github.com/v3xlabs/open-lavatory",
+      link: "https://github.com/open-lavatory/open-lavatory",
     },
   ],
   socials: [
     {
       icon: "github",
-      link: "https://github.com/v3xlabs/open-lavatory",
+      link: "https://github.com/open-lavatory/open-lavatory",
     },
   ],
   banner: {
