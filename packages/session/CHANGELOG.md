@@ -1,5 +1,15 @@
 # @openlv/session
 
+## 0.1.2
+
+### Patch Changes
+
+- 28f2745: Update github repository
+- Updated dependencies [28f2745]
+  - @openlv/signaling@0.1.2
+  - @openlv/transport@0.1.1
+  - @openlv/core@0.1.1
+
 ## 0.1.1
 
 ### Patch Changes

@@ -1,5 +1,13 @@
 # @openlv/react-native
 
+## 0.0.6
+
+### Patch Changes
+
+- 28f2745: Update github repository
+- Updated dependencies [28f2745]
+  - @openlv/session@0.1.2
+
 ## 0.0.5
 
 ### Patch Changes
