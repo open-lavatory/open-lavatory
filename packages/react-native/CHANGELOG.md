@@ -1,5 +1,13 @@
 # @openlv/react-native
 
+## 0.0.7
+
+### Patch Changes
+
+- 53f38fa: Lint the codebase and update vocabulary to disfavor shorthands
+- Updated dependencies [53f38fa]
+  - @openlv/session@0.1.3
+
 ## 0.0.6
 
 ### Patch Changes
