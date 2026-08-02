@@ -41,8 +41,8 @@ export type ButtonLinkProps = {
 export type ButtonProps = {
   children?: JSX.Element;
   class?: string;
-} & VariantProps<typeof styles> &
-(
+} & VariantProps<typeof styles>
+& (
     | ({
       href: string;
     } & ButtonLinkProps)
@@ -51,8 +51,8 @@ export type ButtonProps = {
     } & ButtonButtonProps)
   );
 
-export const Button = (rawProps: ButtonProps) => {
-  const [local, props] = splitProps(rawProps, [
+export const Button = (rawProperties: ButtonProps) => {
+  const [local, properties] = splitProps(rawProperties, [
     "children",
     "class",
     "$variant",
@@ -77,7 +77,7 @@ export const Button = (rawProps: ButtonProps) => {
           }),
           local.class,
         )}
-        {...(props as JSX.AnchorHTMLAttributes<HTMLAnchorElement>)}
+        {...(properties as JSX.AnchorHTMLAttributes<HTMLAnchorElement>)}
       >
         {local.children}
       </a>
@@ -98,7 +98,7 @@ export const Button = (rawProps: ButtonProps) => {
         }),
         local.class,
       )}
-      {...(props as JSX.ButtonHTMLAttributes<HTMLButtonElement>)}
+      {...(properties as JSX.ButtonHTMLAttributes<HTMLButtonElement>)}
     >
       {local.children}
     </button>

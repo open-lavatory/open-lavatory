@@ -4,7 +4,7 @@ import { Button } from "../ui/Button.js";
 import { useTranslation } from "../utils/i18n.js";
 import type { ModalView } from "./ModalRoot.js";
 
-export const Header = (props: {
+export const Header = (properties: {
   title: string;
   view: ModalView;
   onClose: () => void;
@@ -15,12 +15,12 @@ export const Header = (props: {
 
   return (
     <div class="flex items-center justify-between px-2 py-2">
-      {props.onBack
+      {properties.onBack
         ? (
             <Button
-              onClick={props.onBack}
+              onClick={properties.onBack}
               aria-label={String(
-                props.view === "settings"
+                properties.view === "settings"
                   ? t("modal.backToQr")
                   : t("modal.closeModal"),
               )}
@@ -34,7 +34,7 @@ export const Header = (props: {
         : (
             <Button
               type="button"
-              onClick={() => props.setView("info")}
+              onClick={() => properties.setView("info")}
               $variant="tertiary"
               $aspect="square"
               $size="md"
@@ -43,13 +43,13 @@ export const Header = (props: {
             </Button>
           )}
       <h2 class="flex items-center justify-center gap-2 font-semibold text-(--lv-text-primary) text-lg">
-        {props.title}
+        {properties.title}
       </h2>
       <Button
         type="button"
         aria-label={String(t("common.close"))}
         aria-pressed={false}
-        onClick={props.onClose}
+        onClick={properties.onClose}
         $variant="tertiary"
         $aspect="square"
         $size="md"

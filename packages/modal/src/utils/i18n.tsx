@@ -14,16 +14,16 @@ import { match } from "ts-pattern";
 import fallbackEnglish from "../../lang/en.json" with { type: "json" };
 import { useModalContext } from "../context.jsx";
 
-export type LanguageTag =
-  | "en"
-  | "nl"
-  | "fr"
-  | "es"
-  | "sv"
-  | "zh-cn"
-  | "ar"
-  | "he"
-  | "fa";
+export type LanguageTag
+  = | "en"
+    | "nl"
+    | "fr"
+    | "es"
+    | "sv"
+    | "zh-cn"
+    | "ar"
+    | "he"
+    | "fa";
 
 export type LanguageInfo = {
   tag: LanguageTag;
@@ -75,7 +75,7 @@ export const detectBrowserLanguage = (): LanguageTag => {
     }
 
     // Base language match (e.g., "en-US" -> "en")
-    const [baseLang] = lang.split("-");
+    const [baseLang] = lang.split("-", 1);
 
     if (SUPPORTED_LANGUAGE_TAGS.has(baseLang as LanguageTag)) {
       return baseLang as LanguageTag;
@@ -90,21 +90,21 @@ export const getLanguageScore = (tag: string): number => {
 
   const languages = navigator.languages || [navigator.language];
 
-  for (let i = 0; i < languages.length; i++) {
-    const browserLang = languages[i].toLowerCase();
+  for (let index = 0; index < languages.length; index++) {
+    const browserLang = languages[index].toLowerCase();
 
     // Exact match
-    if (browserLang === tag) return languages.length - i + 1;
+    if (browserLang === tag) return languages.length - index + 1;
 
     // Prefix match (e.g., "en-US" matches "en")
     if (browserLang.startsWith(`${tag}-`) || tag.startsWith(`${browserLang}-`))
-      return languages.length - i;
+      return languages.length - index;
 
     // Base language match (e.g., "zh" matches "zh-cn")
-    const [baseLang] = browserLang.split("-");
+    const [baseLang] = browserLang.split("-", 1);
 
     if (baseLang === tag || tag.startsWith(`${baseLang}-`))
-      return languages.length - i - 0.5;
+      return languages.length - index - 0.5;
   }
 
   return 0;
@@ -112,7 +112,7 @@ export const getLanguageScore = (tag: string): number => {
 
 export type Translate = (
   key: string,
-  params?: Readonly<Record<string, string | number>>,
+  parameters?: Readonly<Record<string, string | number>>,
 ) => string | JSX.Element;
 
 export type Translations = Record<string, unknown>;
@@ -140,14 +140,14 @@ const resolveNestedValue = (
 
 const interpolate = (
   template: string,
-  params?: Readonly<Record<string, string | number>>,
+  parameters?: Readonly<Record<string, string | number>>,
 ): string => {
-  if (!params) return template;
+  if (!parameters) return template;
 
   return template.replaceAll(
     /\{(\w+)\}/g,
     (matchText: string, key: string): string => {
-      const value = params[key];
+      const value = parameters[key];
 
       return value === undefined ? matchText : String(value);
     },
@@ -204,7 +204,7 @@ const loadLanguagePack = async (
     .with("fa", async () => import("../../lang/fa.json").then(m => m.default))
     .exhaustive();
 
-export const TranslationProvider: ParentComponent = (props) => {
+export const TranslationProvider: ParentComponent = (properties) => {
   const { provider } = useModalContext();
   const initialLanguageTag = provider.storage.getSettings().language as LanguageTag | undefined;
   const [languageTag, setLanguageTag] = createSignal<LanguageTag>(
@@ -216,7 +216,7 @@ export const TranslationProvider: ParentComponent = (props) => {
   const [isLoadingLanguagePack, setIsLoadingLanguagePack] = createSignal(false);
 
   createEffect(() => {
-    let cancelled = false;
+    let isCancelled = false;
 
     const run = async () => {
       setIsLoadingLanguagePack(true);
@@ -224,28 +224,28 @@ export const TranslationProvider: ParentComponent = (props) => {
       try {
         const nextPack = await loadLanguagePack(languageTag());
 
-        if (cancelled) return;
+        if (isCancelled) return;
 
         setLanguagePack(nextPack);
       }
       finally {
-        if (!cancelled) setIsLoadingLanguagePack(false);
+        if (!isCancelled) setIsLoadingLanguagePack(false);
       }
     };
 
     void run();
 
     onCleanup(() => {
-      cancelled = true;
+      isCancelled = true;
     });
   });
 
-  const t: Translate = (key, params) => {
+  const t: Translate = (key, parameters) => {
     const translated = resolveTranslation({
       primary: languagePack(),
       fallback: fallbackEnglish as unknown as Translations,
       key,
-      params,
+      params: parameters,
     });
     const lines = translated.split("\n");
 
@@ -280,7 +280,7 @@ export const TranslationProvider: ParentComponent = (props) => {
 
   return (
     <TranslationContext.Provider value={contextValue}>
-      {props.children}
+      {properties.children}
     </TranslationContext.Provider>
   );
 };

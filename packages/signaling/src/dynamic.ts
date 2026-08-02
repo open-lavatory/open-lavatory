@@ -7,19 +7,19 @@ import { match } from "ts-pattern";
  */
 export const dynamicSignalingLayer = async (protocol: string) => match(protocol)
   .with("mqtt", async () => {
-    const mod = await import("./mqtt/index.js");
+    const module_ = await import("./mqtt/index.js");
 
-    return mod.mqtt;
+    return module_.mqtt;
   })
   .with("ntfy", async () => {
-    const mod = await import("./ntfy/index.js");
+    const module_ = await import("./ntfy/index.js");
 
-    return mod.ntfy;
+    return module_.ntfy;
   })
   .with("gun", async () => {
-    const mod = await import("./gundb/index.js");
+    const module_ = await import("./gundb/index.js");
 
-    return mod.gundb;
+    return module_.gundb;
   })
   .otherwise(() => {
     throw new Error(`Unknown signaling protocol: ${protocol}`);

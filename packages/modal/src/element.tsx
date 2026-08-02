@@ -5,7 +5,7 @@ import { ModalProvider } from "./context.js";
 import { updateStyles } from "./styles/index.js";
 import type { ThemeConfig } from "./theme/types.js";
 
-export type OpenLVModalElementProps = {
+export type OpenLVModalElementProperties = {
   provider: OpenLVProvider;
   onClose?: () => void;
   theme?: ThemeConfig;
@@ -15,11 +15,11 @@ export class OpenLVModalElement
   extends HTMLElement {
   private readonly shadow: ShadowRoot;
   private renderRequested = false;
-  private readonly parameters: OpenLVModalElementProps;
+  private readonly parameters: OpenLVModalElementProperties;
   private themeCleanup?: () => void;
   private disposeRender?: () => void;
 
-  constructor(parameters: OpenLVModalElementProps) {
+  constructor(parameters: OpenLVModalElementProperties) {
     super();
     this.parameters = parameters;
 
@@ -43,7 +43,6 @@ export class OpenLVModalElement
   }
 
   private setupThemeListener() {
-    // eslint-disable-next-line unicorn/consistent-function-scoping
     const update = () => {
       const userTheme
         = this.parameters.provider.storage.getSettings()?.theme ?? "system";

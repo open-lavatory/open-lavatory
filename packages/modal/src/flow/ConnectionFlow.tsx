@@ -14,7 +14,7 @@ import { useTranslation } from "../utils/i18n.js";
 import { Connecting } from "./connecting.jsx";
 import { ErrorScreen } from "./ErrorScreen.jsx";
 
-interface ConnectionFlowProps {
+interface ConnectionFlowProperties {
   onClose: () => void;
   onCopy: (uri: string) => void;
 }
@@ -25,7 +25,7 @@ const LoadingSpinner = () => (
   </div>
 );
 
-export const ConnectionFlow = (props: ConnectionFlowProps) => {
+export const ConnectionFlow = (properties: ConnectionFlowProperties) => {
   const { t } = useTranslation();
   const { provider } = useModalContext();
 
@@ -67,7 +67,7 @@ export const ConnectionFlow = (props: ConnectionFlowProps) => {
           </div>
         </Match>
         <Match when={providerStatus() === PROVIDER_STATUS.CONNECTING}>
-          <Connecting onClose={props.onClose} />
+          <Connecting onClose={properties.onClose} />
         </Match>
         <Match when={providerStatus() === PROVIDER_STATUS.CONNECTED}>
           <div class="flex flex-col items-center gap-4 p-6">
@@ -106,7 +106,7 @@ export const ConnectionFlow = (props: ConnectionFlowProps) => {
           </div>
         </Match>
         <Match when={providerStatus() === PROVIDER_STATUS.ERROR}>
-          <ErrorScreen onClose={props.onClose} />
+          <ErrorScreen onClose={properties.onClose} />
         </Match>
       </Switch>
     </div>

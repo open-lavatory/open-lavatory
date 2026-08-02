@@ -6,7 +6,7 @@ import {
 } from "solid-js";
 
 import { ModalRoot } from "./components/ModalRoot.js";
-import { type OpenLVModalElementProps } from "./element.js";
+import { type OpenLVModalElementProperties } from "./element.js";
 import type { ThemeConfig } from "./theme/types.js";
 import {
   TranslationProvider,
@@ -21,13 +21,13 @@ export const ModalContext = createContext<ModalContextValue | undefined>(
   undefined,
 );
 
-export const ModalProvider: Component<OpenLVModalElementProps> = (props) => {
-  const { provider, theme } = props;
+export const ModalProvider: Component<OpenLVModalElementProperties> = (properties) => {
+  const { provider, theme } = properties;
 
   return (
     <ModalContext.Provider value={{ provider, themeConfig: theme }}>
       <TranslationProvider>
-        <ModalRoot onClose={props.onClose} />
+        <ModalRoot onClose={properties.onClose} />
       </TranslationProvider>
     </ModalContext.Provider>
   );

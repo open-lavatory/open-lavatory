@@ -144,7 +144,7 @@ export const createSession = async (
   const server = initParameters.s;
   const capabilities: PeerCapabilities = {
     transports: transportLayers.map(layer => layer.transportId),
-    ...(options?.info ? { info: options.info } : {}),
+    ...(options?.info && { info: options.info }),
   };
   let peerCaps: PeerCapabilities | undefined;
 
@@ -336,13 +336,13 @@ export const createSession = async (
   const onSignalMessage = async (message: object) => {
     log("Session: received message from signaling", message);
 
-    const sessionMsg = message as SessionMessage;
+    const sessionMessage = message as SessionMessage;
 
-    if (sessionMsg.type === "response") {
-      messages.emit("message", sessionMsg);
+    if (sessionMessage.type === "response") {
+      messages.emit("message", sessionMessage);
     }
 
-    if (sessionMsg.type === "request") {
+    if (sessionMessage.type === "request") {
       if (!transport) {
         log("dropping negotiation message: transport not selected yet");
 
@@ -350,7 +350,7 @@ export const createSession = async (
       }
 
       try {
-        await transport.handle(sessionMsg.payload as TransportMessage);
+        await transport.handle(sessionMessage.payload as TransportMessage);
       }
       catch (error) {
         // Negotiation payloads come from the (untrusted) relay; a malformed

@@ -9,14 +9,14 @@ import { TransportSettings } from "./connection/transport.js";
 
 export type SettingsScreen = "main" | "signaling" | "transport";
 
-export interface SettingsNavigationRef {
+export interface SettingsNavigationReference {
   goBack: () => void;
   isAtRoot: boolean;
 }
 
 export interface ModalSettingsProps {
   onTitleChange?: (titleKey: string) => void;
-  navigationRef?: { current: SettingsNavigationRef | null; };
+  navigationRef?: { current: SettingsNavigationReference | null; };
 }
 
 const getSettingsTitleKey = (screen: SettingsScreen): string => {
@@ -33,7 +33,7 @@ const getSettingsTitleKey = (screen: SettingsScreen): string => {
   }
 };
 
-export const ModalSettings = (props: ModalSettingsProps) => {
+export const ModalSettings = (properties: ModalSettingsProps) => {
   const {
     screen,
     previousScreen,
@@ -43,7 +43,7 @@ export const ModalSettings = (props: ModalSettingsProps) => {
     isAtRoot,
   } = useNavigationStack<SettingsScreen>("main");
 
-  const internalRef: SettingsNavigationRef = {
+  const internalReference: SettingsNavigationReference = {
     goBack,
     get isAtRoot() {
       return isAtRoot();
@@ -51,13 +51,13 @@ export const ModalSettings = (props: ModalSettingsProps) => {
   };
 
   createEffect(() => {
-    if (props.navigationRef) {
-      props.navigationRef.current = internalRef;
+    if (properties.navigationRef) {
+      properties.navigationRef.current = internalReference;
     }
   });
 
   createEffect(() => {
-    props.onTitleChange?.(getSettingsTitleKey(screen()));
+    properties.onTitleChange?.(getSettingsTitleKey(screen()));
   });
 
   const renderScreen = (s: SettingsScreen) => {

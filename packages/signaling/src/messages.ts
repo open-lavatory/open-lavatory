@@ -46,11 +46,11 @@ export type SignalMessageCapabilities = SignalMessageBase<
 
 export type SignalMessageData = SignalMessageBase<"data", object>;
 
-export type SignalMessage =
-  | SignalMessageFlash
-  | SignalMessagePubkey
-  | SignalMessageCapabilities
-  | SignalMessageData;
+export type SignalMessage
+  = | SignalMessageFlash
+    | SignalMessagePubkey
+    | SignalMessageCapabilities
+    | SignalMessageData;
 
 const MAX_TRANSPORTS = 8;
 const MAX_TRANSPORT_ID_LENGTH = 32;
@@ -102,7 +102,7 @@ const parsePeerInfo = (raw: unknown): PeerInfo | undefined => {
   return {
     identity: info["identity"],
     name: info["name"],
-    ...(info["icon"] === undefined ? {} : { icon: info["icon"] }),
+    ...(info["icon"] !== undefined && { icon: info["icon"] }),
   };
 };
 
@@ -116,7 +116,7 @@ export const parseCapabilities = (raw: unknown): PeerCapabilities | undefined =>
     !Array.isArray(transports)
     || transports.length === 0
     || transports.length > MAX_TRANSPORTS
-    || !transports.every(transportId => isBoundedString(transportId, MAX_TRANSPORT_ID_LENGTH))
+    || transports.some(transportId => !isBoundedString(transportId, MAX_TRANSPORT_ID_LENGTH))
   ) {
     return undefined;
   }
@@ -147,37 +147,37 @@ export const parseSignalMessage = (raw: string): SignalMessage | undefined => {
 
   if (typeof parsed !== "object" || parsed === null) return undefined;
 
-  const msg = parsed as Record<string, unknown>;
+  const message = parsed as Record<string, unknown>;
 
-  switch (msg["type"]) {
+  switch (message["type"]) {
     case "flash": {
-      return typeof msg["payload"] === "object" && msg["payload"] !== null
-        ? (msg as SignalMessageFlash)
+      return typeof message["payload"] === "object" && message["payload"] !== null
+        ? (message as SignalMessageFlash)
         : undefined;
     }
     case "pubkey": {
-      const payload = msg["payload"] as Record<string, unknown> | null;
+      const payload = message["payload"] as Record<string, unknown> | null;
 
       return typeof payload === "object"
         && payload !== null
         && typeof payload["publicKey"] === "string"
-        ? (msg as SignalMessagePubkey)
+        ? (message as SignalMessagePubkey)
         : undefined;
     }
     case "capabilities": {
-      const capabilities = parseCapabilities(msg["payload"]);
+      const capabilities = parseCapabilities(message["payload"]);
 
       if (!capabilities) return undefined;
 
       return {
         type: "capabilities",
         payload: capabilities,
-        timestamp: msg["timestamp"] as number,
+        timestamp: message["timestamp"] as number,
       };
     }
     case "data": {
-      return typeof msg["payload"] === "object" && msg["payload"] !== null
-        ? (msg as SignalMessageData)
+      return typeof message["payload"] === "object" && message["payload"] !== null
+        ? (message as SignalMessageData)
         : undefined;
     }
     default: {

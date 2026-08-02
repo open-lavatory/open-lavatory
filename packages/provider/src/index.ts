@@ -77,8 +77,8 @@ export const PROVIDER_STATUS = {
   ERROR: "error",
 } as const;
 
-export type ProviderStatus =
-  (typeof PROVIDER_STATUS)[keyof typeof PROVIDER_STATUS];
+export type ProviderStatus
+  = (typeof PROVIDER_STATUS)[keyof typeof PROVIDER_STATUS];
 
 export type ProviderState = {
   status: ProviderStatus;
@@ -103,11 +103,11 @@ export type ProviderBase = {
 export type OpenLVProvider = OxProvider.Provider<
   { schema: RpcSchema; },
   ProviderEvents & EventMap
-> &
-ProviderBase;
+>
+& ProviderBase;
 
-type transportInput =
-  | {
+type transportInput
+  = | {
     stun?: string[] | undefined;
     turn?:
       | {
@@ -373,9 +373,9 @@ export const createProvider = (
   };
   const oxProvider = OxProvider.from<
     ProviderConfig,
-    OxProvider.from.Value<ProviderConfig> &
-    ProviderBase &
-    OxProvider.Emitter<ProviderEvents & EventMap>
+    OxProvider.from.Value<ProviderConfig>
+    & ProviderBase
+    & OxProvider.Emitter<ProviderEvents & EventMap>
   >({
     ...oxEmitter,
     storage,

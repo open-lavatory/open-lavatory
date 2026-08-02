@@ -41,7 +41,7 @@ export const OpenLVGlobals = ({
   // WebCrypto is delivered by the WebView polyfill, which becomes available
   // asynchronously after the component mounts.
   React.useEffect(() => {
-    let cancelled = false;
+    let isCancelled = false;
 
     (async () => {
       try {
@@ -52,12 +52,12 @@ export const OpenLVGlobals = ({
         g.__openlvRnCryptoReady = true;
       }
       catch (error_) {
-        if (!cancelled) setError(error_);
+        if (!isCancelled) setError(error_);
       }
     })();
 
     return () => {
-      cancelled = true;
+      isCancelled = true;
     };
   }, [cryptoTimeoutMs]);
 

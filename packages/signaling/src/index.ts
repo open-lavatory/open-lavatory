@@ -62,7 +62,7 @@ export type SignalingContext = {
   };
 };
 export type SignalingLayer = EventEmitter<SignalEventMap> & SignalingContext;
-export type SignalingLayerFn = (
+export type SignalingLayerFunction = (
   properties: SignalingProperties,
 ) => Promise<SignalingLayer>;
 
@@ -84,7 +84,7 @@ const HANDSHAKE_TIMEOUT_MS = 30_000;
  */
 export const createSignalingLayer = (
   init: SignalingChannel,
-): SignalingLayerFn => async ({
+): SignalingLayerFunction => async ({
   canEncrypt,
   encrypt,
   decrypt,
@@ -98,8 +98,8 @@ export const createSignalingLayer = (
 }: SignalingProperties) => {
   const emitter = new EventEmitter<SignalEventMap>();
   let state: SignalState = SIGNAL_STATE.STANDBY;
-  let peerKeyRecorded = false;
-  let peerCapabilitiesRecorded = false;
+  let isPeerKeyRecorded = false;
+  let isPeerCapabilitiesRecorded = false;
   let resendTimer: ReturnType<typeof setInterval> | undefined;
   let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
   const handshakeKey = k || undefined;
@@ -190,9 +190,9 @@ export const createSignalingLayer = (
   const recordPeerKey = async (key: string): Promise<boolean> => {
     // Never overwrite an established peer key — a second, different pubkey
     // mid-handshake is either a duplicate delivery or an injection attempt.
-    if (peerKeyRecorded) return false;
+    if (isPeerKeyRecorded) return false;
 
-    peerKeyRecorded = true;
+    isPeerKeyRecorded = true;
     await rpDiscovered(key);
 
     return true;
@@ -203,9 +203,9 @@ export const createSignalingLayer = (
   ): Promise<void> => {
     // Same overwrite guard as the peer key: only the first delivery counts,
     // re-sent duplicates are no-ops.
-    if (peerCapabilitiesRecorded) return;
+    if (isPeerCapabilitiesRecorded) return;
 
-    peerCapabilitiesRecorded = true;
+    isPeerCapabilitiesRecorded = true;
     await peerCapabilities(peerCaps);
   };
 
@@ -220,8 +220,8 @@ export const createSignalingLayer = (
     timestamp: Date.now(),
   });
 
-  const handleHandshakeFrame = async (msg: SignalMessage) => {
-    await match({ msg, state, isHost })
+  const handleHandshakeFrame = async (message: SignalMessage) => {
+    await match({ msg: message, state, isHost })
       // Host: a client wants to connect. Re-entered on duplicate `flash`
       // deliveries (client re-sends until it hears our pubkey).
       .with({ msg: { type: "flash" }, state: SIGNAL_STATE.READY, isHost: true }, async () => {
@@ -230,9 +230,9 @@ export const createSignalingLayer = (
         await sendRepeating("handshake", "c", pubkeyMessage());
       })
       // Client: host announced its public key.
-      .with({ msg: { type: "pubkey" }, isHost: false, state: SIGNAL_STATE.HANDSHAKE }, async ({ msg: { payload: msgPayload } }) => {
+      .with({ msg: { type: "pubkey" }, isHost: false, state: SIGNAL_STATE.HANDSHAKE }, async ({ msg: { payload: messagePayload } }) => {
         try {
-          const receivedKey = await parseEncryptionKey(msgPayload.publicKey);
+          const receivedKey = await parseEncryptionKey(messagePayload.publicKey);
 
           if (!await validatePublicKeyHash(receivedKey, h)) {
             setState(SIGNAL_STATE.ERROR);
@@ -248,24 +248,24 @@ export const createSignalingLayer = (
           return;
         }
 
-        if (!await recordPeerKey(msgPayload.publicKey)) return;
+        if (!await recordPeerKey(messagePayload.publicKey)) return;
 
         setState(SIGNAL_STATE.HANDSHAKE_PARTIAL);
 
         return await sendRepeating("encrypted", "h", pubkeyMessage());
       })
       .otherwise(() => {
-        log("Ignoring handshake frame", msg.type, "in state", state);
+        log("Ignoring handshake frame", message.type, "in state", state);
       });
   };
 
-  const handleEncryptedFrame = async (msg: SignalMessage) => {
-    await match({ msg, state, isHost })
+  const handleEncryptedFrame = async (message: SignalMessage) => {
+    await match({ msg: message, state, isHost })
       // Host: client responded with its public key.
       .with(
         { msg: { type: "pubkey" }, isHost: true, state: SIGNAL_STATE.HANDSHAKE },
-        async ({ msg: { payload: msgPayload } }) => {
-          if (!await recordPeerKey(msgPayload.publicKey)) return;
+        async ({ msg: { payload: messagePayload } }) => {
+          if (!await recordPeerKey(messagePayload.publicKey)) return;
 
           setState(SIGNAL_STATE.HANDSHAKE_PARTIAL);
 
@@ -274,8 +274,8 @@ export const createSignalingLayer = (
       )
       .with(
         { msg: { type: "capabilities" }, state: SIGNAL_STATE.HANDSHAKE_PARTIAL },
-        async ({ msg: { payload: msgPayload } }) => {
-          await recordPeerCapabilities(msgPayload);
+        async ({ msg: { payload: messagePayload } }) => {
+          await recordPeerCapabilities(messagePayload);
           setState(SIGNAL_STATE.ENCRYPTED);
 
           if (isHost) return;
@@ -291,10 +291,10 @@ export const createSignalingLayer = (
         async () => await send("encrypted", "h", capabilitiesMessage()),
       )
       .with({ msg: { type: "data" }, state: SIGNAL_STATE.ENCRYPTED }, async () => {
-        emitter.emit("message", msg.payload as object);
+        emitter.emit("message", message.payload as object);
       })
       .otherwise(() => {
-        log("Ignoring encrypted frame", msg.type, "in state", state);
+        log("Ignoring encrypted frame", message.type, "in state", state);
       });
   };
 
@@ -313,14 +313,14 @@ export const createSignalingLayer = (
       if (prefix === XR_H_PREFIX) {
         if (!handshakeKey) return;
 
-        const msg = parseSignalMessage(await handshakeKey.decrypt(body));
+        const message = parseSignalMessage(await handshakeKey.decrypt(body));
 
-        if (msg) await handleHandshakeFrame(msg);
+        if (message) await handleHandshakeFrame(message);
       }
       else if (prefix === XR_PREFIX) {
-        const msg = parseSignalMessage(await decrypt(body));
+        const message = parseSignalMessage(await decrypt(body));
 
-        if (msg) await handleEncryptedFrame(msg);
+        if (message) await handleEncryptedFrame(message);
       }
       else {
         log("Dropping frame with unknown prefix");

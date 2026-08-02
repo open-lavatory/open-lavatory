@@ -203,8 +203,8 @@ export const installOpenLVReactNativePolyfills = (): void => {
 };
 
 export const OpenLVCryptoPolyfill = (
-  props: Record<string, unknown> = {},
+  properties: Record<string, unknown> = {},
 ): React.ReactElement => React.createElement(
   PolyfillCrypto as React.ComponentType<Record<string, unknown>>,
-  props,
+  properties,
 );

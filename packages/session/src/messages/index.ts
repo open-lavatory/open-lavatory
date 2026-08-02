@@ -1,7 +1,7 @@
-export type SessionMessage =
-  | SessionMessageRequest
-  | SessionMessageResponse
-  | SessionMessageAck;
+export type SessionMessage
+  = | SessionMessageRequest
+    | SessionMessageResponse
+    | SessionMessageAck;
 
 export type SessionMessageRequest = {
   type: "request";

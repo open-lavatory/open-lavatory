@@ -12,10 +12,10 @@ const testCases = [
     },
   },
   {
-    url: "http://ntfy.sh/?auth=mytoken2",
+    url: "https://ntfy.sh/?auth=mytoken2",
     expected: {
       host: "ntfy.sh",
-      protocol: "http",
+      protocol: "https",
       parameters: "?auth=mytoken2",
     },
   },
@@ -47,11 +47,11 @@ const testCases = [
 ];
 
 describe("should parse NTFY URL", () => {
-  testCases.forEach((testCase) => {
+  for (const testCase of testCases) {
     it(`should parse NTFY URL ${testCase.url}`, () => {
       const result = parseNtfyUrl(testCase.url);
 
       expect(result).toEqual(testCase.expected);
     });
-  });
+  }
 });

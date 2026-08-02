@@ -22,7 +22,7 @@ import { useTheme } from "../hooks/useTheme.js";
 import { useTranslation } from "../utils/i18n.js";
 import { Footer } from "./footer/Footer.js";
 import { Header } from "./Header.js";
-import { ModalSettings, type SettingsNavigationRef } from "./settings/index.js";
+import { ModalSettings, type SettingsNavigationReference } from "./settings/index.js";
 import { UnknownState } from "./UnknownState.js";
 
 export interface ModalRootProps {
@@ -124,7 +124,7 @@ const useDynamicDialogHeight = () => {
   };
 };
 
-export const ModalRoot = (props: { onClose: () => void; }) => {
+export const ModalRoot = (properties: { onClose: () => void; }) => {
   const { view: modalView, setView, copied, setCopied } = useModalState();
   const { uri, status } = useSession();
   const { provider } = useModalContext();
@@ -144,7 +144,7 @@ export const ModalRoot = (props: { onClose: () => void; }) => {
   const { t, isRtl, languageTag } = useTranslation();
   const theme = useTheme();
 
-  const settingsNavRef: { current: SettingsNavigationRef | null; } = {
+  const settingsNavReference: { current: SettingsNavigationReference | null; } = {
     current: null,
   };
   const [settingsTitleKey, setSettingsTitleKey]
@@ -158,11 +158,11 @@ export const ModalRoot = (props: { onClose: () => void; }) => {
       .exhaustive(),
   );
 
-  useEscapeToClose(props.onClose);
+  useEscapeToClose(properties.onClose);
 
   createEffect(() => {
     if (status()?.status === PROVIDER_STATUS.CONNECTED) {
-      props.onClose();
+      properties.onClose();
     }
   });
 
@@ -192,10 +192,12 @@ export const ModalRoot = (props: { onClose: () => void; }) => {
       }
 
       initialMeasureTimeout = globalThis.setTimeout(() => {
-        if (contentNode()) {
-          measureHeight(undefined, true);
-          isInitialMount = false;
+        if (!contentNode()) {
+          return;
         }
+
+        measureHeight(undefined, true);
+        isInitialMount = false;
       }, 0);
     }
     else {
@@ -261,8 +263,8 @@ export const ModalRoot = (props: { onClose: () => void; }) => {
         provider.closeSession();
       })
       .with({ view: "settings" }, () => {
-        if (settingsNavRef.current && !settingsNavRef.current.isAtRoot) {
-          settingsNavRef.current.goBack();
+        if (settingsNavReference.current && !settingsNavReference.current.isAtRoot) {
+          settingsNavReference.current.goBack();
         }
         else {
           setView("start");
@@ -273,7 +275,7 @@ export const ModalRoot = (props: { onClose: () => void; }) => {
       })
       .otherwise(() => {
         provider.closeSession();
-        props.onClose();
+        properties.onClose();
       });
   };
 
@@ -283,7 +285,7 @@ export const ModalRoot = (props: { onClose: () => void; }) => {
       .with("settings", () => (
         <ModalSettings
           onTitleChange={setSettingsTitleKey}
-          navigationRef={settingsNavRef}
+          navigationRef={settingsNavReference}
         />
       ))
       .with("info", () => <InfoScreen />)
@@ -322,7 +324,7 @@ export const ModalRoot = (props: { onClose: () => void; }) => {
           PROVIDER_STATUS.ERROR,
         ),
         () => (
-          <ConnectionFlow onClose={props.onClose} onCopy={handleCopy} />
+          <ConnectionFlow onClose={properties.onClose} onCopy={handleCopy} />
         ),
       )
       .otherwise(state => <UnknownState state={state || "unknown status"} />);
@@ -345,7 +347,7 @@ export const ModalRoot = (props: { onClose: () => void; }) => {
     <div
       class="fixed inset-0 z-10000 flex animate-[bg-in_0.15s_ease-in-out] items-end justify-center md:items-center lg:p-4"
       onMouseUp={(e) => {
-        if (e.target === e.currentTarget) props.onClose();
+        if (e.target === e.currentTarget) properties.onClose();
       }}
       role="presentation"
       data-openlv-modal-root
@@ -366,9 +368,7 @@ export const ModalRoot = (props: { onClose: () => void; }) => {
         aria-label={String(title())}
         onClick={event => event.stopPropagation()}
         style={{
-          ...(typeof height() === "number" && height() > 0
-            ? { height: `${height()}px` }
-            : {}),
+          ...(typeof height() === "number" && height() > 0 && { height: `${height()}px` }),
           ...cardStyle,
         }}
       >
@@ -376,7 +376,7 @@ export const ModalRoot = (props: { onClose: () => void; }) => {
           <Header
             title={String(title())}
             view={modalView()}
-            onClose={props.onClose}
+            onClose={properties.onClose}
             onBack={shouldShowBack() ? onBack : undefined}
             setView={setView}
           />

@@ -65,7 +65,7 @@ const trimAddress = (address: Address | undefined | null) => {
   return `${address.slice(0, 5)}...${address.slice(-4)}`;
 };
 
-const btnClass
+const buttonClass
   = "!bg-[var(--vocs-color_codeTitleBackground)] hover:!bg-[var(--vocs-color_codeBlockBackground)] rounded-lg vocs:border-primary px-4 py-1 disabled:opacity-50";
 
 const PersonalSign = () => {
@@ -74,7 +74,7 @@ const PersonalSign = () => {
   const { data: signature, error, isPending, reset } = signMessage;
   const chainId = useChainId();
   const { phase } = useTryItSession();
-  const ready = connector?.type !== "openLv" || phase === "connected";
+  const isReady = connector?.type !== "openLv" || phase === "connected";
 
   const { data: valid, isLoading: verifying } = useVerifyMessage({
     address,
@@ -91,12 +91,12 @@ const PersonalSign = () => {
         </p>
         <button
           type="button"
-          disabled={!ready || isPending}
+          disabled={!isReady || isPending}
           onClick={() => {
             reset();
             signMessage.mutate({ message: "Hello, world!" });
           }}
-          className={btnClass}
+          className={buttonClass}
         >
           Sign
         </button>
@@ -140,16 +140,16 @@ const WalletUrlConnect = () => {
   const [connecting, setConnecting] = useState(false);
   const [active, setActive] = useState(false);
   const session = useTryItSession();
-  const walletSessionRef = useRef<Session | undefined>(undefined);
-  const detachRef = useRef<(() => void) | undefined>(undefined);
+  const walletSessionReference = useRef<Session | undefined>(undefined);
+  const detachReference = useRef<(() => void) | undefined>(undefined);
 
   if (!walletClient) return null;
 
   const endSession = async () => {
-    detachRef.current?.();
-    detachRef.current = undefined;
-    await walletSessionRef.current?.close();
-    walletSessionRef.current = undefined;
+    detachReference.current?.();
+    detachReference.current = undefined;
+    await walletSessionReference.current?.close();
+    walletSessionReference.current = undefined;
     setActive(false);
     session.resetSession();
   };
@@ -163,7 +163,7 @@ const WalletUrlConnect = () => {
           onChange={e => setUrl(e.target.value)}
           placeholder="openlv://…"
           disabled={connecting}
-          className={`${btnClass} block w-full grow border px-3 py-1 placeholder:text-neutral-500`}
+          className={`${buttonClass} block w-full grow border px-3 py-1 placeholder:text-neutral-500`}
         />
         <button
           type="button"
@@ -185,21 +185,21 @@ const WalletUrlConnect = () => {
                   : undefined;
               const s = await connectSession(
                 url,
-                shimWalletOnMessage("wallet", msg => client.request(msg as never), session),
+                shimWalletOnMessage("wallet", message => client.request(message as never), session),
                 [webrtc()],
                 walletConnector
                   ? {
                       info: {
                         identity: `sh.openlv.docs.${walletConnector.id}`,
                         name: walletConnector.name,
-                        ...(walletIcon ? { icon: walletIcon } : {}),
+                        ...(walletIcon && { icon: walletIcon }),
                       },
                     }
                   : undefined,
               );
 
-              walletSessionRef.current = s;
-              detachRef.current = attachTryItSession(s, "wallet", session, {
+              walletSessionReference.current = s;
+              detachReference.current = attachTryItSession(s, "wallet", session, {
                 logRequests: false,
               });
               setActive(true);
@@ -222,12 +222,12 @@ const WalletUrlConnect = () => {
               setConnecting(false);
             }
           }}
-          className={btnClass}
+          className={buttonClass}
         >
           {connecting ? "…" : "Connect"}
         </button>
         {active && (
-          <button type="button" onClick={() => endSession()} className={btnClass}>
+          <button type="button" onClick={() => endSession()} className={buttonClass}>
             End
           </button>
         )}
@@ -256,7 +256,7 @@ const Connected = () => {
             session.resetSession();
             disconnect.mutate();
           }}
-          className={btnClass}
+          className={buttonClass}
         >
           Disconnect
         </button>
@@ -341,13 +341,13 @@ const TryItOutInner = () => {
 
           // Rebinding happens after the handshake too — carry the already
           // known peer info over instead of clobbering it.
-          session.setPeer(prev => ({
+          session.setPeer(previous => ({
             role: "dapp",
             connectionUrl,
             sessionId: h.sessionId,
             protocol: h.p,
             signalingServer: h.s,
-            remote: prev?.remote ?? s.getState().peerInfo,
+            remote: previous?.remote ?? s.getState().peerInfo,
           }));
         }}
       />
@@ -368,9 +368,9 @@ const TryItOutProviders = ({ children }: { children: ReactNode; }) => (
 );
 
 export const TryItOut = () => {
-  const inBrowser = globalThis.window !== undefined;
+  const isInBrowser = globalThis.window !== undefined;
 
-  if (!inBrowser) {
+  if (!isInBrowser) {
     return <div className="rounded-lg border vocs:border-primary" suppressHydrationWarning />;
   }
 

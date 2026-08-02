@@ -32,22 +32,22 @@ export type SelectProps = {
   dropdownThreshold?: number;
 };
 
-export const Select = (props: SelectProps) => {
+export const Select = (properties: SelectProps) => {
   const dropdown = dropdownStyles();
   const { root, box } = buttonGroupStyles({});
 
   return (
     <Show
-      when={props.options.length > (props.dropdownThreshold ?? 3)}
+      when={properties.options.length > (properties.dropdownThreshold ?? 3)}
       fallback={(
         <div class={root()}>
-          <For each={props.options}>
+          <For each={properties.options}>
             {([slug, label]) => (
               <button
                 type="button"
-                onClick={() => props.onChange(slug)}
-                aria-pressed={slug === props.value}
-                class={box({ active: slug === props.value ? "on" : "off" })}
+                onClick={() => properties.onChange(slug)}
+                aria-pressed={slug === properties.value}
+                class={box({ active: slug === properties.value ? "on" : "off" })}
               >
                 {label}
               </button>
@@ -58,10 +58,10 @@ export const Select = (props: SelectProps) => {
     >
       <select
         class={dropdown}
-        value={props.value}
-        onChange={event => props.onChange(event.currentTarget.value)}
+        value={properties.value}
+        onChange={event => properties.onChange(event.currentTarget.value)}
       >
-        <For each={props.options}>
+        <For each={properties.options}>
           {([slug, label]) => <option value={slug}>{label}</option>}
         </For>
       </select>
