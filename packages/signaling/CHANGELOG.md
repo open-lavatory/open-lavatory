@@ -1,5 +1,13 @@
 # @openlv/signaling
 
+## 0.1.3
+
+### Patch Changes
+
+- 53f38fa: Lint the codebase and update vocabulary to disfavor shorthands
+- Updated dependencies [53f38fa]
+  - @openlv/core@0.1.2
+
 ## 0.1.2
 
 ### Patch Changes

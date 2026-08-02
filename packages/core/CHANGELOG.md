@@ -1,5 +1,11 @@
 # @openlv/core
 
+## 0.1.2
+
+### Patch Changes
+
+- 53f38fa: Lint the codebase and update vocabulary to disfavor shorthands
+
 ## 0.1.1
 
 ### Patch Changes
