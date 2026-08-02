@@ -22,8 +22,8 @@ import type { Address, Prettify } from "viem";
 
 import {
   createJsonRpcRequestEncoder,
-  createMethodNotFoundResponse,
   decodeJsonRpcResponse,
+  jsonRpcRequest,
   type RpcSchema,
 } from "./rpc.js";
 import {
@@ -120,7 +120,16 @@ export const createProvider = (
     // Emit on the session emitter so observers (e.g. modal) can react.
     session.get()?.emitter.emit("request", message);
 
-    return createMethodNotFoundResponse(message);
+    const requestIdentifier = jsonRpcRequest.safeParse(request).data?.["id"] ?? null;
+
+    return {
+      jsonrpc: "2.0",
+      ["id"]: requestIdentifier,
+      error: {
+        code: -32_601,
+        message: "Method not found",
+      },
+    };
   };
 
   const sendJsonRpcRequest = async (request: object): Promise<unknown> => {

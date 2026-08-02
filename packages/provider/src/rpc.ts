@@ -12,7 +12,7 @@ const jsonRpcError = z.object({
   message: z.string(),
   data: z.unknown().optional(),
 });
-const jsonRpcRequest = z.object({ ["id"]: jsonRpcIdentifier }).passthrough();
+
 const jsonRpcResponse = z.union([
   z.object({
     jsonrpc: z.literal("2.0"),
@@ -26,6 +26,7 @@ const jsonRpcResponse = z.union([
   }),
 ]);
 
+export const jsonRpcRequest = z.object({ ["id"]: jsonRpcIdentifier }).passthrough();
 export const decodeJsonRpcResponse = (
   payload: SessionPayload,
   requestIdentifier: number,
@@ -57,20 +58,5 @@ export const createJsonRpcRequestEncoder = () => {
         ["id"]: requestIdentifier,
       } satisfies SessionPayload,
     };
-  };
-};
-
-export const createMethodNotFoundResponse = (
-  request: SessionPayload,
-): SessionPayload => {
-  const requestIdentifier = jsonRpcRequest.safeParse(request).data?.["id"] ?? null;
-
-  return {
-    jsonrpc: "2.0",
-    ["id"]: requestIdentifier,
-    error: {
-      code: -32_601,
-      message: "Method not found",
-    },
   };
 };
