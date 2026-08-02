@@ -31,10 +31,11 @@ import { EventEmitter } from "eventemitter3";
 import { loadSignaling } from "./dynamic.js";
 import type { SessionEvents } from "./events.js";
 import { awaitCorrelatedResponse } from "./messages/correlate.js";
-import type { SessionMessage } from "./messages/index.js";
+import type { SessionMessage, SessionPayload } from "./messages/index.js";
 import { log } from "./utils/log.js";
 
 export { loadSignaling, loadTransport } from "./dynamic.js";
+export type { SessionMessage, SessionPayload } from "./messages/index.js";
 
 // `peerInfo` is part of the session's surface, so consumers must be able to
 // name its type without reaching into @openlv/signaling.
@@ -67,7 +68,11 @@ export type Session = {
   getHandshakeParameters(): SessionHandshakeParameters;
   connect(): Promise<void>;
   close(): Promise<void>;
-  send(message: object, ackTimeout?: number, responseTimeout?: number): Promise<unknown>;
+  send(
+    message: SessionPayload,
+    ackTimeout?: number,
+    responseTimeout?: number,
+  ): Promise<SessionPayload>;
   emitter: EventEmitter<SessionEvents>;
   _internal: {
     signal: SignalingLayer;
@@ -84,7 +89,7 @@ export type Session = {
 export const createSession = async (
   initParameters: SessionLinkParameters,
   transportLayers: TransportLayerFunction[],
-  onMessage: (message: object) => Promise<object | string>,
+  onMessage: (message: SessionPayload) => Promise<SessionPayload>,
   options?: SessionOptions,
 ): Promise<Session> => {
   if (transportLayers.length === 0) {
@@ -198,9 +203,9 @@ export const createSession = async (
 
           // Notify observers before processing (e.g. wallet UI can show a
           // pending indicator before the handler resolves).
-          emitter.emit("request", message["payload"] as object);
+          emitter.emit("request", message["payload"]);
 
-          const data = await onMessage(message["payload"] as object)
+          const data = await onMessage(message["payload"])
             // A throwing handler must still answer, otherwise the peer waits
             // out its full response timeout.
             .catch(() => ({ error: { code: -32_603, message: "Internal error" } }));
@@ -412,7 +417,7 @@ export const createSession = async (
       };
     },
     async send(
-      message: object,
+      message: SessionPayload,
       ackTimeout: number = 10_000,
       responseTimeout: number = 60 * 60_000,
     ) {
@@ -446,7 +451,7 @@ export const createSession = async (
  */
 export const connectSession = async (
   connectionUrl: string,
-  onMessage: (message: object) => Promise<object | string>,
+  onMessage: (message: SessionPayload) => Promise<SessionPayload>,
   transports: TransportLayerFunction[],
   options?: SessionOptions,
 ): Promise<Session> => {

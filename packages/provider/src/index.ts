@@ -8,6 +8,7 @@ import {
 import {
   createSession,
   type Session,
+  type SessionPayload,
   SessionStatus,
 } from "@openlv/session";
 import type { PeerInfo } from "@openlv/signaling";
@@ -19,7 +20,12 @@ import type { ExtractReturnType } from "ox/RpcSchema";
 import { match } from "ts-pattern";
 import type { Address, Prettify } from "viem";
 
-import type { RpcSchema } from "./rpc.js";
+import {
+  createJsonRpcRequestEncoder,
+  createMethodNotFoundResponse,
+  decodeJsonRpcResponse,
+  type RpcSchema,
+} from "./rpc.js";
 import {
   createProviderStorage,
   type ProviderStorageParameters,
@@ -27,29 +33,6 @@ import {
 } from "./storage/index.js";
 import type { SignalingProtocol } from "./storage/version.js";
 import { log } from "./utils/log.js";
-
-/** Unwrap `{ result }` / `{ error }` envelopes from wallet session handlers. */
-const unwrapSessionResponse = (payload: unknown): unknown => {
-  if (typeof payload !== "object" || payload === null) {
-    return payload;
-  }
-
-  if ("error" in payload && payload.error) {
-    const rpcError = payload.error as {
-      code: number;
-      message: string;
-      data?: unknown;
-    };
-
-    throw Object.assign(new Error(rpcError.message), { code: rpcError.code });
-  }
-
-  if ("result" in payload) {
-    return (payload as { result: unknown; }).result;
-  }
-
-  return payload;
-};
 
 export type OpenLVProviderConfig = {
   /** Shared with the wallet during the handshake and shown in its UI. */
@@ -115,6 +98,7 @@ export const createProvider = (
   const [error, setError] = observable<string | undefined>(undefined);
 
   let accounts: Address[] = [];
+  const encodeJsonRpcRequest = createJsonRpcRequestEncoder();
   const storage = createProviderStorage({ storage: parameters.storage });
   const { openModal, config } = parameters;
 
@@ -130,31 +114,30 @@ export const createProvider = (
    * "Method not found" error so the wallet receives a proper response rather
    * than a no-op stub.
    */
-  const onMessage = async (message: object): Promise<object> => {
+  const onMessage = async (message: SessionPayload): Promise<SessionPayload> => {
     log("onMessage received from remote peer", message);
 
     // Emit on the session emitter so observers (e.g. modal) can react.
     session.get()?.emitter.emit("request", message);
 
-    return {
-      error: {
-        code: -32_601,
-        message: "Method not found",
-      },
-    };
+    return createMethodNotFoundResponse(message);
   };
 
-  const getAccounts = async (): Promise<Address[]> => {
+  const sendJsonRpcRequest = async (request: object): Promise<unknown> => {
     const current = session.get();
 
-    if (current) {
-      return unwrapSessionResponse(
-        await current.send({ method: "eth_accounts", params: [] }),
-      ) as Address[];
-    }
+    if (!current) throw new Error("No session");
 
-    throw new Error("No session");
+    const { payload, requestIdentifier } = encodeJsonRpcRequest(request);
+
+    return decodeJsonRpcResponse(
+      await current.send(payload),
+      requestIdentifier,
+    );
   };
+
+  const getAccounts = async (): Promise<Address[]> =>
+    await sendJsonRpcRequest({ method: "eth_accounts", params: [] }) as Address[];
 
   /** Derive default link parameters from stored signaling settings. */
   const defaultLinkParameters = (): SessionLinkParameters | undefined => {
@@ -218,9 +201,7 @@ export const createProvider = (
 
       accounts = await getAccounts();
 
-      const chainIdHex = unwrapSessionResponse(
-        await next.send({ method: "eth_chainId", params: [] }),
-      ) as string;
+      const chainIdHex = await sendJsonRpcRequest({ method: "eth_chainId", params: [] }) as string;
 
       setStatus(ProviderStatus.CONNECTED);
       oxEmitter.emit("connect", { chainId: chainIdHex });
@@ -260,9 +241,7 @@ export const createProvider = (
 
           if (current) {
             log("sending eth_chainId to session");
-            const result = unwrapSessionResponse(
-              await current.send(request),
-            );
+            const result = await sendJsonRpcRequest(request);
 
             log("eth_chainId result from session", result);
 
@@ -326,9 +305,7 @@ export const createProvider = (
 
           if (current) {
             log("sending request to session", request);
-            const result = unwrapSessionResponse(
-              await current.send(request),
-            );
+            const result = await sendJsonRpcRequest(request);
 
             log("result from session", result);
 

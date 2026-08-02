@@ -1,3 +1,7 @@
+import type { TransportPayload } from "@openlv/transport";
+
+export type SessionPayload = TransportPayload;
+
 export type SessionMessage
   = | SessionMessageRequest
     | SessionMessageResponse
@@ -6,13 +10,13 @@ export type SessionMessage
 export type SessionMessageRequest = {
   type: "request";
   messageId: string;
-  payload: object | string;
+  payload: SessionPayload;
 };
 
 export type SessionMessageResponse = {
   type: "response";
   messageId: string;
-  payload: object | string;
+  payload: SessionPayload;
 };
 
 export type SessionMessageAck = {
