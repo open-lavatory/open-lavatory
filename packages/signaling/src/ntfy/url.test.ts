@@ -15,7 +15,7 @@ const testCases = [
     url: "https://ntfy.sh/?auth=mytoken2",
     expected: {
       host: "ntfy.sh",
-      protocol: "http",
+      protocol: "https",
       parameters: "?auth=mytoken2",
     },
   },
