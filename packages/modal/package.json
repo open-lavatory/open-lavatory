@@ -8,19 +8,19 @@
     "solid-js",
     "web-component"
   ],
-  "homepage": "https://github.com/v3xlabs/open-lavatory",
+  "homepage": "https://github.com/open-lavatory/open-lavatory",
   "bugs": {
-    "url": "https://github.com/v3xlabs/open-lavatory/issues"
+    "url": "https://github.com/open-lavatory/open-lavatory/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/v3xlabs/open-lavatory.git",
+    "url": "git+https://github.com/open-lavatory/open-lavatory.git",
     "directory": "packages/modal"
   },
   "license": "LGPL-3.0-only",
   "author": {
     "name": "Open-Lavatory",
-    "url": "https://github.com/v3xlabs/open-lavatory"
+    "url": "https://github.com/open-lavatory/open-lavatory"
   },
   "sideEffects": false,
   "type": "module",

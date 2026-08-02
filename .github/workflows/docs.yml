@@ -33,7 +33,7 @@ jobs:
         env:
           DOCS_BASE_PATH: "/"
       - name: Edgeserver Upload
-        uses: v3xlabs/edgeserver-upload@v0.2.4
+        uses: v3xlabs/edgeserver-upload@v0.3.0
         with:
           site_id: s_6956587901
           server: https://edgeserver.dev/api
