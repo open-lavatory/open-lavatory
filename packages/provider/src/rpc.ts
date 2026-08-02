@@ -7,19 +7,19 @@ export type RpcSchema = RpcSchema_ox.Eth | RpcSchema_ox.Wallet;
 
 const jsonRpcIdentifier = z.union([z.number(), z.string(), z.null()]);
 const jsonRpcResult = z.unknown().refine(value => value !== undefined);
-const jsonRpcError = z.strictObject({
+const jsonRpcError = z.object({
   code: z.number(),
   message: z.string(),
   data: z.unknown().optional(),
 });
 const jsonRpcRequest = z.object({ ["id"]: jsonRpcIdentifier }).passthrough();
 const jsonRpcResponse = z.union([
-  z.strictObject({
+  z.object({
     jsonrpc: z.literal("2.0"),
     ["id"]: z.number(),
     result: jsonRpcResult,
   }),
-  z.strictObject({
+  z.object({
     jsonrpc: z.literal("2.0"),
     ["id"]: z.number(),
     error: jsonRpcError,
