@@ -1,5 +1,15 @@
 # @openlv/connector
 
+## 0.1.2
+
+### Patch Changes
+
+- 28f2745: Update github repository
+- Updated dependencies [28f2745]
+  - @openlv/provider@0.1.2
+  - @openlv/modal@0.1.2
+  - @openlv/core@0.1.1
+
 ## 0.1.1
 
 ### Patch Changes
