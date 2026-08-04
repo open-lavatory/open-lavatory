@@ -1,4 +1,4 @@
-import type { SessionPayload } from "@openlv/session";
+import type { JsonValue } from "@openlv/transport";
 import { RpcResponse } from "ox";
 import type * as RpcSchema_ox from "ox/RpcSchema";
 import { z } from "zod";
@@ -28,7 +28,7 @@ const jsonRpcResponse = z.union([
 
 export const jsonRpcRequest = z.object({ ["id"]: jsonRpcIdentifier }).passthrough();
 export const decodeJsonRpcResponse = (
-  payload: SessionPayload,
+  payload: JsonValue,
   requestIdentifier: number,
 ): unknown => {
   const parsed = jsonRpcResponse.safeParse(payload);
@@ -56,7 +56,7 @@ export const createJsonRpcRequestEncoder = () => {
         ...request,
         jsonrpc: "2.0",
         ["id"]: requestIdentifier,
-      } satisfies SessionPayload,
+      } satisfies JsonValue,
     };
   };
 };

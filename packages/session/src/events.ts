@@ -1,4 +1,4 @@
-import type { SessionPayload } from "./messages/index.js";
+import type { JsonValue } from "@openlv/transport";
 
 export type SessionEvents = {
   /**
@@ -6,5 +6,5 @@ export type SessionEvents = {
    * is sent. Useful for observability, logging, or UI integration without
    * needing to intercept the `onMessage` callback.
    */
-  request: (payload: SessionPayload) => void;
+  request: (payload: JsonValue) => void;
 };

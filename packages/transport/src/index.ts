@@ -22,29 +22,29 @@ export const Status = {
 export type Status
   = (typeof Status)[keyof typeof Status];
 
-/** Anything that can go in JSON */
-export type TransportPayload =
-  | boolean
-  | null
-  | number
-  | string
-  | TransportPayload[]
-  | { [key: string]: TransportPayload; };
+/** Any JSON-serializable value. */
+export type JsonValue
+  = | boolean
+    | null
+    | number
+    | string
+    | JsonValue[]
+    | { [key: string]: JsonValue; };
 
-const isTransportPayload = (value: unknown): value is TransportPayload => {
+const isJsonValue = (value: unknown): value is JsonValue => {
   if (value === null) return true;
 
   if (["boolean", "number", "string"].includes(typeof value)) return true;
 
-  if (Array.isArray(value)) return value.every(isTransportPayload);
+  if (Array.isArray(value)) return value.every(isJsonValue);
 
-  return typeof value === "object" && Object.values(value).every(isTransportPayload);
+  return typeof value === "object" && Object.values(value).every(isJsonValue);
 };
 
 const isInboundSessionMessage = (value: unknown): value is {
   type: string;
   messageId: string;
-  payload?: TransportPayload;
+  payload?: JsonValue;
 } =>
   typeof value === "object"
   && value !== null
@@ -53,7 +53,7 @@ const isInboundSessionMessage = (value: unknown): value is {
   && typeof value.type === "string"
   && "messageId" in value
   && typeof value.messageId === "string"
-  && (!("payload" in value) || isTransportPayload(value.payload));
+  && (!("payload" in value) || isJsonValue(value.payload));
 
 export type TLayerEventMap = {
   error: (reason?: string) => void;
@@ -67,7 +67,7 @@ export type TransportLayerParameters = {
   onmessage: (message: {
     type: string;
     messageId: string;
-    payload?: TransportPayload;
+    payload?: JsonValue;
   }) => void;
 };
 
