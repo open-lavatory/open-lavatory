@@ -20,8 +20,7 @@ import { match } from "ts-pattern";
 import type { Address, Prettify } from "viem";
 
 import {
-  createJsonRpcRequestEncoder,
-  decodeJsonRpcResponse,
+  createWalletRpcClient,
   jsonRpcRequest,
   type RpcSchema,
 } from "./rpc.js";
@@ -97,9 +96,15 @@ export const createProvider = (
   const [error, setError] = observable<string | undefined>(undefined);
 
   let accounts: Address[] = [];
-  const encodeJsonRpcRequest = createJsonRpcRequestEncoder();
   const storage = createProviderStorage({ storage: parameters.storage });
   const { openModal, config } = parameters;
+  const walletRpc = createWalletRpcClient(async (payload) => {
+    const current = session.get();
+
+    if (!current) throw new Error("No session");
+
+    return await current.send(payload);
+  });
 
   status.subscribe(current => log("status", current));
 
@@ -131,21 +136,11 @@ export const createProvider = (
     };
   };
 
-  const sendJsonRpcRequest = async (request: object): Promise<unknown> => {
-    const current = session.get();
+  const getAccounts = async (): Promise<Address[]> => {
+    accounts = [...await walletRpc.call({ method: "eth_accounts" })];
 
-    if (!current) throw new Error("No session");
-
-    const { payload, requestIdentifier } = encodeJsonRpcRequest(request);
-
-    return decodeJsonRpcResponse(
-      await current.send(payload),
-      requestIdentifier,
-    );
+    return accounts;
   };
-
-  const getAccounts = async (): Promise<Address[]> =>
-    await sendJsonRpcRequest({ method: "eth_accounts", params: [] }) as Address[];
 
   /** Derive default link parameters from stored signaling settings. */
   const defaultLinkParameters = (): SessionLinkParameters | undefined => {
@@ -209,10 +204,10 @@ export const createProvider = (
 
       accounts = await getAccounts();
 
-      const chainIdHex = await sendJsonRpcRequest({ method: "eth_chainId", params: [] }) as string;
+      const chainId = await walletRpc.call({ method: "eth_chainId" });
 
       setStatus(ProviderStatus.CONNECTED);
-      oxEmitter.emit("connect", { chainId: chainIdHex });
+      oxEmitter.emit("connect", { chainId });
       oxEmitter.emit("accountsChanged", accounts);
 
       return next;
@@ -231,6 +226,7 @@ export const createProvider = (
   const closeSession = async () => {
     await session.get()?.close();
     setSession(undefined);
+    accounts = [];
     setError(undefined);
     setStatus(ProviderStatus.STANDBY);
   };
@@ -248,12 +244,7 @@ export const createProvider = (
           const current = session.get();
 
           if (current) {
-            log("sending eth_chainId to session");
-            const result = await sendJsonRpcRequest(request);
-
-            log("eth_chainId result from session", result);
-
-            return result;
+            return await walletRpc.call({ method: "eth_chainId" });
           }
 
           return "0x1";
@@ -313,7 +304,7 @@ export const createProvider = (
 
           if (current) {
             log("sending request to session", request);
-            const result = await sendJsonRpcRequest(request);
+            const result = await walletRpc.call(request);
 
             log("result from session", result);
 

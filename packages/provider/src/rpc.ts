@@ -16,21 +16,22 @@ const jsonRpcError = z.object({
 const jsonRpcResponse = z.union([
   z.object({
     jsonrpc: z.literal("2.0"),
-    ["id"]: z.number(),
+    ["id"]: jsonRpcIdentifier,
     result: jsonRpcResult,
   }),
   z.object({
     jsonrpc: z.literal("2.0"),
-    ["id"]: z.number(),
+    ["id"]: jsonRpcIdentifier,
     error: jsonRpcError,
   }),
 ]);
 
-export const jsonRpcRequest = z.object({ ["id"]: jsonRpcIdentifier }).passthrough();
-export const decodeJsonRpcResponse = (
+export const jsonRpcRequest = z.looseObject({ ["id"]: jsonRpcIdentifier });
+export const decodeJsonRpcResponse = <Result>(
   payload: JsonValue,
+  // Will always be a number because provider generates the request ids only as numbers.
   requestIdentifier: number,
-): unknown => {
+): Result => {
   const parsed = jsonRpcResponse.safeParse(payload);
 
   if (!parsed.success || parsed.data["id"] !== requestIdentifier) {
@@ -41,7 +42,7 @@ export const decodeJsonRpcResponse = (
     throw RpcResponse.parseError(parsed.data.error);
   }
 
-  return parsed.data.result;
+  return RpcResponse.parse<unknown, Result>(payload);
 };
 
 export const createJsonRpcRequestEncoder = () => {
@@ -59,4 +60,28 @@ export const createJsonRpcRequestEncoder = () => {
       } satisfies JsonValue,
     };
   };
+};
+
+/** Send a 1193 request to the wallet as JSON-RPC and decode the correlated response. */
+export const createWalletRpcClient = (
+  send: (payload: JsonValue) => Promise<JsonValue>,
+): {
+  call: <methodName extends RpcSchema_ox.MethodNameGeneric<RpcSchema>>(
+    request: RpcSchema_ox.ExtractRequest<RpcSchema, methodName>,
+  ) => Promise<RpcSchema_ox.ExtractReturnType<RpcSchema, methodName>>;
+} => {
+  const encodeRequest = createJsonRpcRequestEncoder();
+  const call = async <methodName extends RpcSchema_ox.MethodNameGeneric<RpcSchema>>(
+    request: RpcSchema_ox.ExtractRequest<RpcSchema, methodName>,
+  ): Promise<RpcSchema_ox.ExtractReturnType<RpcSchema, methodName>> => {
+    const { payload, requestIdentifier } = encodeRequest(request);
+    const response = await send(payload);
+
+    return decodeJsonRpcResponse<RpcSchema_ox.ExtractReturnType<RpcSchema, methodName>>(
+      response,
+      requestIdentifier,
+    );
+  };
+
+  return { call };
 };
