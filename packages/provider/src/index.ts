@@ -6,7 +6,7 @@ import {
   type Session,
   type SessionStateObject,
 } from "@openlv/session";
-import { dynamicSignalingLayer } from "@openlv/signaling/dynamic";
+import type { TransportProtocol } from "@openlv/transport";
 import { webrtc, type WebRTCConfig } from "@openlv/transport/webrtc";
 import { Provider as OxProvider } from "ox";
 import type { EventMap } from "ox/Provider";
@@ -46,8 +46,6 @@ const unwrapSessionResponse = (payload: unknown): unknown => {
 
   return payload;
 };
-
-export type TransportProtocol = "webrtc";
 
 export type OpenLVProviderConfig = {
   /** Shared with the wallet during the handshake and shown in its UI. */
@@ -105,39 +103,6 @@ export type OpenLVProvider = OxProvider.Provider<
   ProviderEvents & EventMap
 >
 & ProviderBase;
-
-type transportInput
-  = | {
-    stun?: string[] | undefined;
-    turn?:
-      | {
-        urls: string;
-        username?: string | undefined;
-        credential?: string | undefined;
-      }[]
-      | undefined;
-  }
-  | undefined;
-
-/**
- * Convert stored WebRTC settings to a transport config. Returns undefined
- * when nothing is configured so the transport falls back to its own
- * defaults — an empty iceServers array would silently disable STUN/TURN.
- */
-const convertStoredWebRTCSettings = (
-  transport: transportInput,
-): WebRTCConfig | undefined => {
-  const stun = transport?.stun?.map(url => ({ urls: url })) || [];
-  const turn
-    = transport?.turn?.map(server => ({
-      urls: server.urls,
-      username: server.username,
-      credential: server.credential,
-    })) || [];
-  const iceServers = [...stun, ...turn];
-
-  return iceServers.length > 0 ? { iceServers } : undefined;
-};
 
 /**
  * OpenLV Provider
@@ -204,17 +169,6 @@ export const createProvider = (
     return p && s ? { p, s } : undefined;
   };
 
-  // Warm up the signaling module for the configured protocol. Backends are
-  // loaded via dynamic import; in dev servers (Vite) the first import can
-  // trigger a dependency re-optimization page reload — better at page load
-  // than mid-handshake.
-  const prefetchProtocol
-    = (storage.getSettings().signaling ?? config?.signaling)?.p;
-
-  if (prefetchProtocol) {
-    void dynamicSignalingLayer(prefetchProtocol).catch(() => {});
-  }
-
   const start = async (parameters?: SessionLinkParameters) => {
     lastError = undefined;
     updateStatus(PROVIDER_STATUS.CREATING);
@@ -233,7 +187,7 @@ export const createProvider = (
     try {
       session = await createSession(
         linkParameters,
-        await dynamicSignalingLayer(linkParameters.p),
+        linkParameters.p,
         [webrtc(transportOptions)],
         onMessage,
         { info: config?.info },

@@ -6,8 +6,8 @@
  */
 import type { DecryptionKey, EncryptionKey } from "@openlv/core/encryption";
 import { EventEmitter } from "eventemitter3";
-import type { MaybePromise } from "viem";
 
+import type { TransportLayerBaseEventMap, TransportLayerImplFunction } from "./layer.js";
 import { log } from "./utils/log.js";
 import type { WebRTCConfig } from "./webrtc/index.js";
 
@@ -26,7 +26,7 @@ export type TLayerEventMap = {
   error: (reason?: string) => void;
 };
 
-export type TransportLayerSetupParameters = {
+export type TransportLayerParameters = {
   isHost: boolean;
   encrypt: EncryptionKey["encrypt"];
   decrypt: DecryptionKey["decrypt"];
@@ -45,42 +45,19 @@ export type TransportMessage = {
 };
 export type TransportLayer = {
   type: TransportProtocol;
-  setup: () => MaybePromise<void>;
-  teardown: () => MaybePromise<void>;
+  setup: () => Promise<void>;
+  teardown: () => Promise<void>;
   send: (message: object) => Promise<void>;
   handle: (message: TransportMessage) => Promise<void>;
-  waitFor: (state: TransportState) => Promise<void>;
   emitter: EventEmitter<TLayerEventMap>;
 };
 /** Wire identifier advertised in the `capabilities` handshake packet. */
 export type TransportProtocol = "wrtc" | "ws" | (string & {});
-export type TransportLayerFn = {
+export type TransportLayerFunction = {
   transportId: TransportProtocol;
-  create: (parameters: TransportLayerSetupParameters) => TransportLayer;
+  create: (parameters: TransportLayerParameters) => TransportLayer;
 };
-export type Transport = (config?: WebRTCConfig) => TransportLayerFn;
-
-export type TransportLayerImpl = {
-  setup: () => MaybePromise<void>;
-  teardown: () => MaybePromise<void>;
-  handle: (message: TransportMessage) => Promise<void>;
-  send: (message: string) => Promise<void>;
-};
-export type TransportLayerBaseEventMap = {
-  negotiate: (message: TransportMessage) => void;
-  connected: () => void;
-  message: (message: string) => void;
-  error: (reason?: string) => void;
-};
-export type TransportLayerBaseEmitter
-  = EventEmitter<TransportLayerBaseEventMap>;
-export type TransportLayerBaseParameters = {
-  emitter: TransportLayerBaseEmitter;
-  isHost: boolean;
-};
-export type TransportLayerImplFn = (
-  parameters: TransportLayerBaseParameters,
-) => TransportLayerImpl;
+export type Transport = (config?: WebRTCConfig) => TransportLayerFunction;
 
 /**
  * Base Transport Layer implementation
@@ -89,8 +66,8 @@ export type TransportLayerImplFn = (
  */
 export const createTransportBase = (
   transportId: TransportProtocol,
-  init: TransportLayerImplFn,
-): TransportLayerFn => ({
+  init: TransportLayerImplFunction,
+): TransportLayerFunction => ({
   transportId,
   create: ({ encrypt, decrypt, subsend, isHost, onmessage }) => {
     const emitter = new EventEmitter<TLayerEventMap>();
@@ -148,29 +125,6 @@ export const createTransportBase = (
       await sendLayer(payload);
     };
 
-    const waitFor = async (targetState: TransportState) => {
-      if (state === targetState) return;
-
-      if (state === TRANSPORT_STATE.ERROR) {
-        throw new Error("Transport is in error state");
-      }
-
-      return new Promise<void>((resolve, reject) => {
-        const handler = (newState: TransportState) => {
-          if (newState === targetState) {
-            emitter.off("state_change", handler);
-            resolve();
-          }
-          else if (newState === TRANSPORT_STATE.ERROR) {
-            emitter.off("state_change", handler);
-            reject(new Error("Transport is in error state"));
-          }
-        };
-
-        emitter.on("state_change", handler);
-      });
-    };
-
     return {
       type: transportId,
       async setup() {
@@ -181,7 +135,6 @@ export const createTransportBase = (
       teardown,
       handle,
       send,
-      waitFor,
       emitter,
     };
   },

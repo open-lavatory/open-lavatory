@@ -20,9 +20,7 @@ import {
   type SignalingLayer,
   type SignalingProtocol,
   type SignalState,
-  validatePeerInfo,
 } from "@openlv/signaling";
-import { dynamicSignalingLayer } from "@openlv/signaling/dynamic";
 import {
   TRANSPORT_STATE,
   type TransportLayer,
@@ -31,13 +29,11 @@ import {
 } from "@openlv/transport";
 import { EventEmitter } from "eventemitter3";
 
+import { loadSignaling } from "./dynamic.js";
 import type { SessionEvents } from "./events.js";
 import { awaitCorrelatedResponse } from "./messages/correlate.js";
 import type { SessionMessage } from "./messages/index.js";
-import { selectTransportId } from "./transports.js";
 import { log } from "./utils/log.js";
-
-export type { PeerCapabilities, PeerInfo } from "@openlv/signaling";
 
 export const SESSION_STATE = {
   CREATED: "created",
@@ -466,7 +462,7 @@ export const connectSession = async (
 ): Promise<Session> => {
   const initParameters = decodeConnectionURL(connectionUrl);
 
-  const signaling = await dynamicSignalingLayer(initParameters.p);
+  const signaling = await loadSignaling(initParameters.p);
 
   if (!signaling) {
     throw new Error(`Invalid signaling protocol: ${initParameters.p}`);

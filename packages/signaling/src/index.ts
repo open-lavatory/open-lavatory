@@ -3,7 +3,6 @@ import type { EncryptionKey, SymmetricKey } from "@openlv/core/encryption";
 import { parseEncryptionKey, validatePublicKeyHash } from "@openlv/core/encryption";
 import { EventEmitter } from "eventemitter3";
 import { match } from "ts-pattern";
-import type { MaybePromise } from "viem";
 
 import {
   parseSignalMessage,
@@ -36,14 +35,14 @@ export type SignalingProperties = {
   isHost: boolean;
   h: string;
   k?: SymmetricKey;
-  rpDiscovered: (rpKey: string) => MaybePromise<void>;
+  rpDiscovered: (rpKey: string) => Promise<void>;
   // Our capabilities, advertised to the peer during the handshake
   capabilities: PeerCapabilities;
-  peerCapabilities: (capabilities: PeerCapabilities) => MaybePromise<void>;
+  peerCapabilities: (capabilities: PeerCapabilities) => Promise<void>;
   // Decrypt using our private key
-  decrypt: (message: string) => MaybePromise<string>;
+  decrypt: (message: string) => Promise<string>;
   // Encrypt to relying party
-  encrypt: (message: string) => MaybePromise<string>;
+  encrypt: (message: string) => Promise<string>;
   // our public key
   publicKey: EncryptionKey;
   canEncrypt: () => boolean;
@@ -53,9 +52,9 @@ export type SignalingContext = {
   type: string;
 
   // Sending only works once keys are exchanged
-  send: (message: object) => MaybePromise<void>;
-  setup: () => MaybePromise<void>;
-  teardown: () => MaybePromise<void>;
+  send: (message: object) => Promise<void>;
+  setup: () => Promise<void>;
+  teardown: () => Promise<void>;
 
   getState: () => {
     state: SignalState;
