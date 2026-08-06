@@ -23,8 +23,8 @@ importers:
         specifier: ^10.8.0
         version: 10.8.0(jiti@2.7.0)
       eslint-plugin-v3xlabs:
-        specifier: ^1.8.0
-        version: 1.8.0(@typescript-eslint/utils@8.65.0(eslint@10.8.0(jiti@2.7.0))(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint@10.8.0(jiti@2.7.0))(tailwindcss@4.3.3)(typescript@5.9.3)
+        specifier: ^1.8.1
+        version: 1.8.1(@typescript-eslint/utils@8.65.0(eslint@10.8.0(jiti@2.7.0))(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint@10.8.0(jiti@2.7.0))(tailwindcss@4.3.3)(typescript@5.9.3)
       globals:
         specifier: ^16.5.0
         version: 16.5.0
@@ -6430,8 +6430,8 @@ packages:
       '@typescript-eslint/eslint-plugin':
         optional: true
 
-  eslint-plugin-v3xlabs@1.8.0:
-    resolution: {integrity: sha512-p0tU5zGmhaezoqvnfRGiFBCOg5FLh9+Dil962Pm5LP/t+F45ge7IWUKYBdJeuYikw+LPPAgs6/A6lTlQo/VIEA==}
+  eslint-plugin-v3xlabs@1.8.1:
+    resolution: {integrity: sha512-4AXqIpv18FaNFSRPERcARb0I0chzbzVqo9YOzf6XCqJmd5+kcikGCibHt+uHj7gJMxaaO6UN1Xai3ozSwgq2og==}
     peerDependencies:
       eslint: ^10.8.0
 
@@ -17827,7 +17827,7 @@ snapshots:
     optionalDependencies:
       '@typescript-eslint/eslint-plugin': 8.65.0(@typescript-eslint/parser@8.65.0(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3))(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3)
 
-  eslint-plugin-v3xlabs@1.8.0(@typescript-eslint/utils@8.65.0(eslint@10.8.0(jiti@2.7.0))(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint@10.8.0(jiti@2.7.0))(tailwindcss@4.3.3)(typescript@5.9.3):
+  eslint-plugin-v3xlabs@1.8.1(@typescript-eslint/utils@8.65.0(eslint@10.8.0(jiti@2.7.0))(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint@10.8.0(jiti@2.7.0))(tailwindcss@4.3.3)(typescript@5.9.3):
     dependencies:
       '@eslint/js': 10.0.1(eslint@10.8.0(jiti@2.7.0))
       '@stylistic/eslint-plugin': 5.10.0(eslint@10.8.0(jiti@2.7.0))
