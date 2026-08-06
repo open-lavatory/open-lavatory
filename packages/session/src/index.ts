@@ -54,14 +54,11 @@ export type SessionStateObject = {
   signaling?: {
     state: SignalState;
   };
-  /** The peer's self-description, set once capabilities are exchanged. */
   peerInfo?: PeerInfo;
-  /** Human-readable reason for the last disconnect/failure, if any. */
   error?: string;
 };
 
 export type SessionOptions = {
-  /** Shared with the peer during the handshake and shown in its UI. */
   info?: PeerInfo;
 };
 
@@ -76,16 +73,6 @@ export type Session = {
   connect(): Promise<void>;
   waitForLink(): Promise<void>;
   close(): Promise<void>;
-  /**
-     * Send a request to the remote peer and await a correlated response.
-     *
-     * Two-phase timeout:
-     * - `ackTimeout` (default 10 s): the remote peer must send back an ack
-     *   within this window, confirming it received the message.
-     * - After an ack arrives the wait is extended to `responseTimeout`
-     *   (default 1 hour) — enough for user-interactive flows such as
-     *   `eth_sendTransaction` or `personal_sign`.
-     */
   send(message: object, ackTimeout?: number, responseTimeout?: number): Promise<unknown>;
   emitter: EventEmitter<SessionEvents>;
   _internal: {
@@ -109,14 +96,6 @@ export const createSession = async (
 ): Promise<Session> => {
   if (transportLayers.length === 0) {
     throw new Error("At least one transport is required");
-  }
-
-  if (options?.info) {
-    // A receiver silently drops out-of-bounds info with the whole packet,
-    // which would surface only as a handshake timeout — fail loudly here.
-    const problem = validatePeerInfo(options.info);
-
-    if (problem) throw new Error(`Invalid session info: ${problem}`);
   }
 
   const emitter = new EventEmitter<SessionEvents>();
@@ -341,8 +320,7 @@ export const createSession = async (
     if (sessionMessage.type === "response") {
       messages.emit("message", sessionMessage);
     }
-
-    if (sessionMessage.type === "request") {
+    else if (sessionMessage.type === "request") {
       if (!transport) {
         log("dropping negotiation message: transport not selected yet");
 
