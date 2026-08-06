@@ -65,17 +65,6 @@ export type SignalingLayerFunction = (
   properties: SignalingProperties,
 ) => Promise<SignalingLayer>;
 
-export const XR_PREFIX = "x";
-export const XR_H_PREFIX = "h";
-
-/**
- * Relays are lossy (MQTT QoS 0, ntfy best-effort), so every handshake step
- * is re-sent on an interval until the state machine observes progress.
- * Receivers treat duplicates as no-ops, which keeps re-sends wire-compatible.
- */
-const HANDSHAKE_RESEND_INTERVAL_MS = 2000;
-const HANDSHAKE_TIMEOUT_MS = 30_000;
-
 /**
  * Base Signaling Layer implementation
  *
@@ -97,30 +86,14 @@ export const createSignalingLayer = (
 }: SignalingProperties) => {
   const emitter = new EventEmitter<SignalEventMap>();
   let state: SignalState = SIGNAL_STATE.STANDBY;
-  let isPeerKeyRecorded = false;
-  let isPeerCapabilitiesRecorded = false;
-  let resendTimer: ReturnType<typeof setInterval> | undefined;
-  let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+  let isPeerKeyRecorded = false; // TODO: deprecate
+  let isPeerCapabilitiesRecorded = false; // TODO: deprecate
   const handshakeKey = k || undefined;
-
-  const stopResend = () => {
-    clearInterval(resendTimer);
-    resendTimer = undefined;
-  };
-  const stopTimers = () => {
-    stopResend();
-    clearTimeout(deadlineTimer);
-    deadlineTimer = undefined;
-  };
 
   const setState = (_state: SignalState) => {
     if (state === _state) return;
 
     state = _state;
-
-    if (_state === SIGNAL_STATE.ENCRYPTED || _state === SIGNAL_STATE.ERROR) {
-      stopTimers();
-    }
 
     emitter.emit("state_change", _state);
   };
@@ -155,48 +128,6 @@ export const createSignalingLayer = (
     await init.publish(prefix + recipient + message);
   };
 
-  /**
-   * Send a handshake step now, then keep re-sending it until the next step
-   * (or teardown) supersedes it. Errors are logged and swallowed -- the next
-   * tick retries.
-   */
-  const sendRepeating = (
-    method: "handshake" | "encrypted",
-    recipient: "h" | "c",
-    payload: SignalMessage,
-  ) => {
-    stopResend();
-
-    const attempt = () => send(method, recipient, payload)
-      .catch(error => log("handshake send failed, will retry", error));
-
-    resendTimer = setInterval(attempt, HANDSHAKE_RESEND_INTERVAL_MS);
-
-    return attempt();
-  };
-
-  const startHandshakeDeadline = () => {
-    if (deadlineTimer) return;
-
-    deadlineTimer = setTimeout(() => {
-      if (state === SIGNAL_STATE.ENCRYPTED) return;
-
-      log("handshake timed out");
-      setState(SIGNAL_STATE.ERROR);
-    }, HANDSHAKE_TIMEOUT_MS);
-  };
-
-  const recordPeerKey = async (key: string): Promise<boolean> => {
-    // Never overwrite an established peer key -- a second, different pubkey
-    // mid-handshake is either a duplicate delivery or an injection attempt.
-    if (isPeerKeyRecorded) return false;
-
-    isPeerKeyRecorded = true;
-    await rpDiscovered(key);
-
-    return true;
-  };
-
   const recordPeerCapabilities = async (
     peerCaps: PeerCapabilities,
   ): Promise<void> => {
@@ -221,11 +152,8 @@ export const createSignalingLayer = (
 
   const handleHandshakeFrame = async (message: SignalMessage) => {
     await match({ msg: message, state, isHost })
-      // Host: a client wants to connect. Re-entered on duplicate `flash`
-      // deliveries (client re-sends until it hears our pubkey).
       .with({ msg: { type: "flash" }, state: SIGNAL_STATE.READY, isHost: true }, async () => {
         setState(SIGNAL_STATE.HANDSHAKE);
-        startHandshakeDeadline();
         await sendRepeating("handshake", "c", pubkeyMessage());
       })
       // Client: host announced its public key.
@@ -349,7 +277,6 @@ export const createSignalingLayer = (
         // Enter HANDSHAKE before publishing: the host's pubkey reply can
         // arrive while the publish is still in flight.
         setState(SIGNAL_STATE.HANDSHAKE);
-        startHandshakeDeadline();
         await sendRepeating("handshake", "h", {
           type: "flash",
           payload: {},
