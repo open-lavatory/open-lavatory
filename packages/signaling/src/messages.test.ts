@@ -32,7 +32,7 @@ describe("parseSignalMessage", () => {
     });
   });
 
-  it("accepts an icon that is a URL — content vetting is the renderer's job", () => {
+  it("accepts an icon that is a URL -- content vetting is the renderer's job", () => {
     const message = parseSignalMessage(
       frame("capabilities", {
         transports: ["wrtc"],

@@ -157,7 +157,7 @@ export const createSignalingLayer = (
 
   /**
    * Send a handshake step now, then keep re-sending it until the next step
-   * (or teardown) supersedes it. Errors are logged and swallowed — the next
+   * (or teardown) supersedes it. Errors are logged and swallowed -- the next
    * tick retries.
    */
   const sendRepeating = (
@@ -187,7 +187,7 @@ export const createSignalingLayer = (
   };
 
   const recordPeerKey = async (key: string): Promise<boolean> => {
-    // Never overwrite an established peer key — a second, different pubkey
+    // Never overwrite an established peer key -- a second, different pubkey
     // mid-handshake is either a duplicate delivery or an injection attempt.
     if (isPeerKeyRecorded) return false;
 
@@ -235,7 +235,7 @@ export const createSignalingLayer = (
 
           if (!await validatePublicKeyHash(receivedKey, h)) {
             setState(SIGNAL_STATE.ERROR);
-            log("Received host public key does not match expected hash — possible tampering");
+            log("Received host public key does not match expected hash -- possible tampering");
 
             return;
           }

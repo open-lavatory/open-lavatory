@@ -357,7 +357,7 @@ export const createSession = async (
     }
 
     if (state === SIGNAL_STATE.ERROR) {
-      log("signaling error — marking session disconnected");
+      log("signaling error -- marking session disconnected");
       lastError ??= "Signaling failed or timed out";
       updateStatus(SESSION_STATE.DISCONNECTED);
     }

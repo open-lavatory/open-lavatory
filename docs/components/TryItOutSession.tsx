@@ -240,7 +240,7 @@ export const attachTryItSession = (
         role,
         direction: "in",
         kind: "info",
-        summary: `Peer identified · ${remote.name}`,
+        summary: `Peer identified - ${remote.name}`,
         payload: { identity: remote.identity, name: remote.name },
       });
     }
@@ -257,7 +257,7 @@ export const attachTryItSession = (
       direction: "in",
       kind: "session",
       summary: signaling
-        ? `Session ${sessionStatusLabel(state.status)} · ${signaling}`
+        ? `Session ${sessionStatusLabel(state.status)} - ${signaling}`
         : `Session ${sessionStatusLabel(state.status)}`,
       payload: state,
     });
@@ -353,7 +353,7 @@ export type JsonRpcCall = { method: string; params?: unknown; };
 
 const phaseLabel: Record<ConnectionPhase, string> = {
   idle: "Not connected",
-  establishing: "Connecting…",
+  establishing: "Connecting...",
   linked: "Opening channel",
   connected: "Connected",
   error: "Failed",
@@ -374,10 +374,10 @@ const peerMetaLine = (peer: TryItPeerInfo) => {
 
   if (peer.protocol) parts.push(peer.protocol);
 
-  return parts.join(" · ");
+  return parts.join(" - ");
 };
 
-// The wire only bounds the icon's size — vetting what goes into an
+// The wire only bounds the icon's size -- vetting what goes into an
 // <img src> is this renderer's job.
 const renderableRemoteIcon = (remote?: PeerInfo) => {
   const icon = remote?.icon;

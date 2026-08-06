@@ -33,7 +33,7 @@ export const ConnectionFlow = (properties: ConnectionFlowProperties) => {
   // Peer info is recorded during the handshake, so it is in the session
   // state by the time the status flips to CONNECTED and this re-evaluates.
   const peerInfo = () => provider.getSession()?.getState().peerInfo;
-  // The wire only bounds the icon's size — vetting what goes into an
+  // The wire only bounds the icon's size -- vetting what goes into an
   // <img src> is this renderer's job.
   const renderableIcon = () => {
     const icon = peerInfo()?.icon;

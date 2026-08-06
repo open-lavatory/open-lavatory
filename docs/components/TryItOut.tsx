@@ -103,7 +103,7 @@ const PersonalSign = () => {
       </div>
       {isPending && (
         <p className="text-sm text-[var(--vocs-color_textSecondary)]">
-          Waiting for wallet…
+          Waiting for wallet...
         </p>
       )}
       {error && (
@@ -161,7 +161,7 @@ const WalletUrlConnect = () => {
           type="text"
           value={url}
           onChange={e => setUrl(e.target.value)}
-          placeholder="openlv://…"
+          placeholder="openlv://..."
           disabled={connecting}
           className={`${buttonClass} block w-full grow border px-3 py-1 placeholder:text-neutral-500`}
         />
@@ -224,7 +224,7 @@ const WalletUrlConnect = () => {
           }}
           className={buttonClass}
         >
-          {connecting ? "…" : "Connect"}
+          {connecting ? "..." : "Connect"}
         </button>
         {active && (
           <button type="button" onClick={() => endSession()} className={buttonClass}>
@@ -339,7 +339,7 @@ const TryItOutInner = () => {
           const h = s.getHandshakeParameters();
           const connectionUrl = encodeConnectionURL(h);
 
-          // Rebinding happens after the handshake too — carry the already
+          // Rebinding happens after the handshake too -- carry the already
           // known peer info over instead of clobbering it.
           session.setPeer(previous => ({
             role: "dapp",

@@ -23,7 +23,7 @@ export type PeerInfo = {
   identity: string;
   name: string;
   /**
-   * A data URI or an image URL. Only size is enforced on the wire — anyone
+   * A data URI or an image URL. Only size is enforced on the wire -- anyone
    * rendering or fetching it is responsible for sanity-checking it first.
    */
   icon?: string;
@@ -80,7 +80,7 @@ export const validatePeerInfo = (info: PeerInfo): string | undefined => {
   }
 
   if (info.icon !== undefined && !isBoundedString(info.icon, MAX_ICON_LENGTH)) {
-    return `info.icon must be 1-${MAX_ICON_LENGTH} characters — use a smaller image or an image URL`;
+    return `info.icon must be 1-${MAX_ICON_LENGTH} characters -- use a smaller image or an image URL`;
   }
 
   return undefined;

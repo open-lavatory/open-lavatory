@@ -87,7 +87,7 @@ export const webrtc: Transport = (
         // connection can never establish, and the cause is environmental
         // (blocked UDP, no usable interface, unreachable STUN/TURN).
         console.warn(
-          "[openlv] WebRTC gathered zero local ICE candidates — "
+          "[openlv] WebRTC gathered zero local ICE candidates -- "
           + "the peer-to-peer connection cannot establish. "
           + "Check network/UDP access or configure reachable STUN/TURN servers.",
         );

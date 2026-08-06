@@ -2,7 +2,7 @@ import { defineConfig } from "vocs/config";
 
 export default defineConfig({
   title: "openlv",
-  titleTemplate: "%s · openlv",
+  titleTemplate: "%s - openlv",
   description:
     "Secure peer-to-peer JSON-RPC connectivity between dApps and wallets",
   rootDir: ".",
