@@ -1,4 +1,4 @@
-import { generateKeyPair } from "@openlv/core/encryption";
+import { deriveSymmetricKey, generateKeyPair } from "@openlv/core/encryption";
 import { describe, expect, it } from "vitest";
 
 import { mqtt } from "./mqtt/index.js";
@@ -7,6 +7,7 @@ import type { SignalingProtocol, SignalingProtocolOptions } from "./protocol.js"
 import { log } from "./utils/log.js";
 
 const hKey = "test";
+const K = "00112233445566778899aabbccddeeff";
 
 const providersByType: readonly [
   string,
@@ -83,30 +84,36 @@ const testSignalingLayer = async (
 ): Promise<void> => {
   const { encryptionKey: publicKey, decryptionKey } = await generateKeyPair();
   const h = hKey;
+  const k = await deriveSymmetricKey(K);
 
   const signalingLayer = await layer(properties);
   const signalA = await signalingLayer({
     h,
-    rpDiscovered: v => log("rpKey", v),
+    k,
     capabilities: { transports: ["wrtc"] },
-    peerCapabilities: v => log("peerCapabilities", v),
     canEncrypt: () => true,
     encrypt: publicKey.encrypt,
     decrypt: decryptionKey.decrypt,
     publicKey,
     isHost: true,
   });
+
+  signalA.peerKey.subscribe(v => log("rpKey", v));
+  signalA.peerCapabilities.subscribe(v => log("peerCapabilities", v));
+
   const signalB = await signalingLayer({
     h,
-    rpDiscovered: v => log("rpKey", v),
+    k,
     capabilities: { transports: ["wrtc"] },
-    peerCapabilities: v => log("peerCapabilities", v),
     canEncrypt: () => true,
     encrypt: publicKey.encrypt,
     decrypt: decryptionKey.decrypt,
     publicKey,
     isHost: false,
   });
+
+  signalB.peerKey.subscribe(v => log("rpKey", v));
+  signalB.peerCapabilities.subscribe(v => log("peerCapabilities", v));
 
   expect(signalA).toBeDefined();
   expect(signalB).toBeDefined();

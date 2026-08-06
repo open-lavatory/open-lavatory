@@ -1,15 +1,9 @@
-import { PROVIDER_STATUS, type ProviderStatus } from "@openlv/provider";
-import {
-  createSignal,
-  Match,
-  onCleanup,
-  onMount,
-  Show,
-  Switch,
-} from "solid-js";
+import { ProviderStatus } from "@openlv/provider";
+import { from, Match, Show, Switch } from "solid-js";
 
 import { UnknownState } from "../components/UnknownState.js";
 import { useModalContext } from "../context.jsx";
+import { useSession } from "../hooks/useSession.js";
 import { useTranslation } from "../utils/i18n.js";
 import { Connecting } from "./connecting.jsx";
 import { ErrorScreen } from "./ErrorScreen.jsx";
@@ -29,11 +23,9 @@ export const ConnectionFlow = (properties: ConnectionFlowProperties) => {
   const { t } = useTranslation();
   const { provider } = useModalContext();
 
-  const [providerStatus, setProviderStatus] = createSignal<ProviderStatus>(provider.getState().status);
-  // Peer info is recorded during the handshake, so it is in the session
-  // state by the time the status flips to CONNECTED and this re-evaluates.
-  const peerInfo = () => provider.getSession()?.getState().peerInfo;
-  // The wire only bounds the icon's size — vetting what goes into an
+  const providerStatus = from(provider.status);
+  const { peerInfo } = useSession();
+  // The wire only bounds the icon's size -- vetting what goes into an
   // <img src> is this renderer's job.
   const renderableIcon = () => {
     const icon = peerInfo()?.icon;
@@ -43,17 +35,10 @@ export const ConnectionFlow = (properties: ConnectionFlowProperties) => {
       : undefined;
   };
 
-  onMount(() => {
-    provider.on("status_change", setProviderStatus);
-  });
-  onCleanup(() => {
-    provider.off("status_change", setProviderStatus);
-  });
-
   return (
     <div style={{ "view-transition-name": "connection-flow" }} class="w-full">
       <Switch fallback={<UnknownState state={providerStatus()} />}>
-        <Match when={providerStatus() === PROVIDER_STATUS.CREATING}>
+        <Match when={providerStatus() === ProviderStatus.CREATING}>
           <div class="flex flex-col items-center gap-4 p-6">
             <LoadingSpinner />
             <div class="text-center">
@@ -66,10 +51,10 @@ export const ConnectionFlow = (properties: ConnectionFlowProperties) => {
             </div>
           </div>
         </Match>
-        <Match when={providerStatus() === PROVIDER_STATUS.CONNECTING}>
-          <Connecting onClose={properties.onClose} />
+        <Match when={providerStatus() === ProviderStatus.CONNECTING}>
+          <Connecting />
         </Match>
-        <Match when={providerStatus() === PROVIDER_STATUS.CONNECTED}>
+        <Match when={providerStatus() === ProviderStatus.CONNECTED}>
           <div class="flex flex-col items-center gap-4 p-6">
             <div class="text-center">
               <Show
@@ -105,7 +90,7 @@ export const ConnectionFlow = (properties: ConnectionFlowProperties) => {
             </div>
           </div>
         </Match>
-        <Match when={providerStatus() === PROVIDER_STATUS.ERROR}>
+        <Match when={providerStatus() === ProviderStatus.ERROR}>
           <ErrorScreen onClose={properties.onClose} />
         </Match>
       </Switch>

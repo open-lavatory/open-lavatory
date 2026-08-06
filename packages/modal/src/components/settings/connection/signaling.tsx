@@ -1,6 +1,6 @@
+import type { SignalingProtocol } from "@openlv/provider/storage";
 import { createMemo } from "solid-js";
 
-import type { SignalingProtocol } from "../../../../../provider/dist/storage/version.js";
 import { useSettings } from "../../../hooks/useSettings.js";
 import { Input } from "../../../ui/Input.js";
 import { MenuGroup } from "../../../ui/menu/MenuGroup.js";

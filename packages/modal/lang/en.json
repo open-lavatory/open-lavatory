@@ -80,7 +80,11 @@
     "connectedSuccessfully": "Connected Successfully!",
     "walletConnectedReady": "Your wallet is now connected and ready to use.",
     "disconnected": "Disconnected",
-    "connectionClosed": "The connection has been closed."
+    "connectionClosed": "The connection has been closed.",
+    "connectionFailed": "Connection failed",
+    "tryAgain": "Try again",
+    "errorGeneric": "The connection could not be established.",
+    "errorNoIce": "Your browser could not gather any network candidates. WebRTC may be blocked by the browser, an extension, or a VPN."
   },
   "handshake": {
     "clickToCopyUrl": "Click to copy connection URL",

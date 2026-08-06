@@ -1,6 +1,7 @@
-import { createMemo } from "solid-js";
+import { createMemo, from } from "solid-js";
 
 import { useModalContext } from "../context.jsx";
+import { useSession } from "../hooks/useSession.js";
 import { useTranslation } from "../utils/i18n.jsx";
 
 /**
@@ -11,9 +12,11 @@ import { useTranslation } from "../utils/i18n.jsx";
 export const ErrorScreen = (properties: { onClose: () => void; }) => {
   const { t } = useTranslation();
   const { provider } = useModalContext();
+  const providerError = from(provider.error);
+  const { error: sessionError } = useSession();
 
   const reason = createMemo(
-    () => provider.getState().error ?? provider.getState().session?.error,
+    () => providerError() ?? sessionError(),
   );
   const isIceFailure = createMemo(() =>
     /ice candidates/i.test(reason() ?? ""));

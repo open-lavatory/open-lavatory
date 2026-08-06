@@ -1,4 +1,4 @@
-import { SESSION_STATE } from "@openlv/session";
+import { SessionStatus } from "@openlv/session";
 import { Match, Switch } from "solid-js";
 
 import { useSession } from "../hooks/useSession.js";
@@ -18,7 +18,7 @@ export const Connecting = () => {
   return (
     <div>
       <Switch>
-        <Match when={([SESSION_STATE.CREATED, SESSION_STATE.SIGNALING] as string[]).includes(status()?.status ?? "")}>
+        <Match when={status() === SessionStatus.CREATED || status() === SessionStatus.SIGNALING}>
           <div class="flex flex-col items-center gap-4 p-6">
             <LoadingSpinner />
             <div class="text-center">
@@ -31,10 +31,10 @@ export const Connecting = () => {
             </div>
           </div>
         </Match>
-        <Match when={status()?.status === SESSION_STATE.READY}>
+        <Match when={status() === SessionStatus.READY}>
           <HandshakeOpen />
         </Match>
-        <Match when={status()?.status === SESSION_STATE.LINKING}>
+        <Match when={status() === SessionStatus.LINKING}>
           <div class="flex flex-col items-center gap-4 p-6">
             <LoadingSpinner />
             <div class="text-center">

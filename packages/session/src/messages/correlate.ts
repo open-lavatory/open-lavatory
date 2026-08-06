@@ -7,7 +7,7 @@ import type { SessionMessage } from "./index.js";
  *
  * Two-phase timeout: the peer must ack within `ackTimeoutMs`, confirming it
  * received the message; after the ack the wait extends to `responseTimeoutMs`
- * — enough for user-interactive flows such as `eth_sendTransaction`.
+ * -- enough for user-interactive flows such as `eth_sendTransaction`.
  */
 export const awaitCorrelatedResponse = (
   messages: EventEmitter<{ message: SessionMessage; }>,
@@ -49,7 +49,7 @@ export const awaitCorrelatedResponse = (
 
   messages.on("message", handler);
 
-  // Short window for the ack — tells us the peer is alive and processing.
+  // Short window for the ack -- tells us the peer is alive and processing.
   ackTimer = setTimeout(() => {
     if (isAckReceived) {
       return;

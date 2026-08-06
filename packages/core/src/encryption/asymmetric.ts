@@ -133,7 +133,7 @@ export const initEncryptionKeys = async (
 ): Promise<EncKeypair & { relyingEncryptionKey?: EncryptionKey; }> => {
   const { encryptionKey, decryptionKey } = await generateKeyPair();
 
-  // Note: the peer key is deliberately left undefined until discovered —
+  // Note: the peer key is deliberately left undefined until discovered --
   // falling back to our own key would silently encrypt to ourselves.
   const publicKey
     = initParameters && "publicKey" in initParameters

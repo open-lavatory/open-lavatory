@@ -2,7 +2,7 @@ import { generateKeyPair } from "@openlv/core/encryption";
 import { EventEmitter } from "eventemitter3";
 import { describe, expect, it } from "vitest";
 
-import { TRANSPORT_STATE } from "./index.js";
+import { Status } from "./index.js";
 import { webrtc } from "./webrtc/index.js";
 
 describe("Transport", () => {
@@ -49,10 +49,13 @@ describe("Transport", () => {
     await Promise.all([transportA.setup(), transportB.setup()]);
 
     console.log("test: waitFor connected");
-    await Promise.all([
-      transportA.waitFor(TRANSPORT_STATE.CONNECTED),
-      transportB.waitFor(TRANSPORT_STATE.CONNECTED),
-    ]);
+    await Promise.all([transportA, transportB].map(transport => new Promise<void>((resolve) => {
+      if (transport.status.get() === Status.CONNECTED) return resolve();
+
+      transport.status.subscribe((status) => {
+        if (status === Status.CONNECTED) resolve();
+      });
+    })));
 
     console.log("test: connected");
 

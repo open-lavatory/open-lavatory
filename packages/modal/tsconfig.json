@@ -10,5 +10,5 @@
     "module": "NodeNext",
     "declaration": true
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src"]
 }

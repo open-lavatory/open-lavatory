@@ -1,12 +1,11 @@
-import { make } from "@openlv/core";
+import { make, type Observable, observable } from "@openlv/core";
 import type { EncryptionKey, SymmetricKey } from "@openlv/core/encryption";
 import { parseEncryptionKey, validatePublicKeyHash } from "@openlv/core/encryption";
 import { EventEmitter } from "eventemitter3";
 import { match } from "ts-pattern";
-import type { MaybePromise } from "viem";
 
+import { handshake, XR_H_PREFIX, XR_PREFIX } from "./handshake.js";
 import {
-  parseSignalMessage,
   type PeerCapabilities,
   type SignalMessage,
 } from "./messages.js";
@@ -16,7 +15,7 @@ import { log } from "./utils/log.js";
 export * from "./messages.js";
 export * from "./protocol.js";
 
-export const SIGNAL_STATE = {
+export const Status = {
   STANDBY: "standby",
   CONNECTING: "connecting",
   READY: "ready",
@@ -25,25 +24,22 @@ export const SIGNAL_STATE = {
   ENCRYPTED: "encrypted",
   ERROR: "error",
 } as const;
-export type SignalState = (typeof SIGNAL_STATE)[keyof typeof SIGNAL_STATE];
+export type Status = (typeof Status)[keyof typeof Status];
 
 export type SignalEventMap = {
-  state_change: (state: SignalState) => void;
   message: (message: object) => void;
 };
 
-export type SignalingProperties = {
+export type SignalingHooks = {
   isHost: boolean;
   h: string;
-  k?: SymmetricKey;
-  rpDiscovered: (rpKey: string) => MaybePromise<void>;
+  k: SymmetricKey;
   // Our capabilities, advertised to the peer during the handshake
   capabilities: PeerCapabilities;
-  peerCapabilities: (capabilities: PeerCapabilities) => MaybePromise<void>;
   // Decrypt using our private key
-  decrypt: (message: string) => MaybePromise<string>;
+  decrypt: (message: string) => Promise<string>;
   // Encrypt to relying party
-  encrypt: (message: string) => MaybePromise<string>;
+  encrypt: (message: string) => Promise<string>;
   // our public key
   publicKey: EncryptionKey;
   canEncrypt: () => boolean;
@@ -53,167 +49,62 @@ export type SignalingContext = {
   type: string;
 
   // Sending only works once keys are exchanged
-  send: (message: object) => MaybePromise<void>;
-  setup: () => MaybePromise<void>;
-  teardown: () => MaybePromise<void>;
+  send: (message: object) => Promise<void>;
+  setup: () => Promise<void>;
+  teardown: () => Promise<void>;
 
-  getState: () => {
-    state: SignalState;
-  };
+  status: Observable<Status>;
+  peerKey: Observable<EncryptionKey | undefined>;
+  peerCapabilities: Observable<PeerCapabilities | undefined>;
 };
 export type SignalingLayer = EventEmitter<SignalEventMap> & SignalingContext;
 export type SignalingLayerFunction = (
-  properties: SignalingProperties,
+  hooks: SignalingHooks,
 ) => Promise<SignalingLayer>;
 
-export const XR_PREFIX = "x";
-export const XR_H_PREFIX = "h";
-
-/**
- * Relays are lossy (MQTT QoS 0, ntfy best-effort), so every handshake step
- * is re-sent on an interval until the state machine observes progress.
- * Receivers treat duplicates as no-ops, which keeps re-sends wire-compatible.
- */
-const HANDSHAKE_RESEND_INTERVAL_MS = 2000;
-const HANDSHAKE_TIMEOUT_MS = 30_000;
+export type CreateSignalingLayerFunction = (
+  base: SignalingChannel,
+) => SignalingLayerFunction;
 
 /**
  * Base Signaling Layer implementation
  *
  * https://openlv.sh/api/signaling
  */
-export const createSignalingLayer = (
-  init: SignalingChannel,
-): SignalingLayerFunction => async ({
-  canEncrypt,
-  encrypt,
-  decrypt,
-  rpDiscovered,
-  capabilities,
-  peerCapabilities,
-  h,
-  k,
-  publicKey,
-  isHost,
-}: SignalingProperties) => {
+export const createSignalingLayer: CreateSignalingLayerFunction = channel => async (hooks: SignalingHooks) => {
+  const {
+    canEncrypt,
+    encrypt,
+    decrypt,
+    capabilities,
+    h,
+    k: handshakeKey,
+    publicKey,
+    isHost,
+  } = hooks;
+
+  const [status, setStatus] = observable<Status>(Status.STANDBY);
+  const [peerKey, setPeerKey] = observable<EncryptionKey | undefined>(undefined);
+  const [peerCapabilities, setPeerCapabilities] = observable<PeerCapabilities | undefined>(undefined);
+
   const emitter = new EventEmitter<SignalEventMap>();
-  let state: SignalState = SIGNAL_STATE.STANDBY;
-  let isPeerKeyRecorded = false;
-  let isPeerCapabilitiesRecorded = false;
-  let resendTimer: ReturnType<typeof setInterval> | undefined;
-  let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
-  const handshakeKey = k || undefined;
 
-  const stopResend = () => {
-    clearInterval(resendTimer);
-    resendTimer = undefined;
-  };
-  const stopTimers = () => {
-    stopResend();
-    clearTimeout(deadlineTimer);
-    deadlineTimer = undefined;
-  };
+  const { frame, parse } = handshake({
+    isHost,
+    handshakeKey,
+    encrypt,
+    decrypt,
+  });
 
-  const setState = (_state: SignalState) => {
-    if (state === _state) return;
+  const send = async (method: "handshake" | "encrypted", payload: SignalMessage) => await channel.publish(await frame(method, payload));
 
-    state = _state;
-
-    if (_state === SIGNAL_STATE.ENCRYPTED || _state === SIGNAL_STATE.ERROR) {
-      stopTimers();
-    }
-
-    emitter.emit("state_change", _state);
-  };
-
-  const send = async (
-    method: "handshake" | "encrypted",
-    recipient: "h" | "c",
-    payload: SignalMessage,
-  ) => {
-    const prefix = match(method)
-      .with("handshake", () => XR_H_PREFIX)
-      .with("encrypted", () => XR_PREFIX)
-      .exhaustive();
-
-    const message = await match(method)
-      .with("handshake", () => {
-        if (!handshakeKey) return;
-
-        return handshakeKey.encrypt(JSON.stringify(payload));
-      })
-      .with("encrypted", () => {
-        if (!canEncrypt()) return;
-
-        return encrypt(JSON.stringify(payload));
-      })
-      .exhaustive();
-
-    if (message === undefined) {
-      throw new Error(`Cannot encrypt ${method} frame: key not available`);
-    }
-
-    await init.publish(prefix + recipient + message);
-  };
-
-  /**
-   * Send a handshake step now, then keep re-sending it until the next step
-   * (or teardown) supersedes it. Errors are logged and swallowed — the next
-   * tick retries.
-   */
-  const sendRepeating = (
-    method: "handshake" | "encrypted",
-    recipient: "h" | "c",
-    payload: SignalMessage,
-  ) => {
-    stopResend();
-
-    const attempt = () => send(method, recipient, payload)
-      .catch(error => log("handshake send failed, will retry", error));
-
-    resendTimer = setInterval(attempt, HANDSHAKE_RESEND_INTERVAL_MS);
-
-    return attempt();
-  };
-
-  const startHandshakeDeadline = () => {
-    if (deadlineTimer) return;
-
-    deadlineTimer = setTimeout(() => {
-      if (state === SIGNAL_STATE.ENCRYPTED) return;
-
-      log("handshake timed out");
-      setState(SIGNAL_STATE.ERROR);
-    }, HANDSHAKE_TIMEOUT_MS);
-  };
-
-  const recordPeerKey = async (key: string): Promise<boolean> => {
-    // Never overwrite an established peer key — a second, different pubkey
-    // mid-handshake is either a duplicate delivery or an injection attempt.
-    if (isPeerKeyRecorded) return false;
-
-    isPeerKeyRecorded = true;
-    await rpDiscovered(key);
-
-    return true;
-  };
-
-  const recordPeerCapabilities = async (
-    peerCaps: PeerCapabilities,
-  ): Promise<void> => {
-    // Same overwrite guard as the peer key: only the first delivery counts,
-    // re-sent duplicates are no-ops.
-    if (isPeerCapabilitiesRecorded) return;
-
-    isPeerCapabilitiesRecorded = true;
-    await peerCapabilities(peerCaps);
-  };
-
+  // TODO: dont know why this is here
   const capabilitiesMessage = (): SignalMessage => ({
     type: "capabilities",
     payload: capabilities,
     timestamp: Date.now(),
   });
+  // TODO: dont know why this is here
   const pubkeyMessage = (): SignalMessage => ({
     type: "pubkey",
     payload: { publicKey: publicKey.toString() },
@@ -221,148 +112,137 @@ export const createSignalingLayer = (
   });
 
   const handleHandshakeFrame = async (message: SignalMessage) => {
-    await match({ msg: message, state, isHost })
-      // Host: a client wants to connect. Re-entered on duplicate `flash`
-      // deliveries (client re-sends until it hears our pubkey).
-      .with({ msg: { type: "flash" }, state: SIGNAL_STATE.READY, isHost: true }, async () => {
-        setState(SIGNAL_STATE.HANDSHAKE);
-        startHandshakeDeadline();
-        await sendRepeating("handshake", "c", pubkeyMessage());
+    await match({ msg: message, status: status.get(), isHost })
+      .with({ msg: { type: "flash" }, status: Status.READY, isHost: true }, async () => {
+        setStatus(Status.HANDSHAKE);
+        await send("handshake", pubkeyMessage());
       })
-      // Client: host announced its public key.
-      .with({ msg: { type: "pubkey" }, isHost: false, state: SIGNAL_STATE.HANDSHAKE }, async ({ msg: { payload: messagePayload } }) => {
+      .with({ msg: { type: "pubkey" }, status: Status.HANDSHAKE, isHost: false }, async ({ msg: { payload: messagePayload } }) => {
+        let receivedKey: EncryptionKey;
+
         try {
-          const receivedKey = await parseEncryptionKey(messagePayload.publicKey);
+          receivedKey = await parseEncryptionKey(messagePayload.publicKey);
 
           if (!await validatePublicKeyHash(receivedKey, h)) {
-            setState(SIGNAL_STATE.ERROR);
-            log("Received host public key does not match expected hash — possible tampering");
+            setStatus(Status.ERROR);
+            log("Received host public key does not match expected hash -- possible tampering");
 
             return;
           }
         }
         catch {
-          setState(SIGNAL_STATE.ERROR);
+          setStatus(Status.ERROR);
           log("Failed to parse received host public key");
 
           return;
         }
 
-        if (!await recordPeerKey(messagePayload.publicKey)) return;
+        const changed = setPeerKey(receivedKey)
+          && setStatus(Status.HANDSHAKE_PARTIAL);
 
-        setState(SIGNAL_STATE.HANDSHAKE_PARTIAL);
+        if (!changed) return;
 
-        return await sendRepeating("encrypted", "h", pubkeyMessage());
+        return await send("encrypted", pubkeyMessage());
       })
       .otherwise(() => {
-        log("Ignoring handshake frame", message.type, "in state", state);
+        log("Ignoring handshake frame", message.type, "in status", status);
       });
   };
 
   const handleEncryptedFrame = async (message: SignalMessage) => {
-    await match({ msg: message, state, isHost })
+    await match({ msg: message, status: status.get(), isHost })
       // Host: client responded with its public key.
       .with(
-        { msg: { type: "pubkey" }, isHost: true, state: SIGNAL_STATE.HANDSHAKE },
+        { msg: { type: "pubkey" }, isHost: true, status: Status.HANDSHAKE },
         async ({ msg: { payload: messagePayload } }) => {
-          if (!await recordPeerKey(messagePayload.publicKey)) return;
+          const receivedKey = await parseEncryptionKey(messagePayload.publicKey);
 
-          setState(SIGNAL_STATE.HANDSHAKE_PARTIAL);
+          if (!setPeerKey(receivedKey)) return;
 
-          return await sendRepeating("encrypted", "c", capabilitiesMessage());
+          setStatus(Status.HANDSHAKE_PARTIAL);
+
+          return await send("encrypted", capabilitiesMessage());
         },
       )
       .with(
-        { msg: { type: "capabilities" }, state: SIGNAL_STATE.HANDSHAKE_PARTIAL },
+        { msg: { type: "capabilities" }, status: Status.HANDSHAKE_PARTIAL },
         async ({ msg: { payload: messagePayload } }) => {
-          await recordPeerCapabilities(messagePayload);
-          setState(SIGNAL_STATE.ENCRYPTED);
+          await setPeerCapabilities(messagePayload);
+          setStatus(Status.ENCRYPTED);
 
           if (isHost) return;
 
-          return await send("encrypted", "h", capabilitiesMessage());
+          return await send("encrypted", capabilitiesMessage());
         },
       )
       // Client already encrypted, but the host is still re-sending its
       // capabilities (our final packet was lost): answer again so the host
       // can finish.
       .with(
-        { msg: { type: "capabilities" }, state: SIGNAL_STATE.ENCRYPTED, isHost: false },
-        async () => await send("encrypted", "h", capabilitiesMessage()),
+        { msg: { type: "capabilities" }, status: Status.ENCRYPTED, isHost: false },
+        async () => await send("encrypted", capabilitiesMessage()),
       )
-      .with({ msg: { type: "data" }, state: SIGNAL_STATE.ENCRYPTED }, async () => {
+      .with({ msg: { type: "data" }, status: Status.ENCRYPTED }, async () => {
         emitter.emit("message", message.payload as object);
       })
       .otherwise(() => {
-        log("Ignoring encrypted frame", message.type, "in state", state);
+        log("Ignoring encrypted frame", message.type, "in status", status);
       });
   };
 
-  const handleReceive = async (payload: string) => {
-    // The topic is public: anyone can publish garbage. Nothing in this
-    // handler may throw past this boundary, otherwise a single malformed
-    // frame becomes an unhandled rejection.
+  const onReceive = async (payload: string) => {
     try {
-      const prefix = payload.slice(0, 1);
-      const recipient = payload.slice(1, 2);
-      const body = payload.slice(2);
-      const isRecipient = (isHost ? "h" : "c") === recipient;
+      const parsed = await parse(payload);
 
-      if (!isRecipient) return;
+      if (!parsed) return;
 
-      if (prefix === XR_H_PREFIX) {
-        if (!handshakeKey) return;
+      const [stage, message] = parsed;
 
-        const message = parseSignalMessage(await handshakeKey.decrypt(body));
+      if (stage === XR_H_PREFIX && message) return await handleHandshakeFrame(message);
 
-        if (message) await handleHandshakeFrame(message);
-      }
-      else if (prefix === XR_PREFIX) {
-        const message = parseSignalMessage(await decrypt(body));
+      if (stage === XR_PREFIX && message) return await handleEncryptedFrame(message);
 
-        if (message) await handleEncryptedFrame(message);
-      }
-      else {
-        log("Dropping frame with unknown prefix");
-      }
+      log("Dropping frame with unknown prefix");
     }
     catch (error) {
       log("Dropping undecryptable or malformed frame", error);
     }
   };
 
+  const setup = async () => {
+    setStatus(Status.CONNECTING);
+    await channel.setup();
+    await channel.subscribe(onReceive);
+
+    if (canEncrypt()) {
+      setStatus(Status.ENCRYPTED);
+
+      return;
+    }
+
+    setStatus(Status.READY);
+
+    if (!isHost) {
+      // Enter HANDSHAKE before publishing: the host's pubkey reply can
+      // arrive while the publish is still in flight.
+      setStatus(Status.HANDSHAKE);
+      await send("handshake", {
+        type: "flash",
+        payload: {},
+        timestamp: Date.now(),
+      });
+    }
+  };
+
+  const teardown = async () => {
+    log("teardown");
+    await channel.teardown?.();
+  };
+
   return make(emitter, {
-    type: init.type,
-    async setup() {
-      setState(SIGNAL_STATE.CONNECTING);
-      await init.setup();
-      await init.subscribe(handleReceive);
-
-      if (canEncrypt()) {
-        setState(SIGNAL_STATE.ENCRYPTED);
-
-        return;
-      }
-
-      setState(SIGNAL_STATE.READY);
-
-      if (!isHost) {
-        // Enter HANDSHAKE before publishing: the host's pubkey reply can
-        // arrive while the publish is still in flight.
-        setState(SIGNAL_STATE.HANDSHAKE);
-        startHandshakeDeadline();
-        await sendRepeating("handshake", "h", {
-          type: "flash",
-          payload: {},
-          timestamp: Date.now(),
-        });
-      }
-    },
-    async teardown() {
-      log("teardown");
-      stopTimers();
-      await init.teardown?.();
-    },
+    type: channel.type,
+    setup,
+    teardown,
     send(message: object) {
       if (!canEncrypt()) {
         return Promise.reject(
@@ -370,16 +250,14 @@ export const createSignalingLayer = (
         );
       }
 
-      const them = isHost ? "c" : "h";
-
-      return send("encrypted", them, {
+      return send("encrypted", {
         type: "data",
         payload: message,
         timestamp: Date.now(),
       });
     },
-    getState() {
-      return { state: state };
-    },
+    status,
+    peerKey,
+    peerCapabilities,
   });
 };

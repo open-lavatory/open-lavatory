@@ -50,7 +50,11 @@ export type TransportSettings = {
   s?: { webrtc?: WebRTCSettings; };
 };
 
-export type ProviderStorageV3 = {
+// Declared under the name consumers import. Aliasing the other way round
+// leaves the declaration on a versioned name that "./storage" does not
+// export, which makes the type unnameable in a dependent's declaration
+// output (TS2742).
+export type ProviderStorage = {
   version: 3;
   retainHistory: boolean;
   autoReconnect: boolean;
@@ -60,7 +64,7 @@ export type ProviderStorageV3 = {
   theme?: UserThemePreference;
 };
 
-export type ProviderStorage = ProviderStorageV3;
+export type ProviderStorageV3 = ProviderStorage;
 
 export type ProviderStorageVAny
   = | ProviderStorageV0

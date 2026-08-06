@@ -1,4 +1,5 @@
 import { connectSession, type Session } from "@openlv/react-native";
+import { webrtc } from "@openlv/transport/webrtc";
 import * as React from "react";
 
 const DUMMY_ADDRESS
@@ -46,6 +47,7 @@ export const useWalletSession = () => {
 
           return "Unsupported method";
         },
+        [webrtc()],
       );
 
       nextSession.emitter.on("state_change", (state) => {
