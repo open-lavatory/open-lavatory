@@ -71,7 +71,7 @@ export type SignalingLayerFunction = (
  * https://openlv.sh/api/signaling
  */
 export const createSignalingLayer = (
-  init: SignalingChannel,
+  base: SignalingChannel,
 ): SignalingLayerFunction => async ({
   canEncrypt,
   encrypt,
@@ -86,8 +86,6 @@ export const createSignalingLayer = (
 }: SignalingProperties) => {
   const emitter = new EventEmitter<SignalEventMap>();
   let state: SignalState = SIGNAL_STATE.STANDBY;
-  let isPeerKeyRecorded = false; // TODO: deprecate
-  let isPeerCapabilitiesRecorded = false; // TODO: deprecate
   const handshakeKey = k || undefined;
 
   const setState = (_state: SignalState) => {
@@ -108,7 +106,7 @@ export const createSignalingLayer = (
       .with("encrypted", () => XR_PREFIX)
       .exhaustive();
 
-    const message = await match(method)
+    const message = match(method)
       .with("handshake", () => {
         if (!handshakeKey) return;
 
@@ -125,7 +123,7 @@ export const createSignalingLayer = (
       throw new Error(`Cannot encrypt ${method} frame: key not available`);
     }
 
-    await init.publish(prefix + recipient + message);
+    await base.publish(prefix + recipient + message);
   };
 
   const recordPeerCapabilities = async (
@@ -259,11 +257,11 @@ export const createSignalingLayer = (
   };
 
   return make(emitter, {
-    type: init.type,
+    type: base.type,
     async setup() {
       setState(SIGNAL_STATE.CONNECTING);
-      await init.setup();
-      await init.subscribe(handleReceive);
+      await base.setup();
+      await base.subscribe(handleReceive);
 
       if (canEncrypt()) {
         setState(SIGNAL_STATE.ENCRYPTED);
@@ -287,7 +285,7 @@ export const createSignalingLayer = (
     async teardown() {
       log("teardown");
       stopTimers();
-      await init.teardown?.();
+      await base.teardown?.();
     },
     send(message: object) {
       if (!canEncrypt()) {

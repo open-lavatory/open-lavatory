@@ -79,8 +79,13 @@ export const createTransportBase = (
       emitter.emit("state_change", newState);
     };
 
-    internalEmitter.on("negotiate", (message) => {
-      subsend(message).catch(error => log("failed to relay negotiation message", error));
+    internalEmitter.on("negotiate", async (message) => {
+      try {
+        await subsend(message);
+      }
+      catch (error) {
+        log("failed to relay negotiation message", error);
+      }
     });
     internalEmitter.on("connected", () => {
       log("onConnected");

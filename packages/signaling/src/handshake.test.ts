@@ -33,8 +33,8 @@ const createTopic = () => {
     channel(): SignalingChannel {
       return {
         type: "memory",
-        setup: () => {},
-        teardown: () => {},
+        setup: () => { },
+        teardown: () => { },
         publish: (payload: string) => {
           const index = published++;
 
@@ -82,7 +82,7 @@ const createPeer = async (
       relyingKey = await parseEncryptionKey(rpKey);
     },
     capabilities: CLIENT_CAPABILITIES,
-    peerCapabilities: (capabilities) => {
+    peerCapabilities: async (capabilities) => {
       peerCapabilities = capabilities;
     },
   });
@@ -121,7 +121,7 @@ const setupPair = async (topic: ReturnType<typeof createTopic>) => {
       hostRelying = await parseEncryptionKey(rpKey);
     },
     capabilities: HOST_CAPABILITIES,
-    peerCapabilities: (capabilities) => {
+    peerCapabilities: async (capabilities) => {
       hostPeerCapabilities = capabilities;
     },
   });
@@ -150,6 +150,7 @@ const waitForState = (layer: SignalingLayer, target: string) =>
       if (state === target) resolve();
 
       if (state === SIGNAL_STATE.ERROR && target !== SIGNAL_STATE.ERROR) {
+        // eslint-disable-next-line unicorn/no-multiple-promise-resolver-calls
         reject(new Error("signaling errored"));
       }
     });
