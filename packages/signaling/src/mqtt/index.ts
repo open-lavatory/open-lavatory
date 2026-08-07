@@ -58,7 +58,7 @@ export const mqtt: SignalingProtocol = ({ url, topic }) => {
 
       log("MQTT: Subscribing to topic", topic);
 
-      connection.on("message", (receivedTopic, message) => {
+      const onMessage = (receivedTopic: string, message: Uint8Array) => {
         log("MQTT: Received message on topic", topic);
 
         if (receivedTopic !== topic) return;
@@ -66,9 +66,15 @@ export const mqtt: SignalingProtocol = ({ url, topic }) => {
         const decoded = new TextDecoder().decode(message);
 
         handler(decoded);
-      });
+      };
+
+      connection.on("message", onMessage);
 
       await connection?.subscribe(topic);
+
+      return () => {
+        connection?.off("message", onMessage);
+      };
     },
   });
 };

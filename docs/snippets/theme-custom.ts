@@ -23,6 +23,7 @@ export const wagmiConfig = createConfig({
     }),
   ],
   transports: {
+    // eslint-disable-next-line no-restricted-syntax
     [mainnet.id]: http(),
   },
 });

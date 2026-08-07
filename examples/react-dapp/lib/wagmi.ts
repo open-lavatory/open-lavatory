@@ -1,4 +1,3 @@
-/* eslint-disable no-restricted-syntax */
 import { openlv } from "@openlv/connector";
 import { injected } from "@wagmi/connectors";
 import { createConfig, http } from "wagmi";
@@ -12,11 +11,13 @@ export const config = createConfig({
   ],
   multiInjectedProviderDiscovery: true,
   transports: {
+    /* eslint-disable no-restricted-syntax */
     [mainnet.id]: http(),
     [sepolia.id]: http(),
     [arbitrum.id]: http(),
     [base.id]: http(),
     [optimism.id]: http(),
     [polygon.id]: http(),
+    /* eslint-enable no-restricted-syntax */
   },
 });

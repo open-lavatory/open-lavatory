@@ -43,7 +43,7 @@ export const gundb: SignalingProtocol = ({ topic, url }) => {
     async subscribe(handler) {
       if (!connection) throw new SignalNoConnectionError();
 
-      connection.get(topic).on((data) => {
+      const listener = connection.get(topic).on((data) => {
         log("GUNDB: Received message", data);
 
         const message = data.data?.toString();
@@ -52,6 +52,10 @@ export const gundb: SignalingProtocol = ({ topic, url }) => {
 
         handler(message);
       });
+
+      return () => {
+        listener.off();
+      };
     },
   });
 };

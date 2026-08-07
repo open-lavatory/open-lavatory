@@ -7,7 +7,9 @@ export type SignalingChannel = {
   setup: () => MaybePromise<void>;
   teardown: () => MaybePromise<void>;
   publish: (payload: string) => MaybePromise<void>;
-  subscribe: (handler: (payload: string) => void) => MaybePromise<void>;
+  subscribe: (
+    handler: (payload: string) => void,
+  ) => MaybePromise<void | (() => void | Promise<void>)>;
 };
 
 export type SignalingProtocolOptions = {

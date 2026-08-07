@@ -23,6 +23,7 @@ export default defineConfig([
       "@stylistic/type-named-tuple-spacing": "off",
       "import/no-default-export": "off",
       "unicorn/no-null": "off",
+      "unicorn/consistent-function-scoping": "off",
     },
   },
 ]);

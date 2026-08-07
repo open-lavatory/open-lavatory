@@ -20,6 +20,7 @@ export const Header = (properties: {
             <Button
               onClick={properties.onBack}
               aria-label={String(
+                // eslint-disable-next-line unicorn/prefer-minimal-ternary
                 properties.view === "settings"
                   ? t("modal.backToQr")
                   : t("modal.closeModal"),

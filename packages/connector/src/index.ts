@@ -24,9 +24,9 @@ export type OpenLVConnector = CreateConnectorFn<
 >;
 
 /*
- * openlv connector
- * https://openlv.sh/
- */
+* openlv connector
+* https://openlv.sh/
+*/
 export const openlv = ({
   storage,
   config = {},
@@ -36,12 +36,6 @@ export const openlv = ({
     storage,
     config,
   });
-
-  const onDisconnect = async () => {
-    log("onDisconnect called");
-    await provider.closeSession();
-  };
-
   const getAccounts = async () => {
     log("getAccounts");
 
@@ -81,7 +75,7 @@ export const openlv = ({
         throw new UserRejectedRequestError(new Error("User closed modal"));
       }
 
-      const accounts = await provider.getAccounts();
+      const accounts = await getAccounts();
 
       const chainIdHex = await provider.request({ method: "eth_chainId" });
       const chainId = Number.parseInt(chainIdHex as string, 16);
@@ -105,7 +99,7 @@ export const openlv = ({
       connect,
       async disconnect() {
         log("disconnect");
-        await onDisconnect();
+        await provider.closeSession();
       },
       getAccounts,
       /**
@@ -113,8 +107,6 @@ export const openlv = ({
        * This can be used for auto-reconnection / persistence if a connection exists.
        */
       async isAuthorized() {
-        log("isAuthorized");
-
         const accounts = await getAccounts();
 
         return accounts.length > 0;
@@ -144,7 +136,9 @@ export const openlv = ({
       getProvider: async () => provider,
       onAccountsChanged: () => log("onAccountsChanged"),
       onChainChanged: () => log("onChainChanged"),
-      onDisconnect,
+      onDisconnect: async () => {
+        await provider.closeSession();
+      },
     };
   });
 };

@@ -1,4 +1,3 @@
-/* eslint-disable no-restricted-syntax */
 import { useEffect, useState } from "react";
 import {
   useBalance,
@@ -70,23 +69,26 @@ const App = () => {
     return value.toFixed(4);
   };
 
-  const getChainName = (id: number) => {
-    const chain = chains.find(c => c.id === id);
+  const getChainName = (chainId: number) => {
+    // eslint-disable-next-line no-restricted-syntax
+    const chain = chains.find(chain => chain.id === chainId);
 
-    return chain?.name || `Chain ${id}`;
+    return chain?.name || `Chain ${chainId}`;
   };
 
-  const getChainColor = (id: number) => {
+  const getChainColor = (chainId: number) => {
     const colors: Record<number, string> = {
+      /* eslint-disable no-restricted-syntax */
       [mainnet.id]: "bg-blue-500",
       [sepolia.id]: "bg-purple-500",
       [arbitrum.id]: "bg-blue-600",
       [base.id]: "bg-indigo-500",
       [optimism.id]: "bg-red-500",
       [polygon.id]: "bg-purple-600",
+      /* eslint-enable no-restricted-syntax */
     };
 
-    return colors[id] || "bg-gray-500";
+    return colors[chainId] || "bg-gray-500";
   };
 
   return (
@@ -166,6 +168,7 @@ const App = () => {
 
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {connectors.map(conn => (
+              /* eslint-disable-next-line no-restricted-syntax */
               <ConnectorCard key={conn.id} connector={conn} refreshKey={refreshKey} />
             ))}
           </div>
@@ -320,6 +323,7 @@ const App = () => {
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {chains.map(chain => (
+                /* eslint-disable no-restricted-syntax */
                 <div
                   key={chain.id}
                   className={`rounded-lg border-2 p-4 transition-all duration-200 ${
@@ -356,7 +360,9 @@ const App = () => {
                   </p>
                   {chain.id !== chainId && (
                     <button
-                      onClick={() => switchChain.mutate({ chainId: chain.id })}
+                      onClick={() => switchChain.mutate({
+                        chainId: chain.id,
+                      })}
                       className="w-full rounded-lg bg-gray-200 py-2 font-medium text-gray-700 text-sm transition-colors duration-200 hover:bg-slate-300"
                     >
                       Switch to
@@ -365,6 +371,7 @@ const App = () => {
                     </button>
                   )}
                 </div>
+                /* eslint-enable no-restricted-syntax */
               ))}
             </div>
           </div>

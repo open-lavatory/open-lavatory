@@ -28,6 +28,26 @@ import {
 import type { SignalingProtocol } from "./storage/version.js";
 import { log } from "./utils/log.js";
 
+type StoredWebRTCSettings = {
+  stun?: string[];
+  turn?: {
+    urls: string;
+    username?: string;
+    credential?: string;
+  }[];
+};
+
+const convertStoredWebRTCSettings = (
+  transport: StoredWebRTCSettings | undefined,
+): WebRTCConfig | undefined => {
+  const iceServers = [
+    ...(transport?.stun?.map(url => ({ urls: url })) ?? []),
+    ...(transport?.turn ?? []),
+  ];
+
+  return iceServers.length > 0 ? { iceServers } : undefined;
+};
+
 /** Unwrap `{ result }` / `{ error }` envelopes from wallet session handlers. */
 const unwrapSessionResponse = (payload: unknown): unknown => {
   if (typeof payload !== "object" || payload === null) {
@@ -231,10 +251,21 @@ export const createProvider = (
     catch (error_) {
       // Surface the failure to UI consumers (e.g. the modal) instead of
       // leaving the provider stuck in "connecting".
+      const failedSession = session.get();
+
+      setSession(undefined);
       setError(
-        session.get()?.error.get()
+        failedSession?.error.get()
         ?? (error_ instanceof Error ? error_.message : "Connection failed"),
       );
+
+      try {
+        await failedSession?.close();
+      }
+      catch (cleanupError) {
+        log("failed to clean up unsuccessful session", cleanupError);
+      }
+
       setStatus(ProviderStatus.ERROR);
       throw error_;
     }
@@ -290,24 +321,6 @@ export const createProvider = (
 
           if (openModal && provider) {
             await openModal(provider);
-
-            await new Promise<void>((resolve) => {
-              const onConnect = () => {
-                cleanup();
-                resolve();
-              };
-              const onDisconnect = () => {
-                cleanup();
-                resolve();
-              };
-              const cleanup = () => {
-                provider?.off("connect", onConnect);
-                provider?.off("disconnect", onDisconnect);
-              };
-
-              provider?.on("connect", onConnect);
-              provider?.on("disconnect", onDisconnect);
-            });
 
             return await getAccounts();
           }

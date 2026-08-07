@@ -125,6 +125,10 @@ export const ntfy: SignalingProtocol = ({ topic, url }) => {
     },
     subscribe: (handler) => {
       events.on("message", handler);
+
+      return () => {
+        events.off("message", handler);
+      };
     },
   });
 };
