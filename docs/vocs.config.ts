@@ -136,7 +136,7 @@ export default defineConfig({
   ],
   banner: {
     content: "OpenLV is still under active development.",
-    dismissable: false,
+    dismissable: true,
   },
   iconUrl: {
     dark: "/openlavatory_dark.png",
