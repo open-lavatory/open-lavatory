@@ -11,7 +11,10 @@ import type { SessionMessage } from "./index.js";
  * -- enough for user-interactive flows such as `eth_sendTransaction`.
  */
 export const awaitCorrelatedResponse = (
-  messages: EventEmitter<{ message: SessionMessage; }>,
+  messages: EventEmitter<{
+    message: SessionMessage;
+    terminal: (reason: string) => void;
+  }>,
   messageId: string,
   ackTimeoutMs: number,
   responseTimeoutMs: number,
@@ -23,6 +26,11 @@ export const awaitCorrelatedResponse = (
 
   scope.add(ackTimer.cancel);
   scope.add(responseTimer.cancel);
+
+  const onTerminal = (reason: string) => {
+    void scope.close();
+    reject(new Error(reason));
+  };
 
   const handler = (message: SessionMessage) => {
     if (message.messageId !== messageId) return;
@@ -46,6 +54,7 @@ export const awaitCorrelatedResponse = (
   };
 
   scope.listen(messages, "message", handler);
+  scope.listen(messages, "terminal", onTerminal);
 
   // Short window for the ack -- tells us the peer is alive and processing.
   ackTimer.schedule(() => {

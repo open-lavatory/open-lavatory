@@ -53,6 +53,9 @@ export const openlv = ({
 
   return createConnector<OpenLVProvider>((wagmiConfig) => {
     const { chains } = wagmiConfig;
+    const onProviderDisconnect = () => wagmiConfig.emitter.emit("disconnect");
+
+    provider.on("disconnect", onProviderDisconnect);
 
     const connect = async (
       { withCapabilities = false },
