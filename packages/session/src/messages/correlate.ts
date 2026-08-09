@@ -10,7 +10,10 @@ import type { SessionMessage } from "./index.js";
  * -- enough for user-interactive flows such as `eth_sendTransaction`.
  */
 export const awaitCorrelatedResponse = (
-  messages: EventEmitter<{ message: SessionMessage; }>,
+  messages: EventEmitter<{
+    message: SessionMessage;
+    terminal: (reason: string) => void;
+  }>,
   messageId: string,
   ackTimeoutMs: number,
   responseTimeoutMs: number,
@@ -24,12 +27,18 @@ export const awaitCorrelatedResponse = (
     clearTimeout(ackTimer);
     clearTimeout(responseTimer);
     messages.off("message", handler);
+    messages.off("terminal", onTerminal);
+  };
+
+  const onTerminal = (reason: string) => {
+    cleanup();
+    reject(new Error(reason));
   };
 
   const handler = (message: SessionMessage) => {
     if (message.messageId !== messageId) return;
 
-    if (message.type === "ack" && !isAckReceived) {
+    if (!isAckReceived && message.type === "ack") {
       isAckReceived = true;
       clearTimeout(ackTimer);
       // The other side confirmed receipt; wait for the full response.
@@ -48,6 +57,7 @@ export const awaitCorrelatedResponse = (
   };
 
   messages.on("message", handler);
+  messages.on("terminal", onTerminal);
 
   // Short window for the ack -- tells us the peer is alive and processing.
   ackTimer = setTimeout(() => {

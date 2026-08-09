@@ -244,6 +244,10 @@ Once transport is established, ordinary application traffic uses the following e
 { "type": "response", "messageId": "<id>", "payload": ["0x1234567890abcdef1234567890abcdef12345678"] }
 ```
 
+```json
+{ "type": "close", "messageId": "<id>" }
+```
+
 `messageId` MUST uniquely identify a request within the active session.
 A receiver SHOULD send `ack` immediately on receipt of a request, before the (possibly user-interactive) handler produces the `response`.
 A `response.messageId` MUST match a prior request.
