@@ -31,10 +31,10 @@ export const handshake = (hooks: HandshakeHooks) => {
     decrypt,
   } = hooks;
 
-  const frame = (method: "handshake" | "encrypted", payload: SignalMessage) => {
-    const [prefix, message] = match(method)
-      .with("handshake", () => [XR_H_PREFIX, handshakeKey.encrypt(JSON.stringify(payload))])
-      .with("encrypted", () => [XR_PREFIX, encrypt(JSON.stringify(payload))])
+  const frame = async (method: "handshake" | "encrypted", payload: SignalMessage) => {
+    const [prefix, message] = await match(method)
+      .with("handshake", async () => [XR_H_PREFIX, await handshakeKey.encrypt(JSON.stringify(payload))])
+      .with("encrypted", async () => [XR_PREFIX, encrypt(JSON.stringify(payload))])
       .exhaustive();
 
     if (message === undefined) {

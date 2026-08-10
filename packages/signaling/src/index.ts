@@ -96,7 +96,7 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
     decrypt,
   });
 
-  const send = async (method: "handshake" | "encrypted", payload: SignalMessage) => await channel.publish(frame(method, payload));
+  const send = async (method: "handshake" | "encrypted", payload: SignalMessage) => await channel.publish(await frame(method, payload));
 
   // TODO: dont know why this is here
   const capabilitiesMessage = (): SignalMessage => ({
