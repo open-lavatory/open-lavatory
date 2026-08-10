@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   createTransportBase,
+  Status,
   type TransportMessage,
 } from "./index.js";
 import type { TransportLayerBaseEmitter } from "./layer.js";
@@ -87,8 +88,7 @@ describe("createTransportBase", () => {
 
     await layer.setup();
     getEmitter().emit("connected");
-    // TODO: fix
-    // await layer.waitFor(TRANSPORT_STATE.CONNECTED);
+    expect(layer.status.get()).toBe(Status.CONNECTED);
 
     await layer.send({ type: "request", messageId: "1", payload: { a: 1 } });
     expect(sent).toHaveLength(1);
