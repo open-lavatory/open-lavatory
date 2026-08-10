@@ -87,7 +87,7 @@ const testSignalingLayer = async (
   const signalingLayer = await layer(properties);
   const signalA = await signalingLayer({
     h,
-    rpDiscovered: v => log("rpKey", v),
+    peerDiscovered: v => log("rpKey", v),
     capabilities: { transports: ["wrtc"] },
     peerCapabilities: v => log("peerCapabilities", v),
     canEncrypt: () => true,
@@ -98,7 +98,7 @@ const testSignalingLayer = async (
   });
   const signalB = await signalingLayer({
     h,
-    rpDiscovered: v => log("rpKey", v),
+    peerDiscovered: v => log("rpKey", v),
     capabilities: { transports: ["wrtc"] },
     peerCapabilities: v => log("peerCapabilities", v),
     canEncrypt: () => true,

@@ -78,7 +78,7 @@ const createPeer = async (
       return relyingKey.encrypt(message);
     },
     decrypt: (message: string) => decryptionKey.decrypt(message),
-    rpDiscovered: async (rpKey: string) => {
+    peerDiscovered: async (rpKey: string) => {
       relyingKey = await parseEncryptionKey(rpKey);
     },
     capabilities: CLIENT_CAPABILITIES,
@@ -117,7 +117,7 @@ const setupPair = async (topic: ReturnType<typeof createTopic>) => {
       return hostRelying.encrypt(message);
     },
     decrypt: (message: string) => hostKeys.decryptionKey.decrypt(message),
-    rpDiscovered: async (rpKey: string) => {
+    peerDiscovered: async (rpKey: string) => {
       hostRelying = await parseEncryptionKey(rpKey);
     },
     capabilities: HOST_CAPABILITIES,
