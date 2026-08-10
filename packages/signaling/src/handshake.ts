@@ -34,7 +34,7 @@ export const handshake = (hooks: HandshakeHooks) => {
   const frame = async (method: "handshake" | "encrypted", payload: SignalMessage) => {
     const [prefix, message] = await match(method)
       .with("handshake", async () => [XR_H_PREFIX, await handshakeKey.encrypt(JSON.stringify(payload))])
-      .with("encrypted", async () => [XR_PREFIX, encrypt(JSON.stringify(payload))])
+      .with("encrypted", async () => [XR_PREFIX, await encrypt(JSON.stringify(payload))])
       .exhaustive();
 
     if (message === undefined) {
