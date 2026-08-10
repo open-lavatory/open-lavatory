@@ -7,6 +7,7 @@ import type { SignalingProtocol, SignalingProtocolOptions } from "./protocol.js"
 import { log } from "./utils/log.js";
 
 const hKey = "test";
+const K = "00112233445566778899aabbccddeeff";
 
 const providersByType: readonly [
   string,
@@ -83,7 +84,7 @@ const testSignalingLayer = async (
 ): Promise<void> => {
   const { encryptionKey: publicKey, decryptionKey } = await generateKeyPair();
   const h = hKey;
-  const k = await deriveSymmetricKey(h);
+  const k = await deriveSymmetricKey(K);
 
   const signalingLayer = await layer(properties);
   const signalA = await signalingLayer({

@@ -218,16 +218,16 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
 
     setState(SIGNAL_STATE.READY);
 
-    // if (!isHost) {
-    //   // Enter HANDSHAKE before publishing: the host's pubkey reply can
-    //   // arrive while the publish is still in flight.
-    //   setState(SIGNAL_STATE.HANDSHAKE);
-    //   await sendRepeating("handshake", "h", {
-    //     type: "flash",
-    //     payload: {},
-    //     timestamp: Date.now(),
-    //   });
-    // }
+    if (!isHost) {
+      // Enter HANDSHAKE before publishing: the host's pubkey reply can
+      // arrive while the publish is still in flight.
+      setState(SIGNAL_STATE.HANDSHAKE);
+      await send("handshake", {
+        type: "flash",
+        payload: {},
+        timestamp: Date.now(),
+      });
+    }
   };
 
   const teardown = async () => {
