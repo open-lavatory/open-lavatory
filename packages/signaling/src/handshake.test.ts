@@ -33,8 +33,8 @@ const createTopic = () => {
     channel(): SignalingChannel {
       return {
         type: "memory",
-        setup: () => { },
-        teardown: () => { },
+        setup: () => {},
+        teardown: () => {},
         publish: (payload: string) => {
           const index = published++;
 
@@ -78,13 +78,17 @@ const createPeer = async (
       return relyingKey.encrypt(message);
     },
     decrypt: (message: string) => decryptionKey.decrypt(message),
-    peerDiscovered: async (rpKey: string) => {
-      relyingKey = await parseEncryptionKey(rpKey);
-    },
     capabilities: CLIENT_CAPABILITIES,
-    peerCapabilities: async (capabilities) => {
-      peerCapabilities = capabilities;
-    },
+  });
+
+  layer.peerKey.subscribe(async (rpKey) => {
+    if (!rpKey) return;
+
+    relyingKey = await parseEncryptionKey(rpKey);
+  });
+
+  layer.peerCapabilities.subscribe(async (capabilities) => {
+    peerCapabilities = capabilities;
   });
 
   return { layer, encryptionKey, getPeerCapabilities: () => peerCapabilities };
@@ -117,13 +121,17 @@ const setupPair = async (topic: ReturnType<typeof createTopic>) => {
       return hostRelying.encrypt(message);
     },
     decrypt: (message: string) => hostKeys.decryptionKey.decrypt(message),
-    peerDiscovered: async (rpKey: string) => {
-      hostRelying = await parseEncryptionKey(rpKey);
-    },
     capabilities: HOST_CAPABILITIES,
-    peerCapabilities: async (capabilities) => {
-      hostPeerCapabilities = capabilities;
-    },
+  });
+
+  host.peerKey.subscribe(async (rpKey) => {
+    if (!rpKey) return;
+
+    hostRelying = await parseEncryptionKey(rpKey);
+  });
+
+  host.peerCapabilities.subscribe((capabilities) => {
+    hostPeerCapabilities = capabilities;
   });
 
   const { layer: client, getPeerCapabilities: getClientPeerCapabilities }
@@ -144,9 +152,9 @@ const setupPair = async (topic: ReturnType<typeof createTopic>) => {
 
 const waitForState = (layer: SignalingLayer, target: string) =>
   new Promise<void>((resolve, reject) => {
-    if (layer.getState().state === target) return resolve();
+    if (layer.state.get() === target) return resolve();
 
-    layer.on("state_change", (state) => {
+    layer.state.subscribe((state) => {
       if (state === target) resolve();
 
       if (state === SIGNAL_STATE.ERROR && target !== SIGNAL_STATE.ERROR) {
@@ -285,7 +293,7 @@ describe("signaling handshake (in-memory relay)", () => {
 
       await vi.advanceTimersByTimeAsync(31_000);
       await errored;
-      expect(client.getState().state).toBe(SIGNAL_STATE.ERROR);
+      expect(client.state.get()).toBe(SIGNAL_STATE.ERROR);
     });
   });
 });

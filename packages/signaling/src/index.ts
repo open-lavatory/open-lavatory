@@ -33,7 +33,7 @@ export type SignalEventMap = {
 export type SignalingHooks = {
   isHost: boolean;
   h: string;
-  k?: SymmetricKey;
+  k: SymmetricKey;
   // Our capabilities, advertised to the peer during the handshake
   capabilities: PeerCapabilities;
   // Decrypt using our private key
@@ -78,7 +78,7 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
     decrypt,
     capabilities,
     h,
-    k,
+    k: handshakeKey,
     publicKey,
     isHost,
   } = hooks;
@@ -88,9 +88,6 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
   const [peerCapabilities, setPeerCapabilities] = observable<PeerCapabilities | undefined>(undefined);
 
   const emitter = new EventEmitter<SignalEventMap>();
-  const handshakeKey = k || undefined;
-
-  if (!handshakeKey) return;
 
   const { frame, parse } = handshake({
     isHost,

@@ -12,8 +12,8 @@ export type SignalingStage = typeof XR_PREFIX | typeof XR_H_PREFIX;
  * is re-sent on an interval until the state machine observes progress.
  * Receivers treat duplicates as no-ops, which keeps re-sends wire-compatible.
  */
-const HANDSHAKE_RESEND_INTERVAL_MS = 2000;
-const HANDSHAKE_TIMEOUT_MS = 30_000;
+// const HANDSHAKE_RESEND_INTERVAL_MS = 2000;
+// const HANDSHAKE_TIMEOUT_MS = 30_000;
 
 export type HandshakeHooks = {
   isHost: boolean;
@@ -47,7 +47,7 @@ export const handshake = (hooks: HandshakeHooks) => {
   };
 
   const parse = async (payload: string): Promise<[SignalingStage, SignalMessage] | undefined> => {
-    const prefix = payload.slice(0, 1);
+    const prefix = payload.slice(0, 1) as SignalingStage;
     const recipient = payload.slice(1, 2);
     const body = payload.slice(2);
     const isRecipient = (isHost ? "h" : "c") === recipient;
