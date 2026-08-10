@@ -4,6 +4,7 @@
  * A privacy-first, peer-to-peer protocol for connecting dApps with wallets
  * without relying on centralized infrastructure.
  */
+import { observable } from "@openlv/core";
 import type { DecryptionKey, EncryptionKey } from "@openlv/core/encryption";
 import { EventEmitter } from "eventemitter3";
 
@@ -22,7 +23,6 @@ export type Status
   = (typeof Status)[keyof typeof Status];
 
 export type TLayerEventMap = {
-  state_change: (state: Status) => void;
   error: (reason?: string) => void;
 };
 
@@ -72,12 +72,8 @@ export const createTransportBase = (
   create: ({ encrypt, decrypt, subsend, isHost, onmessage }) => {
     const emitter = new EventEmitter<TLayerEventMap>();
     const internalEmitter = new EventEmitter<TransportLayerBaseEventMap>();
-    let state: Status = Status.STANDBY;
 
-    const setState = (newState: Status) => {
-      state = newState;
-      emitter.emit("state_change", newState);
-    };
+    const [status, setStatus] = observable<Status>(Status.STANDBY);
 
     internalEmitter.on("negotiate", async (message) => {
       try {
@@ -89,14 +85,14 @@ export const createTransportBase = (
     });
     internalEmitter.on("connected", () => {
       log("onConnected");
-      setState(Status.CONNECTED);
+      setStatus(Status.CONNECTED);
     });
     internalEmitter.on("error", (reason) => {
       log("transport error", reason);
       // Surface the reason before the state flips so listeners reading
       // state on state_change already see it.
       emitter.emit("error", reason);
-      setState(Status.ERROR);
+      setStatus(Status.ERROR);
     });
     internalEmitter.on("message", async (message) => {
       // Peer data is untrusted until decrypted AND parsed; drop anything that
@@ -121,7 +117,7 @@ export const createTransportBase = (
     });
 
     const send = async (message: object) => {
-      if (state !== Status.CONNECTED)
+      if (status.get() !== Status.CONNECTED)
         throw new Error("Transport not connected");
 
       const payload = await encrypt(JSON.stringify(message));
@@ -130,9 +126,9 @@ export const createTransportBase = (
     };
 
     const setup = async () => {
-      setState(Status.CONNECTING);
+      setStatus(Status.CONNECTING);
       await channel.setup();
-      setState(Status.READY);
+      setStatus(Status.READY);
     };
 
     const teardown = async () => {
@@ -146,6 +142,7 @@ export const createTransportBase = (
       handle,
       send,
       emitter,
+      status,
     };
   },
 });
