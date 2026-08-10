@@ -26,6 +26,8 @@
         shellHook = ''
           export pnpm_config_auto_install_peers=false
           export pnpm_config_ignore_scripts=true
+          export PLAYWRIGHT_BROWSERS_PATH=${pkgs.playwright-driver.browsers}
+          export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
           just
         '';
       };
