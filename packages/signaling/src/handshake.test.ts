@@ -3,7 +3,6 @@ import {
   type EncryptionKey,
   generateKeyPair,
   hashPublicKey,
-  parseEncryptionKey,
 } from "@openlv/core/encryption";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -81,10 +80,8 @@ const createPeer = async (
     capabilities: CLIENT_CAPABILITIES,
   });
 
-  layer.peerKey.subscribe(async (rpKey) => {
-    if (!rpKey) return;
-
-    relyingKey = await parseEncryptionKey(rpKey);
+  layer.peerKey.subscribe((key) => {
+    relyingKey = key;
   });
 
   layer.peerCapabilities.subscribe(async (capabilities) => {
@@ -124,10 +121,8 @@ const setupPair = async (topic: ReturnType<typeof createTopic>) => {
     capabilities: HOST_CAPABILITIES,
   });
 
-  host.peerKey.subscribe(async (rpKey) => {
-    if (!rpKey) return;
-
-    hostRelying = await parseEncryptionKey(rpKey);
+  host.peerKey.subscribe((key) => {
+    hostRelying = key;
   });
 
   host.peerCapabilities.subscribe((capabilities) => {

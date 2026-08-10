@@ -54,7 +54,7 @@ export type SignalingContext = {
   teardown: () => Promise<void>;
 
   state: Observable<SignalState>;
-  peerKey: Observable<string | undefined>;
+  peerKey: Observable<EncryptionKey | undefined>;
   peerCapabilities: Observable<PeerCapabilities | undefined>;
 };
 export type SignalingLayer = EventEmitter<SignalEventMap> & SignalingContext;
@@ -84,7 +84,7 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
   } = hooks;
 
   const [state, setState] = observable<SignalState>(SIGNAL_STATE.STANDBY);
-  const [peerKey, setPeerKey] = observable<string | undefined>(undefined);
+  const [peerKey, setPeerKey] = observable<EncryptionKey | undefined>(undefined);
   const [peerCapabilities, setPeerCapabilities] = observable<PeerCapabilities | undefined>(undefined);
 
   const emitter = new EventEmitter<SignalEventMap>();
@@ -118,8 +118,10 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
         await send("handshake", pubkeyMessage());
       })
       .with({ msg: { type: "pubkey" }, state: SIGNAL_STATE.HANDSHAKE, isHost: false }, async ({ msg: { payload: messagePayload } }) => {
+        let receivedKey: EncryptionKey;
+
         try {
-          const receivedKey = await parseEncryptionKey(messagePayload.publicKey);
+          receivedKey = await parseEncryptionKey(messagePayload.publicKey);
 
           if (!await validatePublicKeyHash(receivedKey, h)) {
             setState(SIGNAL_STATE.ERROR);
@@ -135,7 +137,7 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
           return;
         }
 
-        const changed = setPeerKey(messagePayload.publicKey)
+        const changed = setPeerKey(receivedKey)
           && setState(SIGNAL_STATE.HANDSHAKE_PARTIAL);
 
         if (!changed) return;
@@ -153,7 +155,9 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
       .with(
         { msg: { type: "pubkey" }, isHost: true, state: SIGNAL_STATE.HANDSHAKE },
         async ({ msg: { payload: messagePayload } }) => {
-          if (!setPeerKey(messagePayload.publicKey)) return;
+          const receivedKey = await parseEncryptionKey(messagePayload.publicKey);
+
+          if (!setPeerKey(receivedKey)) return;
 
           setState(SIGNAL_STATE.HANDSHAKE_PARTIAL);
 
