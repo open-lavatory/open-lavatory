@@ -15,7 +15,7 @@ import { log } from "./utils/log.js";
 export * from "./messages.js";
 export * from "./protocol.js";
 
-export const SIGNAL_STATE = {
+export const Status = {
   STANDBY: "standby",
   CONNECTING: "connecting",
   READY: "ready",
@@ -24,7 +24,7 @@ export const SIGNAL_STATE = {
   ENCRYPTED: "encrypted",
   ERROR: "error",
 } as const;
-export type SignalState = (typeof SIGNAL_STATE)[keyof typeof SIGNAL_STATE];
+export type Status = (typeof Status)[keyof typeof Status];
 
 export type SignalEventMap = {
   message: (message: object) => void;
@@ -53,7 +53,7 @@ export type SignalingContext = {
   setup: () => Promise<void>;
   teardown: () => Promise<void>;
 
-  state: Observable<SignalState>;
+  status: Observable<Status>;
   peerKey: Observable<EncryptionKey | undefined>;
   peerCapabilities: Observable<PeerCapabilities | undefined>;
 };
@@ -83,7 +83,7 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
     isHost,
   } = hooks;
 
-  const [state, setState] = observable<SignalState>(SIGNAL_STATE.STANDBY);
+  const [status, setStatus] = observable<Status>(Status.STANDBY);
   const [peerKey, setPeerKey] = observable<EncryptionKey | undefined>(undefined);
   const [peerCapabilities, setPeerCapabilities] = observable<PeerCapabilities | undefined>(undefined);
 
@@ -112,63 +112,63 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
   });
 
   const handleHandshakeFrame = async (message: SignalMessage) => {
-    await match({ msg: message, state: state.get(), isHost })
-      .with({ msg: { type: "flash" }, state: SIGNAL_STATE.READY, isHost: true }, async () => {
-        setState(SIGNAL_STATE.HANDSHAKE);
+    await match({ msg: message, status: status.get(), isHost })
+      .with({ msg: { type: "flash" }, status: Status.READY, isHost: true }, async () => {
+        setStatus(Status.HANDSHAKE);
         await send("handshake", pubkeyMessage());
       })
-      .with({ msg: { type: "pubkey" }, state: SIGNAL_STATE.HANDSHAKE, isHost: false }, async ({ msg: { payload: messagePayload } }) => {
+      .with({ msg: { type: "pubkey" }, status: Status.HANDSHAKE, isHost: false }, async ({ msg: { payload: messagePayload } }) => {
         let receivedKey: EncryptionKey;
 
         try {
           receivedKey = await parseEncryptionKey(messagePayload.publicKey);
 
           if (!await validatePublicKeyHash(receivedKey, h)) {
-            setState(SIGNAL_STATE.ERROR);
+            setStatus(Status.ERROR);
             log("Received host public key does not match expected hash -- possible tampering");
 
             return;
           }
         }
         catch {
-          setState(SIGNAL_STATE.ERROR);
+          setStatus(Status.ERROR);
           log("Failed to parse received host public key");
 
           return;
         }
 
         const changed = setPeerKey(receivedKey)
-          && setState(SIGNAL_STATE.HANDSHAKE_PARTIAL);
+          && setStatus(Status.HANDSHAKE_PARTIAL);
 
         if (!changed) return;
 
         return await send("encrypted", pubkeyMessage());
       })
       .otherwise(() => {
-        log("Ignoring handshake frame", message.type, "in state", state);
+        log("Ignoring handshake frame", message.type, "in status", status);
       });
   };
 
   const handleEncryptedFrame = async (message: SignalMessage) => {
-    await match({ msg: message, state: state.get(), isHost })
+    await match({ msg: message, status: status.get(), isHost })
       // Host: client responded with its public key.
       .with(
-        { msg: { type: "pubkey" }, isHost: true, state: SIGNAL_STATE.HANDSHAKE },
+        { msg: { type: "pubkey" }, isHost: true, status: Status.HANDSHAKE },
         async ({ msg: { payload: messagePayload } }) => {
           const receivedKey = await parseEncryptionKey(messagePayload.publicKey);
 
           if (!setPeerKey(receivedKey)) return;
 
-          setState(SIGNAL_STATE.HANDSHAKE_PARTIAL);
+          setStatus(Status.HANDSHAKE_PARTIAL);
 
           return await send("encrypted", capabilitiesMessage());
         },
       )
       .with(
-        { msg: { type: "capabilities" }, state: SIGNAL_STATE.HANDSHAKE_PARTIAL },
+        { msg: { type: "capabilities" }, status: Status.HANDSHAKE_PARTIAL },
         async ({ msg: { payload: messagePayload } }) => {
           await setPeerCapabilities(messagePayload);
-          setState(SIGNAL_STATE.ENCRYPTED);
+          setStatus(Status.ENCRYPTED);
 
           if (isHost) return;
 
@@ -179,14 +179,14 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
       // capabilities (our final packet was lost): answer again so the host
       // can finish.
       .with(
-        { msg: { type: "capabilities" }, state: SIGNAL_STATE.ENCRYPTED, isHost: false },
+        { msg: { type: "capabilities" }, status: Status.ENCRYPTED, isHost: false },
         async () => await send("encrypted", capabilitiesMessage()),
       )
-      .with({ msg: { type: "data" }, state: SIGNAL_STATE.ENCRYPTED }, async () => {
+      .with({ msg: { type: "data" }, status: Status.ENCRYPTED }, async () => {
         emitter.emit("message", message.payload as object);
       })
       .otherwise(() => {
-        log("Ignoring encrypted frame", message.type, "in state", state);
+        log("Ignoring encrypted frame", message.type, "in status", status);
       });
   };
 
@@ -210,22 +210,22 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
   };
 
   const setup = async () => {
-    setState(SIGNAL_STATE.CONNECTING);
+    setStatus(Status.CONNECTING);
     await channel.setup();
     await channel.subscribe(onReceive);
 
     if (canEncrypt()) {
-      setState(SIGNAL_STATE.ENCRYPTED);
+      setStatus(Status.ENCRYPTED);
 
       return;
     }
 
-    setState(SIGNAL_STATE.READY);
+    setStatus(Status.READY);
 
     if (!isHost) {
       // Enter HANDSHAKE before publishing: the host's pubkey reply can
       // arrive while the publish is still in flight.
-      setState(SIGNAL_STATE.HANDSHAKE);
+      setStatus(Status.HANDSHAKE);
       await send("handshake", {
         type: "flash",
         payload: {},
@@ -256,7 +256,7 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
         timestamp: Date.now(),
       });
     },
-    state,
+    status,
     peerKey,
     peerCapabilities,
   });

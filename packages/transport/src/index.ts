@@ -11,18 +11,18 @@ import type { TransportLayerBaseEventMap, TransportLayerImplFunction } from "./l
 import { log } from "./utils/log.js";
 import type { WebRTCConfig } from "./webrtc/index.js";
 
-export const TRANSPORT_STATE = {
+export const TransportStatus = {
   STANDBY: "standby",
   CONNECTING: "connecting",
   READY: "ready",
   CONNECTED: "connected",
   ERROR: "error",
 } as const;
-export type TransportState
-  = (typeof TRANSPORT_STATE)[keyof typeof TRANSPORT_STATE];
+export type TransportStatus
+  = (typeof TransportStatus)[keyof typeof TransportStatus];
 
 export type TLayerEventMap = {
-  state_change: (state: TransportState) => void;
+  state_change: (state: TransportStatus) => void;
   error: (reason?: string) => void;
 };
 
@@ -72,9 +72,9 @@ export const createTransportBase = (
   create: ({ encrypt, decrypt, subsend, isHost, onmessage }) => {
     const emitter = new EventEmitter<TLayerEventMap>();
     const internalEmitter = new EventEmitter<TransportLayerBaseEventMap>();
-    let state: TransportState = TRANSPORT_STATE.STANDBY;
+    let state: TransportStatus = TransportStatus.STANDBY;
 
-    const setState = (newState: TransportState) => {
+    const setState = (newState: TransportStatus) => {
       state = newState;
       emitter.emit("state_change", newState);
     };
@@ -89,14 +89,14 @@ export const createTransportBase = (
     });
     internalEmitter.on("connected", () => {
       log("onConnected");
-      setState(TRANSPORT_STATE.CONNECTED);
+      setState(TransportStatus.CONNECTED);
     });
     internalEmitter.on("error", (reason) => {
       log("transport error", reason);
       // Surface the reason before the state flips so listeners reading
       // state on state_change already see it.
       emitter.emit("error", reason);
-      setState(TRANSPORT_STATE.ERROR);
+      setState(TransportStatus.ERROR);
     });
     internalEmitter.on("message", async (message) => {
       // Peer data is untrusted until decrypted AND parsed; drop anything that
@@ -122,7 +122,7 @@ export const createTransportBase = (
     });
 
     const send = async (message: object) => {
-      if (state !== TRANSPORT_STATE.CONNECTED)
+      if (state !== TransportStatus.CONNECTED)
         throw new Error("Transport not connected");
 
       const payload = await encrypt(JSON.stringify(message));
@@ -133,9 +133,9 @@ export const createTransportBase = (
     return {
       type: transportId,
       async setup() {
-        setState(TRANSPORT_STATE.CONNECTING);
+        setState(TransportStatus.CONNECTING);
         await setup();
-        setState(TRANSPORT_STATE.READY);
+        setState(TransportStatus.READY);
       },
       teardown,
       handle,
