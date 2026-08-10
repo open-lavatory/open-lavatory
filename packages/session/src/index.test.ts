@@ -23,7 +23,7 @@ describe("Session", () => {
     );
 
     expect(sessionA).toBeDefined();
-    console.log(sessionA.getState());
+    console.log(sessionA.status.get());
 
     await sessionA.connect();
 
@@ -51,14 +51,14 @@ describe("Session", () => {
       [webrtc()],
     );
 
-    console.log(sessionB.getState());
+    console.log(sessionB.status.get());
     await sessionB.connect();
 
     await Promise.all([sessionA.waitForLink(), sessionB.waitForLink()]);
 
     //
-    console.log("A", sessionA.getState());
-    console.log("B", sessionB.getState());
+    console.log("A", sessionA.status.get());
+    console.log("B", sessionB.status.get());
 
     const response = await sessionA.send({ data: "test" });
 
