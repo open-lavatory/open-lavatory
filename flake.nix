@@ -24,6 +24,8 @@
         ];
 
         shellHook = ''
+          export pnpm_config_auto_install_peers=false
+          export pnpm_config_ignore_scripts=true
           just
         '';
       };

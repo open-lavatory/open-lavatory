@@ -4,7 +4,7 @@
  * A privacy-first, peer-to-peer protocol for connecting dApps with wallets
  * without relying on centralized infrastructure.
  */
-import { observable } from "@openlv/core";
+import { observable, type Observable } from "@openlv/core";
 import type { DecryptionKey, EncryptionKey } from "@openlv/core/encryption";
 import { EventEmitter } from "eventemitter3";
 
@@ -50,6 +50,7 @@ export type TransportLayer = {
   send: (message: object) => Promise<void>;
   handle: (message: TransportMessage) => Promise<void>;
   emitter: EventEmitter<TLayerEventMap>;
+  status: Observable<Status>;
 };
 /** Wire identifier advertised in the `capabilities` handshake packet. */
 export type TransportProtocol = "wrtc" | "ws" | (string & {});
