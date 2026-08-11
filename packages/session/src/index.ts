@@ -8,7 +8,6 @@ import {
 } from "@openlv/core";
 import {
   deriveSymmetricKey,
-  type EncryptionKey,
   generateHandshakeKey,
   generateSessionId,
   initEncryptionKeys,
@@ -45,15 +44,6 @@ export const SESSION_STATE = {
 } as const;
 export type SessionState = (typeof SESSION_STATE)[keyof typeof SESSION_STATE];
 
-export type SessionStateObject = {
-  status: SessionState;
-  signaling?: {
-    status: SignalStatus;
-  };
-  peerInfo?: PeerInfo;
-  error?: string;
-};
-
 export type SessionOptions = {
   info?: PeerInfo;
 };
@@ -64,7 +54,9 @@ export type SessionOptions = {
  * https://openlv.sh/api/session
  */
 export type Session = {
-  status: Observable<SessionStateObject>;
+  status: Observable<SessionState>;
+  error: Observable<string | undefined>;
+  peerInfo: Observable<PeerInfo | undefined>;
   getHandshakeParameters(): SessionHandshakeParameters;
   connect(): Promise<void>;
   waitForLink(): Promise<void>;
@@ -104,7 +96,6 @@ export const createSession = async (
     encryptionKey,
     decryptionKey: { decrypt },
   } = await initEncryptionKeys(initParameters);
-  let relyingPublicKey: EncryptionKey | undefined;
   const handshakeKey
     = "k" in initParameters
       ? await deriveSymmetricKey(initParameters.k)
@@ -113,27 +104,24 @@ export const createSession = async (
     "h" in initParameters ? initParameters.h : undefined,
     encryptionKey,
   );
-  let status: SessionState = SESSION_STATE.CREATED;
-  let lastError: string | undefined;
   const protocol = initParameters.p;
   const server = initParameters.s;
   const capabilities: PeerCapabilities = {
     transports: transportLayers.map(layer => layer.transportId),
     ...(options?.info && { info: options.info }),
   };
-  let peerCaps: PeerCapabilities | undefined;
 
-  const [sessionState, setSessionState] = observable<SessionStateObject>({ status });
+  const [status, setStatus] = observable<SessionState>(SESSION_STATE.CREATED);
+  const [lastError, setLastError] = observable<string | undefined>(undefined);
+  const [peerInfo, setPeerInfo] = observable<PeerInfo | undefined>(undefined);
+
+  const setLastErrorIfUnset = (reason: string) => {
+    if (lastError.get() === undefined) setLastError(reason);
+  };
 
   const updateStatus = (newStatus: SessionState) => {
     log("updateStatus", newStatus);
-    status = newStatus;
-    setSessionState({
-      status,
-      signaling: { status: signal.status.get() },
-      peerInfo: peerCaps?.info,
-      error: lastError,
-    });
+    setStatus(newStatus);
   };
 
   const signaling = await signalLayer({
@@ -143,14 +131,16 @@ export const createSession = async (
   const signal = await signaling({
     h: hash,
     canEncrypt() {
-      return relyingPublicKey !== undefined;
+      return signal.peerKey.get() !== undefined;
     },
     async encrypt(message) {
-      if (!relyingPublicKey) {
+      const key = signal.peerKey.get();
+
+      if (!key) {
         throw new Error("Relying party public key not found");
       }
 
-      return await relyingPublicKey.encrypt(message);
+      return await key.encrypt(message);
     },
     decrypt,
     publicKey: encryptionKey,
@@ -163,27 +153,24 @@ export const createSession = async (
     const role = isHost ? "host" : "client";
 
     log(`rpKey discovered by ${role}`, key);
-
-    relyingPublicKey = key;
   });
 
   signal.peerCapabilities.subscribe((received) => {
     log("peer capabilities received", received);
-    peerCaps = received;
-    // Re-emit the current status so observers see peerInfo the moment the
-    // capabilities exchange completes, not at the next status transition.
-    updateStatus(status);
+    setPeerInfo(received?.info);
   });
 
   let transport: TransportLayer | undefined;
 
   const createTransport = (layer: TransportLayerFunction): TransportLayer => layer.create({
-    encrypt(message) {
-      if (!relyingPublicKey) {
+    async encrypt(message) {
+      const key = signal.peerKey.get();
+
+      if (!key) {
         throw new Error("Relying party public key not found");
       }
 
-      return relyingPublicKey?.encrypt(message);
+      return await key.encrypt(message);
     },
     decrypt,
     isHost,
@@ -240,6 +227,8 @@ export const createSession = async (
    * keep the first configured transport.
    */
   const selectTransportLayer = (): TransportLayerFunction | undefined => {
+    const peerCaps = signal.peerCapabilities.get();
+
     if (!peerCaps) return transportLayers[0];
 
     // The host's preferred transport that the client also supports; both
@@ -268,19 +257,19 @@ export const createSession = async (
 
     if (transportStatus === TransportStatus.CONNECTED) {
       clearLinkDeadline();
-      lastError = undefined;
+      setLastError(undefined);
       updateStatus(SESSION_STATE.CONNECTED);
     }
 
     if (transportStatus === TransportStatus.ERROR) {
       clearLinkDeadline();
-      lastError ??= "Peer-to-peer transport failed";
+      setLastErrorIfUnset("Peer-to-peer transport failed");
       updateStatus(SESSION_STATE.DISCONNECTED);
     }
   };
 
   const onTransportError = (reason?: string) => {
-    if (reason) lastError = reason;
+    if (reason) setLastError(reason);
   };
 
   const startTransport = () => {
@@ -288,8 +277,8 @@ export const createSession = async (
       const layer = selectTransportLayer();
 
       if (!layer) {
-        log("no common transport with peer", capabilities.transports, peerCaps?.transports);
-        lastError ??= "No common transport with peer";
+        log("no common transport with peer", capabilities.transports, signal.peerCapabilities.get()?.transports);
+        setLastErrorIfUnset("No common transport with peer");
         updateStatus(SESSION_STATE.DISCONNECTED);
 
         return;
@@ -302,17 +291,17 @@ export const createSession = async (
     }
 
     linkDeadline ??= setTimeout(() => {
-      if (status === SESSION_STATE.CONNECTED) return;
+      if (status.get() === SESSION_STATE.CONNECTED) return;
 
       log("transport failed to connect in time");
-      lastError ??= "Timed out establishing the peer-to-peer connection";
+      setLastErrorIfUnset("Timed out establishing the peer-to-peer connection");
       updateStatus(SESSION_STATE.DISCONNECTED);
     }, TRANSPORT_LINK_TIMEOUT_MS);
 
     Promise.resolve(transport.setup()).catch((error) => {
       log("transport setup failed", error);
       clearLinkDeadline();
-      lastError ??= error instanceof Error ? error.message : "Transport setup failed";
+      setLastErrorIfUnset(error instanceof Error ? error.message : "Transport setup failed");
       updateStatus(SESSION_STATE.DISCONNECTED);
     });
   };
@@ -367,7 +356,7 @@ export const createSession = async (
 
     if (signalStatus === SignalStatus.ERROR) {
       log("signaling error -- marking session disconnected");
-      lastError ??= "Signaling failed or timed out";
+      setLastErrorIfUnset("Signaling failed or timed out");
       updateStatus(SESSION_STATE.DISCONNECTED);
     }
   };
@@ -397,7 +386,9 @@ export const createSession = async (
       ]);
       updateStatus(SESSION_STATE.DISCONNECTED);
     },
-    status: sessionState,
+    status,
+    error: lastError,
+    peerInfo,
     getHandshakeParameters() {
       return {
         version: OPENLV_PROTOCOL_VERSION,
@@ -409,22 +400,22 @@ export const createSession = async (
       };
     },
     waitForLink: async () => new Promise<void>((resolve, reject) => {
-      const check = (current: SessionStateObject) => {
-        if (current.status === SESSION_STATE.CONNECTED) {
+      const check = (current: SessionState) => {
+        if (current === SESSION_STATE.CONNECTED) {
           unsubscribe();
           resolve();
         }
-        else if (current.status === SESSION_STATE.DISCONNECTED) {
+        else if (current === SESSION_STATE.DISCONNECTED) {
           unsubscribe();
-          reject(new Error(lastError ?? "Session failed to connect"));
+          reject(new Error(lastError.get() ?? "Session failed to connect"));
         }
       };
 
       // Subscribe before inspecting the current status so a transition
       // between the check and the subscription cannot be missed.
-      const unsubscribe = sessionState.subscribe(check);
+      const unsubscribe = status.subscribe(check);
 
-      check(sessionState.get());
+      check(status.get());
     }),
     async send(
       message: object,
