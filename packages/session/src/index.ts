@@ -128,11 +128,10 @@ export const createSession = async (
     topic: sessionId,
     url: server,
   });
+  const canEncrypt = () => signal.peerKey.get() !== undefined;
   const signal = await signaling({
     h: hash,
-    canEncrypt() {
-      return signal.peerKey.get() !== undefined;
-    },
+    canEncrypt,
     async encrypt(message) {
       const key = signal.peerKey.get();
 
