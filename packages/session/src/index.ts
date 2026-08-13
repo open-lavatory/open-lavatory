@@ -398,24 +398,16 @@ export const createSession = async (
         s: server,
       };
     },
-    waitForLink: async () => new Promise<void>((resolve, reject) => {
-      const check = (current: SessionState) => {
-        if (current === SESSION_STATE.CONNECTED) {
-          unsubscribe();
-          resolve();
-        }
-        else if (current === SESSION_STATE.DISCONNECTED) {
-          unsubscribe();
-          reject(new Error(lastError.get() ?? "Session failed to connect"));
-        }
-      };
+    waitForLink: async () => {
+      const terminal = await status.until(
+        current => current === SESSION_STATE.CONNECTED
+          || current === SESSION_STATE.DISCONNECTED,
+      );
 
-      // Subscribe before inspecting the current status so a transition
-      // between the check and the subscription cannot be missed.
-      const unsubscribe = status.subscribe(check);
-
-      check(status.get());
-    }),
+      if (terminal === SESSION_STATE.DISCONNECTED) {
+        throw new Error(lastError.get() ?? "Session failed to connect");
+      }
+    },
     async send(
       message: object,
       ackTimeout: number = 10_000,
