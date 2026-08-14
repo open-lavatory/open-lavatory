@@ -59,7 +59,6 @@ export type Session = {
   peerInfo: Observable<PeerInfo | undefined>;
   getHandshakeParameters(): SessionHandshakeParameters;
   connect(): Promise<void>;
-  waitForLink(): Promise<void>;
   close(): Promise<void>;
   send(message: object, ackTimeout?: number, responseTimeout?: number): Promise<unknown>;
   emitter: EventEmitter<SessionEvents>;
@@ -397,16 +396,6 @@ export const createSession = async (
         p: protocol,
         s: server,
       };
-    },
-    waitForLink: async () => {
-      const terminal = await status.until(
-        current => current === SESSION_STATE.CONNECTED
-          || current === SESSION_STATE.DISCONNECTED,
-      );
-
-      if (terminal === SESSION_STATE.DISCONNECTED) {
-        throw new Error(lastError.get() ?? "Session failed to connect");
-      }
     },
     async send(
       message: object,

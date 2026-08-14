@@ -3,7 +3,7 @@ import { ntfy } from "@openlv/signaling/ntfy";
 import { webrtc } from "@openlv/transport/webrtc";
 import { describe, expect, test } from "vitest";
 
-import { connectSession, createSession } from "./index.js";
+import { connectSession, createSession, SESSION_STATE } from "./index.js";
 
 describe("Session", () => {
   test("Should be able to create a session", async () => {
@@ -54,7 +54,9 @@ describe("Session", () => {
     console.log(sessionB.status.get());
     await sessionB.connect();
 
-    await Promise.all([sessionA.waitForLink(), sessionB.waitForLink()]);
+    await Promise.all([sessionA, sessionB].map(
+      session => session.status.until(current => current === SESSION_STATE.CONNECTED),
+    ));
 
     //
     console.log("A", sessionA.status.get());
