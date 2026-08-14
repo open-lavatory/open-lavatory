@@ -80,7 +80,10 @@
     "connectedSuccessfully": "Connected Successfully!",
     "walletConnectedReady": "Your wallet is now connected and ready to use.",
     "disconnected": "Disconnected",
-    "connectionClosed": "The connection has been closed."
+    "connectionClosed": "The connection has been closed.",
+    "tryAgain": "Try again",
+    "connectionFailed": "Connection failed"
+
   },
   "handshake": {
     "clickToCopyUrl": "Click to copy connection URL",

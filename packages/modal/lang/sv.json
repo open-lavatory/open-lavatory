@@ -75,7 +75,9 @@
     "connectedSuccessfully": "Anslutningen lyckades!",
     "walletConnectedReady": "Din plånbok är nu ansluten och redo att användas.",
     "disconnected": "Frånkopplad",
-    "connectionClosed": "Anslutningen har stängts."
+    "connectionClosed": "Anslutningen har avslutats.",
+    "tryAgain": "Försök igen",
+    "connectionFailed": "Anslutningen misslyckades"
   },
   "handshake": {
     "clickToCopyUrl": "Klicka för att kopiera anslutnings-URL:en",
