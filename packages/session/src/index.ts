@@ -76,7 +76,6 @@ export type Session = {
  */
 export const createSession = async (
   initParameters: SessionLinkParameters,
-  signalLayer: SignalingProtocol,
   transportLayers: TransportLayerFunction[],
   onMessage: (message: object) => Promise<object | string>,
   options?: SessionOptions,
@@ -123,6 +122,7 @@ export const createSession = async (
     setStatus(newStatus);
   };
 
+  const signalLayer = await loadSignaling(protocol);
   const signaling = await signalLayer({
     topic: sessionId,
     url: server,

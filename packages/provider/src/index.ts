@@ -1,11 +1,10 @@
 
-import { encodeConnectionURL, type SessionLinkParameters } from "@openlv/core";
+import { encodeConnectionURL, observable, type SessionLinkParameters } from "@openlv/core";
 import {
   createSession,
-  type PeerInfo,
   type Session,
-  type SessionStateObject,
 } from "@openlv/session";
+import type { PeerInfo } from "@openlv/signaling";
 import type { TransportProtocol } from "@openlv/transport";
 import { webrtc, type WebRTCConfig } from "@openlv/transport/webrtc";
 import { Provider as OxProvider } from "ox";
@@ -78,13 +77,6 @@ export const PROVIDER_STATUS = {
 export type ProviderStatus
   = (typeof PROVIDER_STATUS)[keyof typeof PROVIDER_STATUS];
 
-export type ProviderState = {
-  status: ProviderStatus;
-  session?: SessionStateObject;
-  /** Human-readable reason for the last connection failure, if any. */
-  error?: string;
-};
-
 export type ProviderConfig = {
   schema: RpcSchema;
 };
@@ -93,9 +85,7 @@ export type ProviderBase = {
   storage: ProviderStorageR;
   createSession: (parameters?: SessionLinkParameters) => Promise<Session>;
   closeSession: () => Promise<void>;
-  getSession: () => Session | undefined;
   getAccounts: () => Promise<Address[]>;
-  getState: () => ProviderState;
 };
 
 export type OpenLVProvider = OxProvider.Provider<
@@ -113,18 +103,14 @@ export const createProvider = (
   parameters: OpenLVProviderParameters,
 ): OpenLVProvider => {
   const oxEmitter = OxProvider.createEmitter<ProviderEvents & EventMap>();
-  let session: Session | undefined;
-  let status: ProviderStatus = PROVIDER_STATUS.STANDBY;
-  let lastError: string | undefined;
+
+  const [session, setSession] = observable<Session | undefined>(undefined);
+  const [status, setStatus] = observable<ProviderStatus>(PROVIDER_STATUS.STANDBY);
+  const [error, setError] = observable<string | undefined>(undefined);
+
   let accounts: Address[] = [];
   const storage = createProviderStorage({ storage: parameters.storage });
   const { openModal, config } = parameters;
-
-  const updateStatus = (newStatus: ProviderStatus) => {
-    status = newStatus;
-    log("updateStatus", status);
-    oxEmitter.emit("status_change", newStatus);
-  };
 
   /**
    * Called when the remote peer (wallet) sends a request to the dApp.
