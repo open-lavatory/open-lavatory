@@ -19,7 +19,6 @@ import type { ExtractReturnType } from "ox/RpcSchema";
 import { match } from "ts-pattern";
 import type { Address, Prettify } from "viem";
 
-import type { ProviderEvents } from "./events.js";
 import type { RpcSchema } from "./rpc.js";
 import {
   createProviderStorage,
@@ -99,7 +98,7 @@ export type ProviderBase = {
 
 export type OpenLVProvider = OxProvider.Provider<
   { schema: RpcSchema; },
-  ProviderEvents & EventMap
+  EventMap
 >
 & ProviderBase;
 
@@ -111,7 +110,7 @@ export type OpenLVProvider = OxProvider.Provider<
 export const createProvider = (
   parameters: OpenLVProviderParameters,
 ): OpenLVProvider => {
-  const oxEmitter = OxProvider.createEmitter<ProviderEvents & EventMap>();
+  const oxEmitter = OxProvider.createEmitter<EventMap>();
 
   const [session, setSession] = observable<Session | undefined>(undefined);
   const [status, setStatus] = observable<ProviderStatus>(PROVIDER_STATUS.STANDBY);
@@ -207,7 +206,6 @@ export const createProvider = (
       const url = encodeConnectionURL(handshakeParameters);
 
       log("session url", url);
-      oxEmitter.emit("session_started", next);
 
       const settled = await next.status.until(
         state => state === SessionStatus.CONNECTED
@@ -348,7 +346,7 @@ export const createProvider = (
     ProviderConfig,
     OxProvider.from.Value<ProviderConfig>
     & ProviderBase
-    & OxProvider.Emitter<ProviderEvents & EventMap>
+    & OxProvider.Emitter<EventMap>
   >({
     ...oxEmitter,
     storage,
