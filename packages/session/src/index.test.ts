@@ -1,9 +1,8 @@
 import { decodeConnectionURL, encodeConnectionURL } from "@openlv/core";
-import { ntfy } from "@openlv/signaling/ntfy";
 import { webrtc } from "@openlv/transport/webrtc";
 import { describe, expect, test } from "vitest";
 
-import { connectSession, createSession, SESSION_STATE } from "./index.js";
+import { connectSession, createSession, SessionStatus } from "./index.js";
 
 describe("Session", () => {
   test("Should be able to create a session", async () => {
@@ -13,7 +12,6 @@ describe("Session", () => {
         p: "ntfy",
         s: "https://ntfy.sh/",
       },
-      ntfy,
       [webrtc()],
       async (message) => {
         console.log("sessionA received message", message);
@@ -55,7 +53,7 @@ describe("Session", () => {
     await sessionB.connect();
 
     await Promise.all([sessionA, sessionB].map(
-      session => session.status.until(current => current === SESSION_STATE.CONNECTED),
+      session => session.status.until(current => current === SessionStatus.CONNECTED),
     ));
 
     //

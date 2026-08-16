@@ -1,8 +1,14 @@
 
-import { encodeConnectionURL, observable, type SessionLinkParameters } from "@openlv/core";
+import {
+  encodeConnectionURL,
+  type Observable,
+  observable,
+  type SessionLinkParameters,
+} from "@openlv/core";
 import {
   createSession,
   type Session,
+  SessionStatus,
 } from "@openlv/session";
 import type { PeerInfo } from "@openlv/signaling";
 import type { TransportProtocol } from "@openlv/transport";
@@ -86,6 +92,9 @@ export type ProviderBase = {
   createSession: (parameters?: SessionLinkParameters) => Promise<Session>;
   closeSession: () => Promise<void>;
   getAccounts: () => Promise<Address[]>;
+  status: Observable<ProviderStatus>;
+  error: Observable<string | undefined>;
+  session: Observable<Session | undefined>;
 };
 
 export type OpenLVProvider = OxProvider.Provider<
@@ -112,6 +121,8 @@ export const createProvider = (
   const storage = createProviderStorage({ storage: parameters.storage });
   const { openModal, config } = parameters;
 
+  status.subscribe(current => log("status", current));
+
   /**
    * Called when the remote peer (wallet) sends a request to the dApp.
    *
@@ -126,7 +137,7 @@ export const createProvider = (
     log("onMessage received from remote peer", message);
 
     // Emit on the session emitter so observers (e.g. modal) can react.
-    session?.emitter.emit("request", message);
+    session.get()?.emitter.emit("request", message);
 
     return {
       error: {
@@ -137,9 +148,11 @@ export const createProvider = (
   };
 
   const getAccounts = async (): Promise<Address[]> => {
-    if (session) {
+    const current = session.get();
+
+    if (current) {
       return unwrapSessionResponse(
-        await session.send({ method: "eth_accounts", params: [] }),
+        await current.send({ method: "eth_accounts", params: [] }),
       ) as Address[];
     }
 
@@ -156,69 +169,85 @@ export const createProvider = (
   };
 
   const start = async (parameters?: SessionLinkParameters) => {
-    lastError = undefined;
-    updateStatus(PROVIDER_STATUS.CREATING);
+    setError(undefined);
+    setStatus(PROVIDER_STATUS.CREATING);
     const linkParameters = parameters ?? defaultLinkParameters();
 
     if (!linkParameters) {
       throw new Error("No link parameters provided and no signaling defaults configured");
     }
 
-    // Stored user settings win over constructor config; both fall back to
-    // the transport's built-in defaults when absent.
-    const transportOptions
-      = convertStoredWebRTCSettings(storage.getSettings().transport?.s?.webrtc)
-        ?? config?.transport?.s?.webrtc;
+    // Stored user settings win over constructor config; both fall back to the
+    // transport's built-in defaults, so an empty list must stay undefined
+    // rather than become an empty iceServers array.
+    const stored = storage.getSettings().transport?.s?.webrtc;
+    const iceServers = [
+      ...stored?.stun?.map(urls => ({ urls })) ?? [],
+      ...stored?.turn ?? [],
+    ];
+    const transportOptions = iceServers.length > 0
+      ? { iceServers }
+      : config?.transport?.s?.webrtc;
 
     try {
-      session = await createSession(
+      const next = await createSession(
         linkParameters,
-        linkParameters.p,
         [webrtc(transportOptions)],
         onMessage,
         { info: config?.info },
       );
-      updateStatus(PROVIDER_STATUS.CONNECTING);
+
+      setSession(next);
+      setStatus(PROVIDER_STATUS.CONNECTING);
 
       log("session created");
-      await session.connect();
+      await next.connect();
       log("session connected");
-      const handshakeParameters = session.getHandshakeParameters();
+      const handshakeParameters = next.getHandshakeParameters();
       const url = encodeConnectionURL(handshakeParameters);
 
       log("session url", url);
-      oxEmitter.emit("session_started", session);
+      oxEmitter.emit("session_started", next);
 
-      await session.waitForLink();
+      const settled = await next.status.until(
+        state => state === SessionStatus.CONNECTED
+          || state === SessionStatus.DISCONNECTED,
+      );
+
+      if (settled !== SessionStatus.CONNECTED) {
+        throw new Error(next.error.get() ?? "Session failed to connect");
+      }
+
       log("session linked");
 
       accounts = await getAccounts();
 
       const chainIdHex = unwrapSessionResponse(
-        await session.send({ method: "eth_chainId", params: [] }),
+        await next.send({ method: "eth_chainId", params: [] }),
       ) as string;
 
-      updateStatus(PROVIDER_STATUS.CONNECTED);
+      setStatus(PROVIDER_STATUS.CONNECTED);
       oxEmitter.emit("connect", { chainId: chainIdHex });
       oxEmitter.emit("accountsChanged", accounts);
 
-      return session;
+      return next;
     }
-    catch (error) {
+    catch (error_) {
       // Surface the failure to UI consumers (e.g. the modal) instead of
       // leaving the provider stuck in "connecting".
-      lastError
-        = session?.getState().error
-          ?? (error instanceof Error ? error.message : "Connection failed");
-      updateStatus(PROVIDER_STATUS.ERROR);
-      throw error;
+      setError(
+        session.get()?.error.get()
+        ?? (error_ instanceof Error ? error_.message : "Connection failed"),
+      );
+      setStatus(PROVIDER_STATUS.ERROR);
+      throw error_;
     }
   };
   const closeSession = async () => {
-    await session?.close();
-    session = undefined;
-    lastError = undefined;
-    updateStatus(PROVIDER_STATUS.STANDBY);
+    await session.get()?.close();
+    setSession(undefined);
+    setError(undefined);
+    setStatus(PROVIDER_STATUS.STANDBY);
   };
 
   const request: OxProvider.from.Value<ProviderConfig>["request"] = async (
@@ -231,10 +260,12 @@ export const createProvider = (
         .with({ method: "eth_chainId" }, async () => {
           log("eth_chainId");
 
-          if (session) {
+          const current = session.get();
+
+          if (current) {
             log("sending eth_chainId to session");
             const result = unwrapSessionResponse(
-              await session.send(request),
+              await current.send(request),
             );
 
             log("eth_chainId result from session", result);
@@ -296,10 +327,12 @@ export const createProvider = (
           return await getAccounts();
         })
         .otherwise(async (v) => {
-          if (session) {
+          const current = session.get();
+
+          if (current) {
             log("sending request to session", request);
             const result = unwrapSessionResponse(
-              await session.send(request),
+              await current.send(request),
             );
 
             log("result from session", result);
@@ -320,15 +353,12 @@ export const createProvider = (
     ...oxEmitter,
     storage,
     request,
-    getSession: () => session,
     getAccounts,
     createSession: start,
     closeSession,
-    getState: () => ({
-      status,
-      session: session?.getState() ?? undefined,
-      error: lastError,
-    }),
+    status,
+    error,
+    session,
   });
 
   return oxProvider as OpenLVProvider;
