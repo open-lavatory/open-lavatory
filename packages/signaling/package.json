@@ -40,11 +40,6 @@
       "types": "./dist/gundb/index.d.ts",
       "import": "./dist/gundb/index.js",
       "default": "./dist/gundb/index.js"
-    },
-    "./dynamic": {
-      "types": "./dist/dynamic.d.ts",
-      "import": "./dist/dynamic.js",
-      "default": "./dist/dynamic.js"
     }
   },
   "main": "./dist/index.js",

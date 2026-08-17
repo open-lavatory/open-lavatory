@@ -1,4 +1,4 @@
-import { connectSession, type Session } from "@openlv/react-native";
+import { connectSession, type Session, SessionStatus } from "@openlv/react-native";
 import { webrtc } from "@openlv/transport/webrtc";
 import * as React from "react";
 
@@ -50,11 +50,9 @@ export const useWalletSession = () => {
         [webrtc()],
       );
 
-      nextSession.emitter.on("state_change", (state) => {
-        if (state !== undefined) {
-          appendLog(`session state => ${state.status}`);
-          setStatus(`session: ${state.status}`);
-        }
+      nextSession.status.subscribe((state) => {
+        appendLog(`session state => ${state}`);
+        setStatus(`session: ${state}`);
       });
 
       setSession(nextSession);
@@ -62,9 +60,17 @@ export const useWalletSession = () => {
       await nextSession.connect();
 
       appendLog("Connected; waiting for link…");
-      void nextSession.waitForLink().then(() => {
-        appendLog("Linked! (transport should start)");
-      });
+
+      const settled = await nextSession.status.until(
+        state => state === SessionStatus.CONNECTED
+          || state === SessionStatus.DISCONNECTED,
+      );
+
+      if (settled !== SessionStatus.CONNECTED) {
+        throw new Error(nextSession.error.get() ?? "Session failed to link");
+      }
+
+      appendLog("Linked! (transport should start)");
     }
     catch (error) {
       const msg = error instanceof Error ? error.message : String(error);

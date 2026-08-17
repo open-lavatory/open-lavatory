@@ -145,7 +145,7 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
         return await send("encrypted", pubkeyMessage());
       })
       .otherwise(() => {
-        log("Ignoring handshake frame", message.type, "in status", status);
+        log("Ignoring handshake frame", message.type, "in status", status.get());
       });
   };
 
@@ -186,7 +186,7 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
         emitter.emit("message", message.payload as object);
       })
       .otherwise(() => {
-        log("Ignoring encrypted frame", message.type, "in status", status);
+        log("Ignoring encrypted frame", message.type, "in status", status.get());
       });
   };
 

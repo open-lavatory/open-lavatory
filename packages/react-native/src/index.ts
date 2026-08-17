@@ -11,18 +11,21 @@ export {
   installWebRTCPolyfills,
   type InstallWebRTCPolyfillsOptions,
 } from "./webrtc.js";
-export type {
-  Session,
-  SessionStatus,
-} from "@openlv/session";
+export type { Session } from "@openlv/session";
 
-export const SESSION_STATE = {
+// Mirrored rather than re-exported: a value re-export would pull
+// @openlv/session into the entry statically, before the polyfills that
+// createSession/connectSession deliberately wait for. The copy is pinned to
+// the original in type-tests/session-signatures.ts.
+export const SessionStatus = {
   CREATED: "created",
   SIGNALING: "signaling",
   READY: "ready",
+  LINKING: "linking",
   CONNECTED: "connected",
   DISCONNECTED: "disconnected",
 } as const;
+export type SessionStatus = (typeof SessionStatus)[keyof typeof SessionStatus];
 
 type SessionModule = typeof import("@openlv/session");
 
