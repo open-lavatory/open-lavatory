@@ -26,7 +26,13 @@ export const mqtt: SignalingProtocol = ({ url, topic }) => {
         });
         connection.on("error", (error) => {
           log("MQTT: Error connecting to URL", error);
-          reject(error instanceof Error ? error : new Error(String(error)));
+          // The client reports transport failures as a DOM Event, which
+          // stringifies to "[object Event]" and reaches the user's screen.
+          reject(
+            error instanceof Error
+              ? error
+              : new Error(`MQTT: could not connect to ${endpoint}`),
+          );
         });
 
         connection.on("close", () => {

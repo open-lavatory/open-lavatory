@@ -35,6 +35,10 @@ import { log } from "./utils/log.js";
 
 export { loadSignaling, loadTransport } from "./dynamic.js";
 
+// `peerInfo` is part of the session's surface, so consumers must be able to
+// name its type without reaching into @openlv/signaling.
+export type { PeerInfo } from "@openlv/signaling";
+
 export const SessionStatus = {
   CREATED: "created",
   SIGNALING: "signaling",

@@ -3,11 +3,11 @@
 /* eslint-disable no-restricted-syntax */
 import { openlv } from "@openlv/connector";
 import { encodeConnectionURL } from "@openlv/core";
-import { connectSession, type Session } from "@openlv/session";
+import { connectSession, type Session, SessionStatus } from "@openlv/session";
 import { webrtc } from "@openlv/transport/webrtc";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import classNames from "classnames";
-import { type ReactNode, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { match } from "ts-pattern";
 import { type Address, type EIP1193Provider } from "viem";
 import {
@@ -204,9 +204,17 @@ const WalletUrlConnect = () => {
               });
               setActive(true);
               await s.connect();
-              session.setPhase("linked");
-              await s.waitForLink();
-              session.setPhase("connected");
+
+              // The panel's phase follows the session's own status from here,
+              // through the subscription attachTryItSession opened above.
+              const settled = await s.status.until(
+                status => status === SessionStatus.CONNECTED
+                  || status === SessionStatus.DISCONNECTED,
+              );
+
+              if (settled !== SessionStatus.CONNECTED) {
+                throw new Error(s.error.get() ?? "Session failed to connect");
+              }
             }
             catch (error) {
               session.setPhase("error");
@@ -347,7 +355,7 @@ const TryItOutInner = () => {
             sessionId: h.sessionId,
             protocol: h.p,
             signalingServer: h.s,
-            remote: previous?.remote ?? s.getState().peerInfo,
+            remote: previous?.remote ?? s.peerInfo.get(),
           }));
         }}
       />
@@ -368,13 +376,19 @@ const TryItOutProviders = ({ children }: { children: ReactNode; }) => (
 );
 
 export const TryItOut = () => {
-  const isInBrowser = globalThis.window !== undefined;
+  // Branching on `window` during render makes the first client render differ
+  // from the server's, which React rejects as a hydration mismatch. Mounting
+  // is the signal that the client has taken over.
+  const [isMounted, setIsMounted] = useState(false);
 
-  if (!isInBrowser) {
-    return <div className="rounded-lg border vocs:border-primary" suppressHydrationWarning />;
+  useEffect(() => {
+    (globalThis as { OPENLV_DEBUG?: boolean; }).OPENLV_DEBUG ??= true;
+    setIsMounted(true);
+  }, []);
+
+  if (!isMounted) {
+    return <div className="rounded-lg border vocs:border-primary" />;
   }
-
-  (globalThis as { OPENLV_DEBUG?: boolean; }).OPENLV_DEBUG ??= true;
 
   return (
     <TryItOutProviders>
