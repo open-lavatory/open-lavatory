@@ -13,8 +13,7 @@ export {
 } from "./webrtc.js";
 export type {
   Session,
-  SessionState,
-  SessionStateObject,
+  SessionStatus,
 } from "@openlv/session";
 
 export const SESSION_STATE = {
