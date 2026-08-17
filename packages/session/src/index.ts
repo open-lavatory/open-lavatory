@@ -56,6 +56,7 @@ export type SessionOptions = {
  */
 export type Session = {
   status: Observable<SessionStatus>;
+  signalStatus: Observable<SignalStatus>;
   error: Observable<string | undefined>;
   peerInfo: Observable<PeerInfo | undefined>;
   getHandshakeParameters(): SessionHandshakeParameters;
@@ -386,6 +387,7 @@ export const createSession = async (
       updateStatus(SessionStatus.DISCONNECTED);
     },
     status,
+    signalStatus: signal.status,
     error: lastError,
     peerInfo,
     getHandshakeParameters() {

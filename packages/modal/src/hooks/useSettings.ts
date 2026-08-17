@@ -1,10 +1,10 @@
 import type {
   ProviderStorage,
+  SignalingProtocol,
   UserThemePreference,
 } from "@openlv/provider/storage";
 import { createSignal } from "solid-js";
 
-import type { SignalingProtocol } from "../../../provider/dist/storage/version.js";
 import { useModalContext } from "../context.js";
 import type { LanguageTag } from "../utils/i18n.jsx";
 

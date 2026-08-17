@@ -7,6 +7,7 @@ const DEFAULT_STORAGE_KEY = "@openlv/connector/settings";
 
 export type {
   ProviderStorage,
+  SignalingProtocol,
   TurnServer,
   UserThemePreference,
 } from "./version.js";

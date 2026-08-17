@@ -71,16 +71,14 @@ export type OpenLVProviderParameters = Prettify<
   } & Pick<ProviderStorageParameters, "storage">
 >;
 
-export const PROVIDER_STATUS = {
+export const ProviderStatus = {
   STANDBY: "standby",
   CREATING: "creating",
   CONNECTING: "connecting",
   CONNECTED: "connected",
   ERROR: "error",
 } as const;
-
-export type ProviderStatus
-  = (typeof PROVIDER_STATUS)[keyof typeof PROVIDER_STATUS];
+export type ProviderStatus = (typeof ProviderStatus)[keyof typeof ProviderStatus];
 
 export type ProviderConfig = {
   schema: RpcSchema;
@@ -113,7 +111,7 @@ export const createProvider = (
   const oxEmitter = OxProvider.createEmitter<EventMap>();
 
   const [session, setSession] = observable<Session | undefined>(undefined);
-  const [status, setStatus] = observable<ProviderStatus>(PROVIDER_STATUS.STANDBY);
+  const [status, setStatus] = observable<ProviderStatus>(ProviderStatus.STANDBY);
   const [error, setError] = observable<string | undefined>(undefined);
 
   let accounts: Address[] = [];
@@ -169,7 +167,7 @@ export const createProvider = (
 
   const start = async (parameters?: SessionLinkParameters) => {
     setError(undefined);
-    setStatus(PROVIDER_STATUS.CREATING);
+    setStatus(ProviderStatus.CREATING);
     const linkParameters = parameters ?? defaultLinkParameters();
 
     if (!linkParameters) {
@@ -197,7 +195,7 @@ export const createProvider = (
       );
 
       setSession(next);
-      setStatus(PROVIDER_STATUS.CONNECTING);
+      setStatus(ProviderStatus.CONNECTING);
 
       log("session created");
       await next.connect();
@@ -224,7 +222,7 @@ export const createProvider = (
         await next.send({ method: "eth_chainId", params: [] }),
       ) as string;
 
-      setStatus(PROVIDER_STATUS.CONNECTED);
+      setStatus(ProviderStatus.CONNECTED);
       oxEmitter.emit("connect", { chainId: chainIdHex });
       oxEmitter.emit("accountsChanged", accounts);
 
@@ -237,7 +235,7 @@ export const createProvider = (
         session.get()?.error.get()
         ?? (error_ instanceof Error ? error_.message : "Connection failed"),
       );
-      setStatus(PROVIDER_STATUS.ERROR);
+      setStatus(ProviderStatus.ERROR);
       throw error_;
     }
   };
@@ -245,7 +243,7 @@ export const createProvider = (
     await session.get()?.close();
     setSession(undefined);
     setError(undefined);
-    setStatus(PROVIDER_STATUS.STANDBY);
+    setStatus(ProviderStatus.STANDBY);
   };
 
   const request: OxProvider.from.Value<ProviderConfig>["request"] = async (

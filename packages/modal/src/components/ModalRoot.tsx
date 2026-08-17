@@ -1,12 +1,12 @@
-import { PROVIDER_STATUS, type ProviderStatus } from "@openlv/provider";
+import { ProviderStatus } from "@openlv/provider";
 import classNames from "classnames";
 import {
   createEffect,
   createMemo,
   createSignal,
+  from,
   type JSX,
   onCleanup,
-  onMount,
   Show,
 } from "solid-js";
 import { match, P } from "ts-pattern";
@@ -126,8 +126,9 @@ const useDynamicDialogHeight = () => {
 
 export const ModalRoot = (properties: { onClose: () => void; }) => {
   const { view: modalView, setView, copied, setCopied } = useModalState();
-  const { uri, status } = useSession();
+  const { uri } = useSession();
   const { provider } = useModalContext();
+  const providerStatus = from(provider.status);
   const { setContentRef, contentNode, height, measureHeight }
     = useDynamicDialogHeight();
   const {
@@ -139,7 +140,7 @@ export const ModalRoot = (properties: { onClose: () => void; }) => {
     current: displayedStatus,
     previous: previousStatus,
     isTransitioning: isStatusTransitioning,
-  } = usePunchTransition(status);
+  } = usePunchTransition(providerStatus);
   const openSettings = () => setView("settings");
   const { t, isRtl, languageTag } = useTranslation();
   const theme = useTheme();
@@ -161,7 +162,7 @@ export const ModalRoot = (properties: { onClose: () => void; }) => {
   useEscapeToClose(properties.onClose);
 
   createEffect(() => {
-    if (status()?.status === PROVIDER_STATUS.CONNECTED) {
+    if (providerStatus() === ProviderStatus.CONNECTED) {
       properties.onClose();
     }
   });
@@ -242,23 +243,13 @@ export const ModalRoot = (properties: { onClose: () => void; }) => {
     });
   });
 
-  const [providerStatus, setProviderStatus] = createSignal<ProviderStatus>(provider.getState().status);
-
-  onMount(() => {
-    provider.on("status_change", setProviderStatus);
-  });
-
-  onCleanup(() => {
-    provider.off("status_change", setProviderStatus);
-  });
-
   const shouldShowBack = createMemo(
-    () => !(modalView() === "start" && providerStatus() === PROVIDER_STATUS.STANDBY),
+    () => !(modalView() === "start" && providerStatus() === ProviderStatus.STANDBY),
   );
 
   const onBack = () => {
     match({ view: modalView(), status: providerStatus() })
-      .with({ view: "start", status: PROVIDER_STATUS.STANDBY }, () => undefined)
+      .with({ view: "start", status: ProviderStatus.STANDBY }, () => undefined)
       .with({ view: "start" }, () => {
         provider.closeSession();
       })
@@ -312,16 +303,16 @@ export const ModalRoot = (properties: { onClose: () => void; }) => {
   );
 
   const renderStatusSection = (
-    targetStatus: ProviderStatus,
+    targetStatus: ProviderStatus | undefined,
   ): JSX.Element =>
     match(targetStatus)
-      .with(PROVIDER_STATUS.STANDBY, () => renderDisconnectedSection())
+      .with(ProviderStatus.STANDBY, () => renderDisconnectedSection())
       .with(
         P.union(
-          PROVIDER_STATUS.CREATING,
-          PROVIDER_STATUS.CONNECTING,
-          PROVIDER_STATUS.CONNECTED,
-          PROVIDER_STATUS.ERROR,
+          ProviderStatus.CREATING,
+          ProviderStatus.CONNECTING,
+          ProviderStatus.CONNECTED,
+          ProviderStatus.ERROR,
         ),
         () => (
           <ConnectionFlow onClose={properties.onClose} onCopy={handleCopy} />

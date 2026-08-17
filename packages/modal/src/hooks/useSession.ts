@@ -1,41 +1,40 @@
 import { encodeConnectionURL } from "@openlv/core";
-import type { SessionStateObject } from "@openlv/session";
-import { createMemo, createSignal, onCleanup, onMount } from "solid-js";
+import { createMemo, from } from "solid-js";
 
 import { useModalContext } from "../context.js";
 
 export const useSession = () => {
   const { provider } = useModalContext();
-  const session = createMemo(() => provider.getSession(), undefined, { name: "session" });
-  const [status, setStatus] = createSignal<SessionStateObject | undefined>(session()?.getState());
+  const session = from(provider.session);
 
-  console.log("session status", status());
+  // `from` binds one source, and the provider replaces the session per
+  // connection. Rebinding inside a memo disposes the previous session's
+  // subscriptions when it recomputes.
+  const bound = createMemo(() => {
+    const current = session();
 
-  const handleStateChange = (state?: SessionStateObject) => {
-    console.log("session state change", state);
-    setStatus(state);
-  };
+    if (!current) return undefined;
 
-  onMount(() => {
-    session()?.emitter.on("state_change", handleStateChange);
+    return {
+      status: from(current.status),
+      signalStatus: from(current.signalStatus),
+      peerInfo: from(current.peerInfo),
+      error: from(current.error),
+    };
   });
 
-  onCleanup(() => {
-    session()?.emitter.off("state_change", handleStateChange);
-  });
-
-  const parameters = createMemo(() => session()?.getHandshakeParameters());
   const uri = createMemo(() => {
-    const handshakeParameters = parameters();
+    const parameters = session()?.getHandshakeParameters();
 
-    return handshakeParameters
-      ? encodeConnectionURL(handshakeParameters)
-      : undefined;
+    return parameters ? encodeConnectionURL(parameters) : undefined;
   });
 
   return {
     uri,
-    status,
+    status: () => bound()?.status(),
+    signalStatus: () => bound()?.signalStatus(),
+    peerInfo: () => bound()?.peerInfo(),
+    error: () => bound()?.error(),
   };
 };
 

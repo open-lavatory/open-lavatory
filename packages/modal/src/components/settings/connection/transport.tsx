@@ -3,7 +3,6 @@ import { LucidePlus, LucideTrash2 } from "lucide-solid";
 import type { JSX } from "solid-js";
 import { createSignal, For } from "solid-js";
 
-import { useSettings } from "../../../hooks/useSettings.js";
 import { Button } from "../../../ui/Button.js";
 import { Input } from "../../../ui/Input.js";
 import { MenuGroup } from "../../../ui/menu/MenuGroup.js";
@@ -42,10 +41,6 @@ const AddServerButton = (properties: {
 
 export const TransportSettings = () => {
   const { t } = useTranslation();
-  const {
-    settings,
-    setSettings,
-  } = useSettings();
 
   const [turnServers, setTurnServers] = createSignal<TurnServer[]>([]);
   const [stunServers, setStunServers] = createSignal<string[]>([]);

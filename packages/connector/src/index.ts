@@ -3,7 +3,7 @@ import {
   createProvider,
   type OpenLVProvider,
   type OpenLVProviderParameters,
-  PROVIDER_STATUS,
+  ProviderStatus,
 } from "@openlv/provider";
 import { createConnector, type CreateConnectorFn } from "@wagmi/core";
 import { type Prettify, UserRejectedRequestError } from "viem";
@@ -67,14 +67,14 @@ export const openlv = ({
       });
 
       const connectionCompleted = provider.status.until(
-        providerStatus => providerStatus === PROVIDER_STATUS.CONNECTED,
+        providerStatus => providerStatus === ProviderStatus.CONNECTED,
       );
 
       await Promise.race([modalDismissed, connectionCompleted]);
 
       if (
         !provider.session.get()
-        || provider.status.get() !== PROVIDER_STATUS.CONNECTED
+        || provider.status.get() !== ProviderStatus.CONNECTED
       ) {
         await provider.closeSession();
 
