@@ -4,7 +4,7 @@ import type {
   UserThemePreference,
   WebRTCSettings,
 } from "@openlv/provider/storage";
-import { createSignal } from "solid-js";
+import { createSignal, onCleanup } from "solid-js";
 
 import { useModalContext } from "../context.js";
 import type { LanguageTag } from "../utils/i18n.jsx";
@@ -13,8 +13,12 @@ export const useSettings = () => {
   const { provider } = useModalContext();
   const [settings, setLocalSettings] = createSignal<ProviderStorage>(provider.storage.getSettings());
 
+  // Several components hold their own useSettings(); without this a write
+  // through one leaves the others showing the value it replaced.
+  provider.storage.emitter.on("settings_change", setLocalSettings);
+  onCleanup(() => provider.storage.emitter.off("settings_change", setLocalSettings));
+
   const setSettings = (newSettings: ProviderStorage) => {
-    setLocalSettings(newSettings);
     provider.storage.setSettings(newSettings);
   };
 

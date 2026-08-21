@@ -340,7 +340,7 @@ export const ModalRoot = (properties: { onClose: () => void; }) => {
       }}
       role="presentation"
       data-openlv-modal-root
-      data-openlv-theme-mode={theme.mode()}
+      data-openlv-theme-mode={theme.applied()}
       lang={languageTag()}
       dir={isRtl() ? "rtl" : "ltr"}
       style={overlayStyle}

@@ -222,6 +222,9 @@ importers:
       '@openlv/react-native':
         specifier: workspace:*
         version: link:../../packages/react-native
+      '@openlv/transport':
+        specifier: workspace:*
+        version: link:../../packages/transport
       '@react-navigation/bottom-tabs':
         specifier: ^7.4.0
         version: 7.18.13(@react-navigation/native@7.3.13(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.4)(react@19.1.0))(react@19.1.0))(react-native-safe-area-context@5.6.2(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.4)(react@19.1.0))(react@19.1.0))(react-native-screens@4.16.0(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.4)(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.4)(react@19.1.0))(react@19.1.0)
@@ -6468,6 +6471,7 @@ packages:
   eslint@9.39.5:
     resolution: {integrity: sha512-DgZS62aPLXKlnxILS/AYCoRvHaZeXceIzlXPkkGGzJWSow1aEk0lbTlxUSlyjC8jcaKxAdOnTDz+o1JFSBsyjw==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+    deprecated: This version is no longer supported. Please see https://eslint.org/version-support for other options.
     hasBin: true
     peerDependencies:
       jiti: '*'
