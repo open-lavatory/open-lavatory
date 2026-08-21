@@ -2,6 +2,7 @@ import type {
   ProviderStorage,
   SignalingProtocol,
   UserThemePreference,
+  WebRTCSettings,
 } from "@openlv/provider/storage";
 import { createSignal } from "solid-js";
 
@@ -39,6 +40,12 @@ export const useSettings = () => {
     setSettings({ ...settings(), signaling: { p, s: { ...s, [p]: options.url } } });
   };
 
+  const setTransportOptions = (webrtc: WebRTCSettings) => {
+    const p = settings()?.transport?.p ?? "webrtc";
+
+    setSettings({ ...settings(), transport: { p, s: { webrtc } } });
+  };
+
   const setRetainSessionHistory = (retain: boolean) => {
     setSettings({ ...settings(), retainHistory: retain });
   };
@@ -54,6 +61,7 @@ export const useSettings = () => {
     setThemeMode,
     setSignalingProtocol,
     setSignalingOptions,
+    setTransportOptions,
     setRetainSessionHistory,
     setAutoReconnect,
   };

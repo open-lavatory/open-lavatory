@@ -18,6 +18,7 @@ import {
   type PeerInfo,
   type SignalingLayer,
   Status as SignalStatus,
+  validatePeerInfo,
 } from "@openlv/signaling";
 import {
   Status as TransportStatus,
@@ -88,6 +89,12 @@ export const createSession = async (
 ): Promise<Session> => {
   if (transportLayers.length === 0) {
     throw new Error("At least one transport is required");
+  }
+
+  if (options?.info) {
+    const problem = validatePeerInfo(options.info);
+
+    if (problem) throw new Error(`Invalid session info: ${problem}`);
   }
 
   const emitter = new EventEmitter<SessionEvents>();

@@ -23,7 +23,6 @@ export type HandshakeHooks = {
 };
 
 export const handshake = (hooks: HandshakeHooks) => {
-  // hello world
   const {
     isHost,
     handshakeKey,

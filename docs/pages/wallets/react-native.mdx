@@ -33,7 +33,7 @@ bun install @openlv/react-native @openlv/transport
 ```tsx [App.tsx]
 import React from 'react';
 import { View, Text, Button } from 'react-native';
-import { OpenLVGlobals, connectSession } from '@openlv/react-native'; // [!code ++]
+import { OpenLVGlobals, connectSession, SessionStatus } from '@openlv/react-native'; // [!code ++]
 import { webrtc } from '@openlv/transport/webrtc'; // [!code ++]
 
 export default function App() {
@@ -50,7 +50,7 @@ export default function App() {
     ); // [!code ++]
 
     await session.connect();
-    await session.waitForLink();
+    await session.status.until((status) => status === SessionStatus.CONNECTED);
     setConnected(true);
   }
 

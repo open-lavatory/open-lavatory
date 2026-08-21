@@ -10,6 +10,7 @@ export type {
   SignalingProtocol,
   TurnServer,
   UserThemePreference,
+  WebRTCSettings,
 } from "./version.js";
 
 export type ProviderStorageParameters = {

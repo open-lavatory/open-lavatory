@@ -8,6 +8,9 @@ import { log } from "../utils/log.js";
 /**
  * GunDB Signaling Layer
  * https://openlv.sh/api/signaling/gun
+ *
+ * @deprecated Public gun relays drop frames often enough that a handshake
+ * fails regularly. Kept until a third backend replaces it.
  */
 export const gundb: SignalingProtocol = ({ topic, url }) => {
   const endpoint = url || "wss://try.axe.eco/gun";

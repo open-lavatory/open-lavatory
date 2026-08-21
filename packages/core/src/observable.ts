@@ -10,7 +10,7 @@ export type Observable<T> = {
   /** Resolves with the first value (including the current one) that matches. */
   until(isMatch: (value: T) => boolean): Promise<T>;
 };
-// Returns false if value was not changed
+/** Returns false when the value was already equal and no listener ran. */
 export type Setter<T> = (value: T) => boolean;
 
 export const observable = <T>(initial: T): [Observable<T>, Setter<T>] => {

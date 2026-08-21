@@ -98,13 +98,11 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
 
   const send = async (method: "handshake" | "encrypted", payload: SignalMessage) => await channel.publish(await frame(method, payload));
 
-  // TODO: dont know why this is here
   const capabilitiesMessage = (): SignalMessage => ({
     type: "capabilities",
     payload: capabilities,
     timestamp: Date.now(),
   });
-  // TODO: dont know why this is here
   const pubkeyMessage = (): SignalMessage => ({
     type: "pubkey",
     payload: { publicKey: publicKey.toString() },

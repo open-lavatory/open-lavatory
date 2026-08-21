@@ -279,7 +279,6 @@ export const createProvider = (
 
           return;
         })
-        // TODO: if modal is enabled explicitly toggle the modal to show.
         .with({ method: "eth_requestAccounts" }, async () => {
           log("eth_requestAccounts");
 

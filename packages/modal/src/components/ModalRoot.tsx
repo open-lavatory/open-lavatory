@@ -320,13 +320,11 @@ export const ModalRoot = (properties: { onClose: () => void; }) => {
       )
       .otherwise(state => <UnknownState state={state || "unknown status"} />);
 
-  // todo remove this styling approach
   const overlayStyle: JSX.CSSProperties = {
     "background": "var(--lv-overlay-background, rgba(0,0,0,0.3))",
     "backdrop-filter": "var(--lv-overlay-backdrop-filter, blur(4px))",
   };
 
-  // todo remove this styling approach
   const cardStyle: JSX.CSSProperties = {
     "background": "var(--lv-body-background)",
     "color": "var(--lv-body-color, var(--lv-text-primary))",

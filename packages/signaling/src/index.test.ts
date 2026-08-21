@@ -65,7 +65,7 @@ const providersByType: readonly [
       ],
     ],
   ],
-  // TODO: GunDB is disabled
+  // gundb is deprecated and its public relays are too lossy to assert on.
   // [
   //   "gundb",
   //   [

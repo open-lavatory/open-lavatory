@@ -5,3 +5,5 @@ docs/.vocs
 .direnv
 .envrc
 
+.tmp
+tests/test-results
