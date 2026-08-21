@@ -82,7 +82,7 @@ The `OpenLVGlobals` component comes bundled with several polyfills to ensure com
 - `react-native-webview-crypto`
 - `react-native-get-random-values`
 
-These polyfills override certain global objects (e.g., `window.crypto`), and are installed only once and cleaned up when the runtime is unmounted.
+These polyfills override certain global objects (e.g., `window.crypto`) and install once for the app process. Keep `OpenLVGlobals` mounted near the application root.
 
 ## Mobile Platform Considerations
 

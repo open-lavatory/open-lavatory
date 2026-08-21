@@ -1,12 +1,17 @@
 import { decodeConnectionURL, encodeConnectionURL } from "@openlv/core";
-import { createProvider, type ProviderStatus } from "@openlv/provider";
-import type { SessionStateObject } from "@openlv/session";
+import { createProvider } from "@openlv/provider";
+import type { Session } from "@openlv/session";
 import { QRCodeSVG } from "qrcode.react";
-import { useState } from "react";
-
-import { useEventEmitter } from "./effect";
+import { useEffect, useState } from "react";
 
 const provider = createProvider({});
+
+const readSessionState = (session: Session) => ({
+  status: session.status.get(),
+  signal: session.signalStatus.get(),
+  peer: session.peerInfo.get(),
+  error: session.error.get(),
+});
 
 const SessionConnect = () => {
   const [url, setUrl] = useState<string | undefined>();
@@ -39,30 +44,45 @@ const SessionConnect = () => {
 };
 
 const App = () => {
-  const [status, setStatus] = useState<ProviderStatus | undefined>(provider.getState().status);
-  const [sessionStatus, setSessionStatus] = useState<SessionStateObject | undefined>();
+  const [status, setStatus] = useState(provider.status.get());
+  const [session, setSession] = useState(provider.session.get());
+  const [sessionState, setSessionState] = useState<ReturnType<typeof readSessionState>>();
 
-  useEventEmitter(provider, "status_change", (state: ProviderStatus) => {
-    console.log("status_change", state);
-    setStatus(state);
-  });
-  useEventEmitter(
-    provider,
-    "session_started",
-    (session: {
-      emitter: {
-        on: (event: "state_change", callback: (state: SessionStateObject) => void) => void;
-      };
-    }) => {
-      session.emitter.on("state_change", (state: SessionStateObject) => {
-        console.log("session_status_change", state);
-        setSessionStatus(state);
-      });
-    },
-  );
+  useEffect(() => provider.status.subscribe((next) => {
+    console.log("provider status", next);
+    setStatus(next);
+  }), []);
+
+  useEffect(() => provider.session.subscribe(setSession), []);
+
+  useEffect(() => {
+    if (!session) {
+      setSessionState(undefined);
+
+      return;
+    }
+
+    const update = () => {
+      const next = readSessionState(session);
+
+      console.log("session state", next);
+      setSessionState(next);
+    };
+
+    const unsubscribes = [
+      session.status.subscribe(update),
+      session.signalStatus.subscribe(update),
+      session.peerInfo.subscribe(update),
+      session.error.subscribe(update),
+    ];
+
+    return () => {
+      for (const unsubscribe of unsubscribes) unsubscribe();
+    };
+  }, [session]);
 
   const canStartSession = status === "standby";
-  const connectionParameters = provider.getSession()?.getHandshakeParameters();
+  const connectionParameters = session?.getHandshakeParameters();
   const connectionUrl = connectionParameters
     ? encodeConnectionURL(connectionParameters)
     : undefined;
@@ -78,7 +98,7 @@ const App = () => {
             </div>
             <div className="w-fit">
               Session Status:
-              {JSON.stringify(sessionStatus)}
+              {JSON.stringify(sessionState)}
             </div>
           </div>
           <div className="space-y-4 border p-4">
@@ -94,7 +114,7 @@ const App = () => {
               >
                 Create Session
               </button>
-              {provider.getSession() && (
+              {session && (
                 <button onClick={() => provider.closeSession()} className="btn">
                   Close Session
                 </button>

@@ -16,6 +16,15 @@ export const useWalletSession = () => {
     setLogLines(prev => [line, ...prev].slice(0, 50));
   }, []);
 
+  React.useEffect(() => {
+    if (!session) return;
+
+    return session.status.subscribe((state) => {
+      appendLog(`session state => ${state}`);
+      setStatus(`session: ${state}`);
+    });
+  }, [appendLog, session]);
+
   const startSession = React.useCallback(async () => {
     try {
       if (!connectionUrl.trim()) {
@@ -49,11 +58,6 @@ export const useWalletSession = () => {
         },
         [webrtc()],
       );
-
-      nextSession.status.subscribe((state) => {
-        appendLog(`session state => ${state}`);
-        setStatus(`session: ${state}`);
-      });
 
       setSession(nextSession);
 
