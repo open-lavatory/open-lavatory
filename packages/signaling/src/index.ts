@@ -100,6 +100,14 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
   const [peerKey, setPeerKey] = observable<EncryptionKey | undefined>(undefined);
   const [peerCapabilities, setPeerCapabilities] = observable<PeerCapabilities | undefined>(undefined);
 
+  const acceptPeerKey = (key: EncryptionKey) => {
+    if (peerKey.get() !== undefined) return false;
+
+    setStatus(Status.HANDSHAKE_PARTIAL);
+
+    return setPeerKey(key);
+  };
+
   const emitter = new EventEmitter<SignalEventMap>();
 
   const { frame, parse } = handshake({
@@ -185,11 +193,7 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
           return;
         }
 
-        const changed = setPeerKey(receivedKey);
-
-        setStatus(Status.HANDSHAKE_PARTIAL);
-
-        if (!changed) return;
+        if (!acceptPeerKey(receivedKey)) return;
 
         return await sendRepeating("encrypted", pubkeyMessage());
       })
@@ -206,9 +210,7 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
         async ({ msg: { payload: messagePayload } }) => {
           const receivedKey = await parseEncryptionKey(messagePayload.publicKey);
 
-          if (!setPeerKey(receivedKey)) return;
-
-          setStatus(Status.HANDSHAKE_PARTIAL);
+          if (!acceptPeerKey(receivedKey)) return;
 
           return await sendRepeating("encrypted", capabilitiesMessage());
         },
