@@ -1,3 +1,4 @@
+/* eslint-disable unicorn/no-declarations-before-early-exit */
 import type { SessionHandshakeParameters } from "../session.js";
 
 export const OPENLV_PROTOCOL_VERSION = 1;
@@ -53,6 +54,9 @@ export const decodeConnectionURL = (
     }
 
     const h = urlObject.searchParams.get("h") || "";
+    const k = urlObject.searchParams.get("k") || "";
+    const s = urlObject.searchParams.get("s") || undefined;
+    const p = urlObject.searchParams.get("p") || "mqtt";
 
     if (!h) {
       throw new Error("Public key hash (h parameter) is required in URL");
@@ -65,8 +69,6 @@ export const decodeConnectionURL = (
       );
     }
 
-    const k = urlObject.searchParams.get("k") || "";
-
     if (!k) {
       throw new Error("Shared key (k parameter) is required in URL");
     }
@@ -75,9 +77,6 @@ export const decodeConnectionURL = (
     if (!/^[0-9a-f]{32}$/.test(k)) {
       throw new Error("Invalid shared key format: must be 32 lowercase hex characters");
     }
-
-    const s = urlObject.searchParams.get("s") || undefined;
-    const p = urlObject.searchParams.get("p") || "mqtt";
 
     return {
       version,
