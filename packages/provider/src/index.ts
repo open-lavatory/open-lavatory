@@ -29,26 +29,6 @@ import {
 import type { SignalingProtocol } from "./storage/version.js";
 import { log } from "./utils/log.js";
 
-type StoredWebRTCSettings = {
-  stun?: string[];
-  turn?: {
-    urls: string;
-    username?: string;
-    credential?: string;
-  }[];
-};
-
-const convertStoredWebRTCSettings = (
-  transport: StoredWebRTCSettings | undefined,
-): WebRTCConfig | undefined => {
-  const iceServers = [
-    ...(transport?.stun?.map(url => ({ urls: url })) ?? []),
-    ...(transport?.turn ?? []),
-  ];
-
-  return iceServers.length > 0 ? { iceServers } : undefined;
-};
-
 /** Unwrap `{ result }` / `{ error }` envelopes from wallet session handlers. */
 const unwrapSessionResponse = (payload: unknown): unknown => {
   if (typeof payload !== "object" || payload === null) {
@@ -199,8 +179,11 @@ export const createProvider = (
     // transport's built-in defaults, so an empty list must stay undefined
     // rather than become an empty iceServers array.
     const stored = storage.getSettings().transport?.s?.webrtc;
-    const transportOptions = convertStoredWebRTCSettings(stored)
-      ?? config?.transport?.s?.webrtc;
+    const iceServers = [
+      ...(stored?.stun?.map(url => ({ urls: url })) ?? []),
+      ...(stored?.turn ?? []),
+    ];
+    const transportOptions = iceServers.length > 0 ? { iceServers } : config?.transport?.s?.webrtc;
 
     try {
       const next = await createSession(
