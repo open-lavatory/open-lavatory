@@ -198,13 +198,8 @@ export const createProvider = (
     // transport's built-in defaults, so an empty list must stay undefined
     // rather than become an empty iceServers array.
     const stored = storage.getSettings().transport?.s?.webrtc;
-    const iceServers = [
-      ...stored?.stun?.map(urls => ({ urls })) ?? [],
-      ...stored?.turn ?? [],
-    ];
-    const transportOptions = iceServers.length > 0
-      ? { iceServers }
-      : config?.transport?.s?.webrtc;
+    const transportOptions = convertStoredWebRTCSettings(stored)
+      ?? config?.transport?.s?.webrtc;
 
     try {
       const next = await createSession(
