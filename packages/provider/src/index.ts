@@ -1,5 +1,6 @@
 
 import {
+  createScope,
   encodeConnectionURL,
   type Observable,
   observable,
@@ -316,6 +317,18 @@ export const createProvider = (
 
           if (openModal && provider) {
             await openModal(provider);
+
+            await new Promise<void>((resolve) => {
+              const scope = createScope();
+              const finish = () => {
+                void scope.close()
+                  .then(resolve)
+                  .catch(resolve);
+              };
+
+              scope.listen(provider, "connect", finish);
+              scope.listen(provider, "disconnect", finish);
+            });
 
             return await getAccounts();
           }
