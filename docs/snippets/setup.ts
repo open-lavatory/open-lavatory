@@ -6,7 +6,6 @@ export const wagmiConfig = createConfig({
   chains: [mainnet],
   connectors: [openlv()], // [!code ++]
   transports: {
-    // eslint-disable-next-line no-restricted-syntax
     [mainnet.id]: http(),
   },
 });

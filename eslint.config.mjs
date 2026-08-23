@@ -12,6 +12,7 @@ export default defineConfig([
       "**/.expo/**",
       "**/*.gen.*",
       "examples/react-native/**",
+      "docs/snippets/**",
     ],
   },
   ...v3xlint.configs.recommended,
