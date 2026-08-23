@@ -126,11 +126,11 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
     (error: unknown) => log("handshake send failed, will retry", error),
   );
   const deadline = createTimeout();
+  const handshakeScope = createScope();
   const scope = createScope();
 
-  scope.add(resend.stop);
-  scope.add(deadline.stop);
-  scope.add(channel.teardown);
+  handshakeScope.add([resend.stop, deadline.stop]);
+  scope.add([handshakeScope.close, channel.teardown]);
 
   const sendRepeating = (method: "handshake" | "encrypted", payload: SignalMessage) => {
     repeatingFrame = () => send(method, payload);
@@ -138,17 +138,12 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
     return resend.start();
   };
 
-  const stopHandshakeTimers = () => {
-    resend.stop();
-    deadline.stop();
-  };
-
   const startHandshakeDeadline = () => {
     deadline.start(() => {
       if (status.get() === Status.ENCRYPTED) return;
 
       log("handshake timed out");
-      stopHandshakeTimers();
+      void handshakeScope.close();
       setStatus(Status.ERROR);
     }, HANDSHAKE_TIMEOUT_MS);
   };
@@ -178,7 +173,7 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
           receivedKey = await parseEncryptionKey(messagePayload.publicKey);
 
           if (!await validatePublicKeyHash(receivedKey, h)) {
-            stopHandshakeTimers();
+            await handshakeScope.close();
             setStatus(Status.ERROR);
             log("Received host public key does not match expected hash -- possible tampering");
 
@@ -186,7 +181,7 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
           }
         }
         catch {
-          stopHandshakeTimers();
+          await handshakeScope.close();
           setStatus(Status.ERROR);
           log("Failed to parse received host public key");
 
@@ -219,7 +214,7 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
         { msg: { type: "capabilities" }, status: Status.HANDSHAKE_PARTIAL },
         async ({ msg: { payload: messagePayload } }) => {
           await setPeerCapabilities(messagePayload);
-          stopHandshakeTimers();
+          await handshakeScope.close();
           setStatus(Status.ENCRYPTED);
 
           if (isHost) return;
@@ -270,7 +265,7 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
       if (unsubscribe) scope.add(unsubscribe);
 
       if (canEncrypt()) {
-        stopHandshakeTimers();
+        await handshakeScope.close();
         setStatus(Status.ENCRYPTED);
 
         return;

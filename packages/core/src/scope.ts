@@ -3,7 +3,7 @@ import type { EventEmitter } from "eventemitter3";
 export type Cleanup = () => void | Promise<void>;
 
 export type Scope = {
-  add: (cleanup: Cleanup) => void;
+  add: (cleanup: Cleanup | Cleanup[]) => void;
   listen: <
     Events extends EventEmitter.ValidEventTypes,
     Event extends EventEmitter.EventNames<Events>,
@@ -19,12 +19,12 @@ export const createScope = (): Scope => {
   const cleanups: Cleanup[] = [];
   let closePromise: Promise<void> | undefined;
 
-  const add = (cleanup: Cleanup) => {
+  const add = (cleanup: Cleanup | Cleanup[]) => {
     if (closePromise) {
       throw new Error("Cannot add cleanup to a closed scope");
     }
 
-    cleanups.push(cleanup);
+    cleanups.push(...(Array.isArray(cleanup) ? cleanup : [cleanup]));
   };
 
   const listen: Scope["listen"] = (emitter, event, listener) => {
