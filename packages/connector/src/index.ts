@@ -24,9 +24,9 @@ export type OpenLVConnector = CreateConnectorFn<
 >;
 
 /*
-* openlv connector
-* https://openlv.sh/
-*/
+ * openlv connector
+ * https://openlv.sh/
+ */
 export const openlv = ({
   storage,
   config = {},
