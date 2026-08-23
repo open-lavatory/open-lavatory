@@ -163,6 +163,7 @@ export const createSession = async (
   });
 
   const scope = createScope();
+
   scope.add(signal.teardown);
 
   scope.add(signal.peerKey.subscribe((key) => {
@@ -261,6 +262,7 @@ export const createSession = async (
   // network) fail loudly instead of sitting in "linking" forever.
   const TRANSPORT_LINK_TIMEOUT_MS = 45_000;
   const linkDeadline = createTimeout();
+
   scope.add(linkDeadline.stop);
 
   const onTransportStateChange = (transportStatus: TransportStatus) => {
@@ -391,6 +393,7 @@ export const createSession = async (
     },
     async close() {
       log("session teardown");
+
       try {
         await scope.close();
       }
