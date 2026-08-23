@@ -33,7 +33,7 @@ bun install @openlv/react-native @openlv/transport
 ```tsx [App.tsx]
 import React from 'react';
 import { View, Text, Button } from 'react-native';
-import { OpenLVGlobals, connectSession } from '@openlv/react-native'; // [!code ++]
+import { OpenLVGlobals, connectSession, SessionStatus } from '@openlv/react-native'; // [!code ++]
 import { webrtc } from '@openlv/transport/webrtc'; // [!code ++]
 
 export default function App() {
@@ -50,7 +50,7 @@ export default function App() {
     ); // [!code ++]
 
     await session.connect();
-    await session.waitForLink();
+    await session.status.until((status) => status === SessionStatus.CONNECTED);
     setConnected(true);
   }
 
@@ -82,7 +82,7 @@ The `OpenLVGlobals` component comes bundled with several polyfills to ensure com
 - `react-native-webview-crypto`
 - `react-native-get-random-values`
 
-These polyfills override certain global objects (e.g., `window.crypto`), and are installed only once and cleaned up when the runtime is unmounted.
+These polyfills override certain global objects (e.g., `window.crypto`) and install once for the app process. Keep `OpenLVGlobals` mounted near the application root.
 
 ## Mobile Platform Considerations
 

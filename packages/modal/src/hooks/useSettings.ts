@@ -1,10 +1,11 @@
 import type {
   ProviderStorage,
+  SignalingProtocol,
   UserThemePreference,
+  WebRTCSettings,
 } from "@openlv/provider/storage";
-import { createSignal } from "solid-js";
+import { createSignal, onCleanup } from "solid-js";
 
-import type { SignalingProtocol } from "../../../provider/dist/storage/version.js";
 import { useModalContext } from "../context.js";
 import type { LanguageTag } from "../utils/i18n.jsx";
 
@@ -12,8 +13,12 @@ export const useSettings = () => {
   const { provider } = useModalContext();
   const [settings, setLocalSettings] = createSignal<ProviderStorage>(provider.storage.getSettings());
 
+  // Several components hold their own useSettings(); without this a write
+  // through one leaves the others showing the value it replaced.
+  provider.storage.emitter.on("settings_change", setLocalSettings);
+  onCleanup(() => provider.storage.emitter.off("settings_change", setLocalSettings));
+
   const setSettings = (newSettings: ProviderStorage) => {
-    setLocalSettings(newSettings);
     provider.storage.setSettings(newSettings);
   };
 
@@ -39,6 +44,12 @@ export const useSettings = () => {
     setSettings({ ...settings(), signaling: { p, s: { ...s, [p]: options.url } } });
   };
 
+  const setTransportOptions = (webrtc: WebRTCSettings) => {
+    const p = settings()?.transport?.p ?? "webrtc";
+
+    setSettings({ ...settings(), transport: { p, s: { webrtc } } });
+  };
+
   const setRetainSessionHistory = (retain: boolean) => {
     setSettings({ ...settings(), retainHistory: retain });
   };
@@ -54,6 +65,7 @@ export const useSettings = () => {
     setThemeMode,
     setSignalingProtocol,
     setSignalingOptions,
+    setTransportOptions,
     setRetainSessionHistory,
     setAutoReconnect,
   };

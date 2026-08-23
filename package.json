@@ -15,7 +15,7 @@
     "@changesets/cli": "^2.29.8",
     "@wagmi/core": "^3.5.0",
     "eslint": "^10.8.0",
-    "eslint-plugin-v3xlabs": "^1.8.0",
+    "eslint-plugin-v3xlabs": "^1.8.1",
     "globals": "^16.5.0",
     "prettier": "^3.7.4",
     "viem": "^2.44.1",

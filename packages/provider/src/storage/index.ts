@@ -7,8 +7,10 @@ const DEFAULT_STORAGE_KEY = "@openlv/connector/settings";
 
 export type {
   ProviderStorage,
+  SignalingProtocol,
   TurnServer,
   UserThemePreference,
+  WebRTCSettings,
 } from "./version.js";
 
 export type ProviderStorageParameters = {

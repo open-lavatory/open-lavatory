@@ -24,3 +24,10 @@ export type _connectSessionParamsMatch = Assert<
 export type _connectSessionReturnMatch = Assert<
   Equal<ReturnType<RNConnectSession>, ReturnType<UpstreamConnectSession>>
 >;
+
+type UpstreamSessionStatus = typeof import("@openlv/session").SessionStatus;
+type RNSessionStatus = typeof import("../src/index.js").SessionStatus;
+
+export type _sessionStatusMatch = Assert<
+  Equal<RNSessionStatus, UpstreamSessionStatus>
+>;

@@ -1,10 +1,10 @@
 "use client";
 
+import type { Observable } from "@openlv/core";
 import {
   type PeerInfo,
   type Session,
-  SESSION_STATE,
-  type SessionStateObject,
+  SessionStatus,
 } from "@openlv/session";
 import {
   createContext,
@@ -76,49 +76,14 @@ const nextLogId = () =>
   `${Date.now().toString(36)}-${Math.random().toString(36)
     .slice(2, 8)}`;
 
-const sessionStatusLabel = (status: SessionStateObject["status"]) => {
-  switch (status) {
-    case SESSION_STATE.CREATED: {
-      return "created";
-    }
-    case SESSION_STATE.SIGNALING: {
-      return "signaling";
-    }
-    case SESSION_STATE.READY: {
-      return "ready";
-    }
-    case SESSION_STATE.LINKING: {
-      return "linking";
-    }
-    case SESSION_STATE.CONNECTED: {
-      return "connected";
-    }
-    case SESSION_STATE.DISCONNECTED: {
-      return "disconnected";
-    }
-    default: {
-      return status;
-    }
-  }
-};
+const sessionToPhase = (status: SessionStatus): ConnectionPhase => {
+  if (status === SessionStatus.CONNECTED) return "connected";
 
-const sessionToPhase = (
-  status: SessionStateObject["status"],
-): ConnectionPhase => {
-  if (status === SESSION_STATE.CONNECTED) return "connected";
+  if (status === SessionStatus.DISCONNECTED) return "error";
 
-  if (status === SESSION_STATE.DISCONNECTED) return "error";
+  if (status === SessionStatus.LINKING) return "linked";
 
-  if (
-    status === SESSION_STATE.SIGNALING
-    || status === SESSION_STATE.READY
-    || status === SESSION_STATE.LINKING
-    || status === SESSION_STATE.CREATED
-  ) {
-    return "establishing";
-  }
-
-  return "idle";
+  return "establishing";
 };
 
 const formatPayload = (payload: unknown) => {
@@ -225,28 +190,12 @@ export const attachTryItSession = (
   let lastSessionLogKey = "";
   let isPeerInfoLogged = false;
 
-  const logSessionState = (state?: SessionStateObject) => {
-    if (!state) return;
-
-    actions.setPhase(sessionToPhase(state.status));
-
-    const remote = state.peerInfo;
-
-    actions.setPeer(previous => (previous && previous.remote !== remote ? { ...previous, remote } : previous));
-
-    if (remote && !isPeerInfoLogged) {
-      isPeerInfoLogged = true;
-      actions.appendEntry({
-        role,
-        direction: "in",
-        kind: "info",
-        summary: `Peer identified · ${remote.name}`,
-        payload: { identity: remote.identity, name: remote.name },
-      });
-    }
-
-    const signaling = state.signaling?.state;
-    const logKey = `${state.status}:${signaling ?? ""}`;
+  // Status and signaling status move independently, so the log is keyed on
+  // the pair to keep a change in one from repeating the other.
+  const logSession = () => {
+    const status = session.status.get();
+    const signaling = session.signalStatus.get();
+    const logKey = `${status}:${signaling}`;
 
     if (logKey === lastSessionLogKey) return;
 
@@ -256,30 +205,48 @@ export const attachTryItSession = (
       role,
       direction: "in",
       kind: "session",
-      summary: signaling
-        ? `Session ${sessionStatusLabel(state.status)} · ${signaling}`
-        : `Session ${sessionStatusLabel(state.status)}`,
-      payload: state,
+      summary: `Session ${status} - ${signaling}`,
+      payload: { status, signaling, error: session.error.get() },
     });
   };
 
-  const onState = (state?: SessionStateObject) => logSessionState(state);
   const onRequest = (payload: object | string) => {
     const request = payload as { method?: string; };
 
     logRpc(actions, role, "in", payload, request.method);
   };
 
-  session.emitter.on("state_change", onState);
+  // Every observable replays its current value on subscribe, so this reports
+  // the session as it stands before it reports any change to it.
+  const unsubscribes = [
+    session.status.subscribe((status) => {
+      actions.setPhase(sessionToPhase(status));
+      logSession();
+    }),
+    session.signalStatus.subscribe(logSession),
+    session.peerInfo.subscribe((remote) => {
+      actions.setPeer(previous =>
+        (previous && previous.remote !== remote ? { ...previous, remote } : previous));
+
+      if (!remote || isPeerInfoLogged) return;
+
+      isPeerInfoLogged = true;
+      actions.appendEntry({
+        role,
+        direction: "in",
+        kind: "info",
+        summary: `Peer identified - ${remote.name}`,
+        payload: { identity: remote.identity, name: remote.name },
+      });
+    }),
+  ];
 
   if (options?.logRequests !== false) {
     session.emitter.on("request", onRequest);
   }
 
-  logSessionState(session.getState());
-
   return () => {
-    session.emitter.off("state_change", onState);
+    for (const unsubscribe of unsubscribes) unsubscribe();
 
     if (options?.logRequests !== false) {
       session.emitter.off("request", onRequest);
@@ -336,16 +303,9 @@ export const peerInfoFromConnectionUrl = (
   }
 };
 
+/** The part of `OpenLVProvider` this panel uses, without depending on it. */
 export type DappProviderShim = {
-  getSession: () => Session | undefined;
-  on: (
-    event: "session_started",
-    handler: (session: Session) => void,
-  ) => void;
-  off: (
-    event: "session_started",
-    handler: (session: Session) => void,
-  ) => void;
+  session: Observable<Session | undefined>;
   request: (arguments_: JsonRpcCall) => Promise<unknown>;
 };
 
@@ -353,7 +313,7 @@ export type JsonRpcCall = { method: string; params?: unknown; };
 
 const phaseLabel: Record<ConnectionPhase, string> = {
   idle: "Not connected",
-  establishing: "Connecting…",
+  establishing: "Connecting...",
   linked: "Opening channel",
   connected: "Connected",
   error: "Failed",
@@ -374,10 +334,10 @@ const peerMetaLine = (peer: TryItPeerInfo) => {
 
   if (peer.protocol) parts.push(peer.protocol);
 
-  return parts.join(" · ");
+  return parts.join(" - ");
 };
 
-// The wire only bounds the icon's size — vetting what goes into an
+// The wire only bounds the icon's size -- vetting what goes into an
 // <img src> is this renderer's job.
 const renderableRemoteIcon = (remote?: PeerInfo) => {
   const icon = remote?.icon;
@@ -614,21 +574,17 @@ export const OpenLvDappMonitor = ({
 
       if (isCancelled) return;
 
-      const bindSession = (session: Session) => {
+      // Replays the current session, so this covers a session that already
+      // exists as well as every one the provider creates after it.
+      const unbindSession = provider.session.subscribe((session) => {
         detachReference.current?.();
+        detachReference.current = undefined;
+
+        if (!session) return;
+
         detachReference.current = attachTryItSession(session, "dapp", actions);
         onBoundReference.current?.(session);
-      };
-
-      const onStarted = (session: Session) => {
-        actions.setPhase("establishing");
-        bindSession(session);
-      };
-
-      provider.on("session_started", onStarted);
-      const existing = provider.getSession();
-
-      if (existing) bindSession(existing);
+      });
 
       restoreRequest = provider.request.bind(provider);
       provider.request = async (arguments_: JsonRpcCall) => {
@@ -655,7 +611,7 @@ export const OpenLvDappMonitor = ({
       };
 
       return () => {
-        provider.off("session_started", onStarted);
+        unbindSession();
 
         if (restoreRequest) provider.request = restoreRequest;
       };

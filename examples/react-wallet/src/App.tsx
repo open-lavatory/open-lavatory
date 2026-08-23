@@ -5,7 +5,7 @@ import { WalletInfo } from "./components/WalletInfo";
 export const App = () => (
   <>
     <header className={styles.header}>
-      <span>&ldquo;Mobile&ldquo; Wallet</span>
+      <span>"Mobile" Wallet</span>
       <QRScanner />
     </header>
     <WalletInfo />

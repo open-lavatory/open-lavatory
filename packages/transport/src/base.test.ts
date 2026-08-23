@@ -3,10 +3,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   createTransportBase,
-  TRANSPORT_STATE,
-  type TransportLayerBaseEmitter,
+  Status,
   type TransportMessage,
 } from "./index.js";
+import type { TransportLayerBaseEmitter } from "./layer.js";
 
 const createFakeTransport = () => {
   let emitter: TransportLayerBaseEmitter | undefined;
@@ -16,8 +16,8 @@ const createFakeTransport = () => {
     emitter = parameters.emitter;
 
     return {
-      setup: () => {},
-      teardown: () => {},
+      setup: async () => {},
+      teardown: async () => {},
       handle: async () => {},
       send: async (message) => {
         sent.push(message);
@@ -88,7 +88,7 @@ describe("createTransportBase", () => {
 
     await layer.setup();
     getEmitter().emit("connected");
-    await layer.waitFor(TRANSPORT_STATE.CONNECTED);
+    expect(layer.status.get()).toBe(Status.CONNECTED);
 
     await layer.send({ type: "request", messageId: "1", payload: { a: 1 } });
     expect(sent).toHaveLength(1);

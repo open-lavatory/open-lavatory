@@ -1,4 +1,5 @@
-import { connectSession, type Session } from "@openlv/react-native";
+import { connectSession, type Session, SessionStatus } from "@openlv/react-native";
+import { webrtc } from "@openlv/transport/webrtc";
 import * as React from "react";
 
 const DUMMY_ADDRESS
@@ -14,6 +15,15 @@ export const useWalletSession = () => {
   const appendLog = React.useCallback((line: string) => {
     setLogLines(prev => [line, ...prev].slice(0, 50));
   }, []);
+
+  React.useEffect(() => {
+    if (!session) return;
+
+    return session.status.subscribe((state) => {
+      appendLog(`session state => ${state}`);
+      setStatus(`session: ${state}`);
+    });
+  }, [appendLog, session]);
 
   const startSession = React.useCallback(async () => {
     try {
@@ -46,23 +56,25 @@ export const useWalletSession = () => {
 
           return "Unsupported method";
         },
+        [webrtc()],
       );
-
-      nextSession.emitter.on("state_change", (state) => {
-        if (state !== undefined) {
-          appendLog(`session state => ${state.status}`);
-          setStatus(`session: ${state.status}`);
-        }
-      });
 
       setSession(nextSession);
 
       await nextSession.connect();
 
       appendLog("Connected; waiting for link…");
-      void nextSession.waitForLink().then(() => {
-        appendLog("Linked! (transport should start)");
-      });
+
+      const settled = await nextSession.status.until(
+        state => state === SessionStatus.CONNECTED
+          || state === SessionStatus.DISCONNECTED,
+      );
+
+      if (settled !== SessionStatus.CONNECTED) {
+        throw new Error(nextSession.error.get() ?? "Session failed to link");
+      }
+
+      appendLog("Linked! (transport should start)");
     }
     catch (error) {
       const msg = error instanceof Error ? error.message : String(error);

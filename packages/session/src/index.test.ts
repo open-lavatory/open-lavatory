@@ -1,9 +1,8 @@
 import { decodeConnectionURL, encodeConnectionURL } from "@openlv/core";
-import { ntfy } from "@openlv/signaling/ntfy";
 import { webrtc } from "@openlv/transport/webrtc";
 import { describe, expect, test } from "vitest";
 
-import { connectSession, createSession } from "./index.js";
+import { connectSession, createSession, SessionStatus } from "./index.js";
 
 describe("Session", () => {
   test("Should be able to create a session", async () => {
@@ -13,7 +12,6 @@ describe("Session", () => {
         p: "ntfy",
         s: "https://ntfy.sh/",
       },
-      ntfy,
       [webrtc()],
       async (message) => {
         console.log("sessionA received message", message);
@@ -23,7 +21,7 @@ describe("Session", () => {
     );
 
     expect(sessionA).toBeDefined();
-    console.log(sessionA.getState());
+    console.log(sessionA.status.get());
 
     await sessionA.connect();
 
@@ -51,14 +49,16 @@ describe("Session", () => {
       [webrtc()],
     );
 
-    console.log(sessionB.getState());
+    console.log(sessionB.status.get());
     await sessionB.connect();
 
-    await Promise.all([sessionA.waitForLink(), sessionB.waitForLink()]);
+    await Promise.all([sessionA, sessionB].map(
+      session => session.status.until(current => current === SessionStatus.CONNECTED),
+    ));
 
     //
-    console.log("A", sessionA.getState());
-    console.log("B", sessionB.getState());
+    console.log("A", sessionA.status.get());
+    console.log("B", sessionB.status.get());
 
     const response = await sessionA.send({ data: "test" });
 

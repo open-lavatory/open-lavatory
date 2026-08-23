@@ -4,29 +4,29 @@
  * A privacy-first, peer-to-peer protocol for connecting dApps with wallets
  * without relying on centralized infrastructure.
  */
+import { type Observable, observable } from "@openlv/core";
 import type { DecryptionKey, EncryptionKey } from "@openlv/core/encryption";
 import { EventEmitter } from "eventemitter3";
-import type { MaybePromise } from "viem";
 
+import type { TransportLayerBaseEventMap, TransportLayerImplFunction } from "./layer.js";
 import { log } from "./utils/log.js";
 import type { WebRTCConfig } from "./webrtc/index.js";
 
-export const TRANSPORT_STATE = {
+export const Status = {
   STANDBY: "standby",
   CONNECTING: "connecting",
   READY: "ready",
   CONNECTED: "connected",
   ERROR: "error",
 } as const;
-export type TransportState
-  = (typeof TRANSPORT_STATE)[keyof typeof TRANSPORT_STATE];
+export type Status
+  = (typeof Status)[keyof typeof Status];
 
 export type TLayerEventMap = {
-  state_change: (state: TransportState) => void;
   error: (reason?: string) => void;
 };
 
-export type TransportLayerSetupParameters = {
+export type TransportLayerParameters = {
   isHost: boolean;
   encrypt: EncryptionKey["encrypt"];
   decrypt: DecryptionKey["decrypt"];
@@ -45,42 +45,19 @@ export type TransportMessage = {
 };
 export type TransportLayer = {
   type: TransportProtocol;
-  setup: () => MaybePromise<void>;
-  teardown: () => MaybePromise<void>;
+  setup: () => Promise<void>;
+  teardown: () => Promise<void>;
   send: (message: object) => Promise<void>;
   handle: (message: TransportMessage) => Promise<void>;
-  waitFor: (state: TransportState) => Promise<void>;
   emitter: EventEmitter<TLayerEventMap>;
+  status: Observable<Status>;
 };
-/** Wire identifier advertised in the `capabilities` handshake packet. */
 export type TransportProtocol = "wrtc" | "ws" | (string & {});
-export type TransportLayerFn = {
+export type TransportLayerFunction = {
   transportId: TransportProtocol;
-  create: (parameters: TransportLayerSetupParameters) => TransportLayer;
+  create: (parameters: TransportLayerParameters) => TransportLayer;
 };
-export type Transport = (config?: WebRTCConfig) => TransportLayerFn;
-
-export type TransportLayerImpl = {
-  setup: () => MaybePromise<void>;
-  teardown: () => MaybePromise<void>;
-  handle: (message: TransportMessage) => Promise<void>;
-  send: (message: string) => Promise<void>;
-};
-export type TransportLayerBaseEventMap = {
-  negotiate: (message: TransportMessage) => void;
-  connected: () => void;
-  message: (message: string) => void;
-  error: (reason?: string) => void;
-};
-export type TransportLayerBaseEmitter
-  = EventEmitter<TransportLayerBaseEventMap>;
-export type TransportLayerBaseParameters = {
-  emitter: TransportLayerBaseEmitter;
-  isHost: boolean;
-};
-export type TransportLayerImplFn = (
-  parameters: TransportLayerBaseParameters,
-) => TransportLayerImpl;
+export type Transport = (config?: WebRTCConfig) => TransportLayerFunction;
 
 /**
  * Base Transport Layer implementation
@@ -89,32 +66,33 @@ export type TransportLayerImplFn = (
  */
 export const createTransportBase = (
   transportId: TransportProtocol,
-  init: TransportLayerImplFn,
-): TransportLayerFn => ({
+  init: TransportLayerImplFunction,
+): TransportLayerFunction => ({
   transportId,
   create: ({ encrypt, decrypt, subsend, isHost, onmessage }) => {
     const emitter = new EventEmitter<TLayerEventMap>();
     const internalEmitter = new EventEmitter<TransportLayerBaseEventMap>();
-    let state: TransportState = TRANSPORT_STATE.STANDBY;
 
-    const setState = (newState: TransportState) => {
-      state = newState;
-      emitter.emit("state_change", newState);
-    };
+    const [status, setStatus] = observable<Status>(Status.STANDBY);
 
-    internalEmitter.on("negotiate", (message) => {
-      subsend(message).catch(error => log("failed to relay negotiation message", error));
+    internalEmitter.on("negotiate", async (message) => {
+      try {
+        await subsend(message);
+      }
+      catch (error) {
+        log("failed to relay negotiation message", error);
+      }
     });
     internalEmitter.on("connected", () => {
       log("onConnected");
-      setState(TRANSPORT_STATE.CONNECTED);
+      setStatus(Status.CONNECTED);
     });
     internalEmitter.on("error", (reason) => {
       log("transport error", reason);
       // Surface the reason before the state flips so listeners reading
       // state on state_change already see it.
       emitter.emit("error", reason);
-      setState(TRANSPORT_STATE.ERROR);
+      setStatus(Status.ERROR);
     });
     internalEmitter.on("message", async (message) => {
       // Peer data is untrusted until decrypted AND parsed; drop anything that
@@ -130,17 +108,16 @@ export const createTransportBase = (
     });
 
     const {
-      setup,
-      teardown,
       send: sendLayer,
       handle,
+      ...channel
     } = init({
       emitter: internalEmitter,
       isHost,
     });
 
     const send = async (message: object) => {
-      if (state !== TRANSPORT_STATE.CONNECTED)
+      if (status.get() !== Status.CONNECTED)
         throw new Error("Transport not connected");
 
       const payload = await encrypt(JSON.stringify(message));
@@ -148,41 +125,24 @@ export const createTransportBase = (
       await sendLayer(payload);
     };
 
-    const waitFor = async (targetState: TransportState) => {
-      if (state === targetState) return;
+    const setup = async () => {
+      setStatus(Status.CONNECTING);
+      await channel.setup();
+      setStatus(Status.READY);
+    };
 
-      if (state === TRANSPORT_STATE.ERROR) {
-        throw new Error("Transport is in error state");
-      }
-
-      return new Promise<void>((resolve, reject) => {
-        const handler = (newState: TransportState) => {
-          if (newState === targetState) {
-            emitter.off("state_change", handler);
-            resolve();
-          }
-          else if (newState === TRANSPORT_STATE.ERROR) {
-            emitter.off("state_change", handler);
-            reject(new Error("Transport is in error state"));
-          }
-        };
-
-        emitter.on("state_change", handler);
-      });
+    const teardown = async () => {
+      await channel.teardown();
     };
 
     return {
       type: transportId,
-      async setup() {
-        setState(TRANSPORT_STATE.CONNECTING);
-        await setup();
-        setState(TRANSPORT_STATE.READY);
-      },
+      setup,
       teardown,
       handle,
       send,
-      waitFor,
       emitter,
+      status,
     };
   },
 });

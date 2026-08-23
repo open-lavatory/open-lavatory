@@ -1,4 +1,3 @@
-import type { UserThemePreference } from "@openlv/provider/storage";
 import { Show } from "solid-js";
 
 import { useTheme } from "../../../hooks/useTheme.js";
@@ -11,23 +10,26 @@ export const ThemeSettings = () => {
   const theme = useTheme();
 
   const isUserConfigurable = () => theme.mode() === "auto";
-  const userThemeMode = () => (theme.mode() === "auto" ? "system" : theme.mode());
-  const updateThemePreference = (value: string) => {
-    // theme.setMode(value as ThemeMode);
-  };
 
   return (
     <Show when={isUserConfigurable()}>
-      <MenuItem label={t("settings.theme.mode") as string}>
+      <MenuItem label={t("settings.theme.mode")}>
         <Select
           options={[
-            ["light", t("settings.theme.light") as string],
-            ["dark", t("settings.theme.dark") as string],
-            ["system", t("settings.theme.system") as string],
+            ["light", String(t("settings.theme.light"))],
+            ["dark", String(t("settings.theme.dark"))],
+            ["system", String(t("settings.theme.system"))],
           ]}
-          value={userThemeMode()}
-          onChange={value =>
-            updateThemePreference(value as UserThemePreference)}
+          value={theme.preference()}
+          onChange={(next) => {
+            switch (next) {
+              case "light":
+              case "dark":
+              case "system": {
+                theme.setPreference(next);
+              }
+            }
+          }}
         />
       </MenuItem>
     </Show>

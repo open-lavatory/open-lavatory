@@ -3,7 +3,7 @@ import {
   createProvider,
   type OpenLVProvider,
   type OpenLVProviderParameters,
-  PROVIDER_STATUS,
+  ProviderStatus,
 } from "@openlv/provider";
 import { createConnector, type CreateConnectorFn } from "@wagmi/core";
 import { type Prettify, UserRejectedRequestError } from "viem";
@@ -45,7 +45,7 @@ export const openlv = ({
   const getAccounts = async () => {
     log("getAccounts");
 
-    if (provider.getSession() === undefined) {
+    if (provider.session.get() === undefined) {
       return [];
     }
 
@@ -66,34 +66,15 @@ export const openlv = ({
         modal?.({ theme, provider, onClose: () => resolve() });
       });
 
-      const connectionCompleted = new Promise<void>((resolve) => {
-        const onStatus = (providerStatus: typeof PROVIDER_STATUS[keyof typeof PROVIDER_STATUS]) => {
-          log("provider_status_change", providerStatus);
-
-          if (providerStatus === PROVIDER_STATUS.CONNECTED) {
-            cleanup();
-            resolve();
-          }
-        };
-
-        const onAccounts = () => {
-          log("provider_accountsChanged");
-        };
-
-        const cleanup = () => {
-          provider.off("status_change", onStatus);
-          provider.off("accountsChanged", onAccounts);
-        };
-
-        provider.on("status_change", onStatus);
-        provider.on("accountsChanged", onAccounts);
-      });
+      const connectionCompleted = provider.status.until(
+        providerStatus => providerStatus === ProviderStatus.CONNECTED,
+      );
 
       await Promise.race([modalDismissed, connectionCompleted]);
 
       if (
-        !provider.getSession()
-        || provider.getState().status !== "connected"
+        !provider.session.get()
+        || provider.status.get() !== ProviderStatus.CONNECTED
       ) {
         await provider.closeSession();
 

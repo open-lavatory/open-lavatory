@@ -21,7 +21,7 @@ openlv://k7n8m9x2w5q1p3r6?h=a1b2c3d4e5f60708@1&k=0123456789abcdef0123456789abcde
 ```typescript
 import { encodeConnectionURL } from "@openlv/core";
 
-const session = await provider.getSession();
+const session = provider.session.get();
 const uri = encodeConnectionURL(session.getHandshakeParameters());
 ```
 

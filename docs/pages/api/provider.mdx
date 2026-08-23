@@ -7,7 +7,7 @@ Most dApps should use `@openlv/connector` instead of calling this directly.
 ## Exports
 
 - `createProvider(parameters)`
-- `PROVIDER_STATUS`
+- `ProviderStatus`
 
 ## Basic usage
 
@@ -42,13 +42,14 @@ const chainId = await provider.request({ method: 'eth_chainId' })
 
 - `createSession(parameters?)`
 - `closeSession()`
-- `getSession()`
 - `getAccounts()`
-- `getState()`
+- `status`
+- `error`
+- `session`
 
 ## Provider states
 
-`PROVIDER_STATUS` values:
+`ProviderStatus` values:
 
 - `standby`
 - `creating`
@@ -60,7 +61,5 @@ const chainId = await provider.request({ method: 'eth_chainId' })
 
 Provider emits state/session events including:
 
-- `status_change`
-- `session_started`
 - `connect`
 - `accountsChanged`

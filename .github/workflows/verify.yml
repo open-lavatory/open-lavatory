@@ -35,7 +35,7 @@ jobs:
         name: Tests
         runs-on: ubuntu-latest
         container:
-          image: mcr.microsoft.com/playwright:v1.58.1-noble
+          image: mcr.microsoft.com/playwright:v1.60.0-noble
           options: --user 1001
         timeout-minutes: 5
         permissions:

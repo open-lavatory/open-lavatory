@@ -10,7 +10,9 @@ When in action, Open Lavatory operates in two phases:
 1. **Signaling**: peers exchange handshake and transport negotiation data over untrusted public relays.
 2. **Transport**: peers establish WebRTC and continue over an encrypted direct connection.
 
-## Main packages
+## Implementations
+
+### Typescript
 
 | Package | Version | Description |
 |---------|---------|-------------|
@@ -20,3 +22,9 @@ When in action, Open Lavatory operates in two phases:
 | `@openlv/signaling` | [![npm](https://img.shields.io/npm/v/@openlv/signaling)](https://www.npmjs.com/package/@openlv/signaling) | signaling layer implementations (`mqtt`, `ntfy`, `gun`). |
 | `@openlv/transport` | [![npm](https://img.shields.io/npm/v/@openlv/transport)](https://www.npmjs.com/package/@openlv/transport) | transport layer implementation (`webrtc`). |
 | `@openlv/core` | [![npm](https://img.shields.io/npm/v/@openlv/core)](https://www.npmjs.com/package/@openlv/core) | shared types and URI helpers. |
+
+### Rust
+
+| Package | Version | Description |
+|---------|---------|-------------|
+| `openlv` | [![crates.io](https://img.shields.io/crates/v/openlv)](https://crates.io/crates/openlv) | Rust implementation of the signaling and transport layers. |

@@ -7,7 +7,7 @@ import type { ThemeConfig } from "./theme/types.js";
 
 export type OpenLVModalElementProperties = {
   provider: OpenLVProvider;
-  onClose?: () => void;
+  onClose: () => void;
   theme?: ThemeConfig;
 };
 

@@ -42,51 +42,35 @@ const AddServerButton = (properties: {
 
 export const TransportSettings = () => {
   const { t } = useTranslation();
-  const {
-    settings,
-    setSettings,
-  } = useSettings();
+  const { settings, setTransportOptions } = useSettings();
+  const stored = settings()?.transport?.s?.webrtc;
 
-  const [turnServers, setTurnServers] = createSignal<TurnServer[]>([]);
-  const [stunServers, setStunServers] = createSignal<string[]>([]);
+  const [turnServers, setTurnServers] = createSignal<TurnServer[]>(stored?.turn ?? []);
+  const [stunServers, setStunServers] = createSignal<string[]>(stored?.stun ?? []);
 
-  const handleAddStun = () => {
-    setStunServers([...stunServers(), ""]);
+  const updateStun = (next: string[]) => {
+    setStunServers(next);
+    setTransportOptions({ stun: next, turn: turnServers() });
   };
 
-  const handleRemoveStun = (index: number) => {
-    setStunServers(stunServers().filter((_, index_) => index_ !== index));
+  const updateTurn = (next: TurnServer[]) => {
+    setTurnServers(next);
+    setTransportOptions({ stun: stunServers(), turn: next });
   };
 
-  const handleStunChange = (index: number, value: string) => {
-    setStunServers(stunServers().map((server, index_) => (index_ === index ? value : server)));
-  };
+  const handleAddStun = () => updateStun([...stunServers(), ""]);
 
-  const handleAddTurn = () => {
-    setTurnServers([...turnServers(), { urls: "" }]);
-  };
+  const handleRemoveStun = (index: number) => updateStun(stunServers().filter((_, index_) => index_ !== index));
 
-  const handleRemoveTurn = (index: number) => {
-    setTurnServers(turnServers().filter((_, index_) => index_ !== index));
-  };
+  const handleStunChange = (index: number, value: string) =>
+    updateStun(stunServers().map((server, index_) => (index_ === index ? value : server)));
 
-  const handleTurnChange = (index: number, field: keyof TurnServer, value: string) => {
-    setTurnServers(turnServers().map((server, index_) => (index_ === index ? { ...server, [field]: value } : server)));
-  };
+  const handleAddTurn = () => updateTurn([...turnServers(), { urls: "" }]);
 
-  // createEffect(() => {
-  //   setSettings({
-  //     ...settings(), transport: {
-  //       p: "webrtc",
-  //       s: {
-  //         webrtc: {
-  //           stun: stunServers(),
-  //           turn: turnServers(),
-  //         },
-  //       },
-  //     },
-  //   });
-  // });
+  const handleRemoveTurn = (index: number) => updateTurn(turnServers().filter((_, index_) => index_ !== index));
+
+  const handleTurnChange = (index: number, field: keyof TurnServer, value: string) =>
+    updateTurn(turnServers().map((server, index_) => (index_ === index ? { ...server, [field]: value } : server)));
 
   return (
     <>

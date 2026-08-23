@@ -54,12 +54,12 @@ const session = await connectSession(
 The remote peer's info is part of the session state, set the moment the capabilities exchange completes:
 
 ```typescript
-session.emitter.on("state_change", (state) => {
-  console.log(state?.peerInfo?.name, state?.peerInfo?.identity);
+session.peerInfo.subscribe((peerInfo) => {
+  console.log(peerInfo?.name, peerInfo?.identity);
 });
 
 // or read it directly
-const { peerInfo } = session.getState();
+const peerInfo = session.peerInfo.get();
 ```
 
 ## Transport negotiation

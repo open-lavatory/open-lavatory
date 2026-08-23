@@ -87,15 +87,15 @@ export const webrtc: Transport = (
         // connection can never establish, and the cause is environmental
         // (blocked UDP, no usable interface, unreachable STUN/TURN).
         console.warn(
-          "[openlv] WebRTC gathered zero local ICE candidates — "
+          "[openlv] WebRTC gathered zero local ICE candidates -- "
           + "the peer-to-peer connection cannot establish. "
           + "Check network/UDP access or configure reachable STUN/TURN servers.",
         );
         emitter.emit("error", "no local ICE candidates");
       }
     };
-    const onDataChannel = (e: RTCDataChannelEvent) => {
-      channel = e.channel;
+    const onDataChannel = (event: RTCDataChannelEvent) => {
+      channel = event.channel;
       hookChannel(channel);
       log("onDataChannel");
     };
@@ -103,8 +103,8 @@ export const webrtc: Transport = (
       log("onDataChannelOpen");
       emitter.emit("connected");
     };
-    const onDataChannelMessage = (e: MessageEvent<string>) => {
-      emitter.emit("message", e.data);
+    const onDataChannelMessage = (event: MessageEvent<string>) => {
+      emitter.emit("message", event.data);
     };
     const onDataChannelClose = () => {
       emitter.emit("error", "Data channel closed");
@@ -183,40 +183,44 @@ export const webrtc: Transport = (
       channel.send(message);
     };
 
+    const setup = async () => {
+      log("webrtc setup");
+
+      connection = new RTCPeerConnection(rtcConfig);
+      connection.onconnectionstatechange = onConnectionStateChange;
+      connection.onicecandidate = onIceCandidate;
+      connection.onicegatheringstatechange = onIceGatheringStateChange;
+      connection.ondatachannel = onDataChannel;
+      connection.onnegotiationneeded = onNegotiationNeeded;
+
+      if (isHost) {
+        channel = connection.createDataChannel("openlv-data");
+        hookChannel(channel);
+      }
+    };
+
+    const teardown = async () => {
+      log("webrtc teardown");
+      pendingCandidates = [];
+
+      if (channel) {
+        // Detach the close listener first: a deliberate teardown must not
+        // surface as a transport error.
+        channel.removeEventListener("close", onDataChannelClose);
+        channel.close();
+        channel = undefined;
+      }
+
+      if (connection) {
+        connection.onconnectionstatechange = null;
+        connection.close();
+        connection = undefined;
+      }
+    };
+
     return {
-      async setup() {
-        log("webrtc setup");
-
-        connection = new RTCPeerConnection(rtcConfig);
-        connection.onconnectionstatechange = onConnectionStateChange;
-        connection.onicecandidate = onIceCandidate;
-        connection.onicegatheringstatechange = onIceGatheringStateChange;
-        connection.ondatachannel = onDataChannel;
-        connection.onnegotiationneeded = onNegotiationNeeded;
-
-        if (isHost) {
-          channel = connection.createDataChannel("openlv-data");
-          hookChannel(channel);
-        }
-      },
-      teardown() {
-        log("webrtc teardown");
-        pendingCandidates = [];
-
-        if (channel) {
-          // Detach the close listener first: a deliberate teardown must not
-          // surface as a transport error.
-          channel.removeEventListener("close", onDataChannelClose);
-          channel.close();
-          channel = undefined;
-        }
-
-        if (connection) {
-          connection.onconnectionstatechange = null;
-          connection.close();
-          connection = undefined;
-        }
-      },
+      setup,
+      teardown,
       handle,
       send,
     };

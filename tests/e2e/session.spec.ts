@@ -15,6 +15,15 @@ import { expect, type Page, test } from "@playwright/test";
 
 const SANDBOX_URL = "http://localhost:5199/";
 
+const relays = [
+  { p: "mqtt", s: "wss://mqtt-dashboard.com:8884/mqtt" },
+  { p: "mqtt", s: "ws://broker.emqx.io:8083/mqtt" },
+  { p: "mqtt", s: "ws://test.mosquitto.org:8080/mqtt" },
+  { p: "mqtt", s: "wss://broker.itdata.nu/mqtt" },
+  { p: "ntfy", s: "https://ntfy.sh/" },
+  { p: "ntfy", s: "https://ntfy.envs.net/" },
+] as const;
+
 type Capture = {
   lines: string[];
   waitFor: (pattern: RegExp, timeoutMs: number) => Promise<string>;
@@ -91,57 +100,81 @@ const probeIce = (page: Page) => page.evaluate(async () => {
   return count;
 });
 
-test("dApp and wallet link end-to-end over the public relay", async ({ browser }) => {
-  const context = await browser.newContext();
-  const dapp = await context.newPage();
-  const wallet = await context.newPage();
-  const dappLog = captureConsole(dapp);
-  const walletLog = captureConsole(wallet);
+test("dApp and wallet link over at least one public relay", async ({ browser }) => {
+  const results = await Promise.all(relays.map(async (relay) => {
+    const context = await browser.newContext();
 
-  await openSandbox(dapp);
-  await openSandbox(wallet);
+    try {
+      await context.addInitScript(({ key, p, s }) => {
+        localStorage.setItem(key, JSON.stringify({
+          version: 3,
+          retainHistory: false,
+          autoReconnect: false,
+          signaling: { p, s: { [p]: s } },
+          theme: "system",
+        }));
+      }, { key: "@openlv/connector/settings", ...relay });
 
-  // dApp (host) creates a session and prints the connection URI.
-  await dapp.getByText("Create Session", { exact: true }).click();
+      const dapp = await context.newPage();
+      const wallet = await context.newPage();
+      const dappLog = captureConsole(dapp);
+      const walletLog = captureConsole(wallet);
 
-  const uriLine = await dappLog.waitFor(/session url openlv:\/\//, 30_000);
-  const uri = uriLine.match(/openlv:\/\/\S+/)?.[0];
+      await openSandbox(dapp);
+      await openSandbox(wallet);
 
-  expect(uri, "host should print an openlv:// connection URI").toBeTruthy();
+      // dApp (host) creates a session and prints the connection URI.
+      await dapp.getByText("Create Session", { exact: true }).click();
 
-  // Wallet (client) joins from the URI.
-  await wallet.getByPlaceholder("URL").fill(uri!);
-  await wallet.getByText("Connect", { exact: true }).click();
+      const uriLine = await dappLog.waitFor(/session url openlv:\/\//, 10_000);
+      const uri = uriLine.match(/openlv:\/\/\S+/)?.[0];
 
-  // Signaling handshake must complete on both peers.
-  await Promise.all([
-    dappLog.waitFor(/signal state change encrypted/, 45_000),
-    walletLog.waitFor(/signal state change encrypted/, 45_000),
-  ]);
+      expect(uri, "host should print an openlv:// connection URI").toBeTruthy();
 
-  // Transport negotiation must flow through encrypted signaling.
-  await Promise.all([
-    walletLog.waitFor(/webrtc handle offer/, 30_000),
-    dappLog.waitFor(/webrtc handle answer/, 30_000),
-  ]);
+      // Wallet (client) joins from the URI.
+      await wallet.getByPlaceholder("URL").fill(uri!);
+      await wallet.getByText("Connect", { exact: true }).click();
 
-  // Full peer-to-peer connection requires working ICE; skip that half of the
-  // assertion when the environment cannot gather candidates.
-  const candidates = await probeIce(dapp);
+      // Signaling handshake must complete on both peers.
+      await Promise.all([
+        dappLog.waitFor(/signal state change encrypted/, 15_000),
+        walletLog.waitFor(/signal state change encrypted/, 15_000),
+      ]);
 
-  if (candidates === 0) {
-    test.info().annotations.push({
-      type: "warning",
-      description: "environment gathered zero ICE candidates; skipped data-channel assertion",
-    });
+      // Transport negotiation must flow through encrypted signaling.
+      await Promise.all([
+        walletLog.waitFor(/webrtc handle offer/, 15_000),
+        dappLog.waitFor(/webrtc handle answer/, 15_000),
+      ]);
 
-    return;
-  }
+      // Full peer-to-peer connection requires working ICE; skip that half of the
+      // assertion when the environment cannot gather candidates.
+      const candidates = await probeIce(dapp);
 
-  await Promise.all([
-    dappLog.waitFor(/updateStatus connected/, 60_000),
-    walletLog.waitFor(/updateStatus connected/, 60_000),
-  ]);
+      if (candidates > 0) {
+        await Promise.all([
+          dappLog.waitFor(/updateStatus connected/, 30_000),
+          walletLog.waitFor(/updateStatus connected/, 30_000),
+        ]);
+      }
 
-  await context.close();
+      return { relay, ok: true as const };
+    }
+    catch (error) {
+      return {
+        relay,
+        ok: false as const,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+    finally {
+      await context.close();
+    }
+  }));
+
+  console.log(results.map(result => (
+    result.ok ? `✓ ${result.relay.s}` : `✗ ${result.relay.s} - ${result.error}`
+  )).join("\n"));
+
+  expect(results.filter(result => result.ok).length).toBeGreaterThan(0);
 });
