@@ -12,7 +12,6 @@ export default defineConfig([
       "**/.expo/**",
       "**/*.gen.*",
       "examples/react-native/**",
-      "docs/snippets/**",
     ],
   },
   ...v3xlint.configs.recommended,
@@ -25,6 +24,12 @@ export default defineConfig([
       "import/no-default-export": "off",
       "unicorn/no-null": "off",
       "unicorn/consistent-function-scoping": "off",
+    },
+  },
+  {
+    files: ["docs/snippets/**"],
+    rules: {
+      "no-restricted-syntax": "off",
     },
   },
 ]);
