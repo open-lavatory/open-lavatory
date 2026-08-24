@@ -126,21 +126,11 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
     (error: unknown) => log("handshake send failed, will retry", error),
   );
   const deadline = createTimeout();
-  const handshakeScope = createScope();
-  const scope = createScope();
 
-  handshakeScope.add([resend.stop, deadline.cancel]);
-  scope.add([
-    async () => {
-      try {
-        await handshakeScope.close();
-      }
-      catch (error) {
-        log("failed to clean up handshake", error);
-      }
-    },
-    channel.teardown,
-  ]);
+  let connection: {
+    scope: ReturnType<typeof createScope>;
+    handshakeScope: ReturnType<typeof createScope>;
+  } | undefined;
 
   const sendRepeating = (method: "handshake" | "encrypted", payload: SignalMessage) => {
     repeatingFrame = () => send(method, payload);
@@ -153,7 +143,8 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
       if (status.get() === Status.ENCRYPTED) return;
 
       log("handshake timed out");
-      void handshakeScope.close().catch(error => log("failed to clean up timed-out handshake", error));
+      void connection?.handshakeScope.close()
+        .catch(error => log("failed to clean up timed-out handshake", error));
       setStatus(Status.ERROR);
     }, HANDSHAKE_TIMEOUT_MS);
   };
@@ -183,7 +174,7 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
           receivedKey = await parseEncryptionKey(messagePayload.publicKey);
 
           if (!await validatePublicKeyHash(receivedKey, h)) {
-            await handshakeScope.close();
+            await connection?.handshakeScope.close();
             setStatus(Status.ERROR);
             log("Received host public key does not match expected hash -- possible tampering");
 
@@ -191,7 +182,7 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
           }
         }
         catch {
-          await handshakeScope.close();
+          await connection?.handshakeScope.close();
           setStatus(Status.ERROR);
           log("Failed to parse received host public key");
 
@@ -224,7 +215,7 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
         { msg: { type: "capabilities" }, status: Status.HANDSHAKE_PARTIAL },
         async ({ msg: { payload: messagePayload } }) => {
           await setPeerCapabilities(messagePayload);
-          await handshakeScope.close();
+          await connection?.handshakeScope.close();
           setStatus(Status.ENCRYPTED);
 
           if (isHost) return;
@@ -267,6 +258,20 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
   };
 
   const setup = async () => {
+    const scope = createScope();
+    const handshakeScope = createScope();
+    const nextConnection = { scope, handshakeScope };
+
+    handshakeScope.add([resend.stop, deadline.cancel]);
+    scope.add([
+      handshakeScope.close,
+      channel.teardown,
+      () => {
+        if (connection === nextConnection) connection = undefined;
+      },
+    ]);
+    connection = nextConnection;
+
     try {
       setStatus(Status.CONNECTING);
       await channel.setup();
@@ -304,7 +309,7 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
   const teardown = () => {
     log("teardown");
 
-    return scope.close();
+    return connection?.scope.close() ?? Promise.resolve();
   };
 
   return make(emitter, {

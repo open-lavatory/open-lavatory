@@ -299,8 +299,6 @@ export const createProvider = (
           }
 
           if (openModal && provider) {
-            await openModal(provider);
-
             await new Promise<void>((resolve) => {
               const scope = createScope();
               const finish = () => {
@@ -311,6 +309,8 @@ export const createProvider = (
 
               scope.listen(provider, "connect", finish);
               scope.listen(provider, "disconnect", finish);
+
+              void openModal(provider).catch(finish);
             });
 
             return await getAccounts();

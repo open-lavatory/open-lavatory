@@ -210,6 +210,27 @@ describe("signaling handshake (in-memory relay)", () => {
     expect(pair.getHostPeerCapabilities()).toEqual(CLIENT_CAPABILITIES);
   });
 
+  it("can retry setup after channel setup fails", async () => {
+    const topic = createTopic();
+    let attempts = 0;
+    const channel: SignalingChannel = {
+      ...topic.channel(),
+      setup: () => {
+        attempts += 1;
+
+        if (attempts === 1) throw new Error("relay unavailable");
+      },
+    };
+    const { layer } = await createPeer(channel, {
+      isHost: true,
+      h: "test",
+      k: K,
+    });
+
+    await expect(layer.setup()).rejects.toThrow("relay unavailable");
+    await expect(layer.setup()).resolves.toBeUndefined();
+  });
+
   it("ignores garbage frames on the public topic", async () => {
     const topic = createTopic();
 
