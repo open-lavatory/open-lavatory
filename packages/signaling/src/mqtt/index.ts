@@ -70,7 +70,13 @@ export const mqtt: SignalingProtocol = ({ url, topic }) => {
 
       connection.on("message", onMessage);
 
-      await connection?.subscribe(topic);
+      try {
+        await connection.subscribe(topic);
+      }
+      catch (error) {
+        connection.off("message", onMessage);
+        throw error;
+      }
 
       return () => {
         connection?.off("message", onMessage);
