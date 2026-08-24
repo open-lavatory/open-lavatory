@@ -21,17 +21,17 @@ export const awaitCorrelatedResponse = (
   const responseTimer = createTimeout();
   const scope = createScope();
 
-  scope.add([ackTimer.stop, responseTimer.stop]);
+  scope.add([ackTimer.cancel, responseTimer.cancel]);
 
   const handler = (message: SessionMessage) => {
     if (message.messageId !== messageId) return;
 
     if (!isAckReceived && message.type === "ack") {
       isAckReceived = true;
-      ackTimer.stop();
+      ackTimer.cancel();
       // The other side confirmed receipt; wait for the full response.
-      responseTimer.start(() => {
-        void scope.close();
+      responseTimer.schedule(() => {
+        void scope.close().catch(() => {});
         reject(new Error("Request timed out: no response after acknowledgement"));
       }, responseTimeoutMs);
 
@@ -39,7 +39,7 @@ export const awaitCorrelatedResponse = (
     }
 
     if (message.type === "response") {
-      void scope.close();
+      void scope.close().catch(() => {});
       resolve(message.payload);
     }
   };
@@ -47,12 +47,12 @@ export const awaitCorrelatedResponse = (
   scope.listen(messages, "message", handler);
 
   // Short window for the ack -- tells us the peer is alive and processing.
-  ackTimer.start(() => {
+  ackTimer.schedule(() => {
     if (isAckReceived) {
       return;
     }
 
-    void scope.close();
+    void scope.close().catch(() => {});
     reject(new Error("Request timed out: remote peer did not acknowledge"));
   }, ackTimeoutMs);
 });

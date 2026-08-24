@@ -6,7 +6,7 @@ import {
 } from "@openlv/core/encryption";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createSignalingLayer, Status, type SignalingLayer } from "./index.js";
+import { createSignalingLayer, type SignalingLayer, Status } from "./index.js";
 import type { PeerCapabilities } from "./messages.js";
 import type { SignalingChannel } from "./protocol.js";
 
@@ -15,16 +15,16 @@ import type { SignalingChannel } from "./protocol.js";
  * all subscribers (including the sender, like MQTT echo). A `drop` predicate
  * simulates lossy delivery.
  */
-const neverDrop = () => false;
+const shouldNeverDrop = () => false;
 
 const createTopic = () => {
   const subscribers: ((payload: string) => void)[] = [];
-  let drop: (payload: string, index: number) => boolean = neverDrop;
+  let shouldDrop: (payload: string, index: number) => boolean = shouldNeverDrop;
   let published = 0;
 
   return {
-    setDrop(function_: (payload: string, index: number) => boolean) {
-      drop = function_;
+    setDrop(shouldDropPayload: (payload: string, index: number) => boolean) {
+      shouldDrop = shouldDropPayload;
     },
     inject(payload: string) {
       for (const subscriber of subscribers) subscriber(payload);
@@ -37,7 +37,7 @@ const createTopic = () => {
         publish: (payload: string) => {
           const index = published++;
 
-          if (drop(payload, index)) return;
+          if (shouldDrop(payload, index)) return;
 
           // Deliver asynchronously, as a real relay would.
           queueMicrotask(() => {
@@ -234,8 +234,7 @@ describe("signaling handshake (in-memory relay)", () => {
     await encrypted;
   });
 
-  // Skipped until handshake resend/timeout logic is (re)implemented.
-  describe.skip("lossy relay", () => {
+  describe("lossy relay", () => {
     beforeEach(() => {
       vi.useFakeTimers();
     });
@@ -290,6 +289,20 @@ describe("signaling handshake (in-memory relay)", () => {
       await vi.advanceTimersByTimeAsync(31_000);
       await errored;
       expect(client.status.get()).toBe(Status.ERROR);
+    });
+
+    it("errors out when no client appears for the host", async () => {
+      const topic = createTopic();
+
+      ({ host, client } = await setupPair(topic));
+
+      await host.setup();
+
+      const errored = waitForState(host, Status.ERROR);
+
+      await vi.advanceTimersByTimeAsync(31_000);
+      await errored;
+      expect(host.status.get()).toBe(Status.ERROR);
     });
   });
 });

@@ -129,8 +129,18 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
   const handshakeScope = createScope();
   const scope = createScope();
 
-  handshakeScope.add([resend.stop, deadline.stop]);
-  scope.add([handshakeScope.close, channel.teardown]);
+  handshakeScope.add([resend.stop, deadline.cancel]);
+  scope.add([
+    async () => {
+      try {
+        await handshakeScope.close();
+      }
+      catch (error) {
+        log("failed to clean up handshake", error);
+      }
+    },
+    channel.teardown,
+  ]);
 
   const sendRepeating = (method: "handshake" | "encrypted", payload: SignalMessage) => {
     repeatingFrame = () => send(method, payload);
@@ -139,11 +149,11 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
   };
 
   const startHandshakeDeadline = () => {
-    deadline.start(() => {
+    deadline.schedule(() => {
       if (status.get() === Status.ENCRYPTED) return;
 
       log("handshake timed out");
-      void handshakeScope.close();
+      void handshakeScope.close().catch(error => log("failed to clean up timed-out handshake", error));
       setStatus(Status.ERROR);
     }, HANDSHAKE_TIMEOUT_MS);
   };
@@ -262,7 +272,7 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
       await channel.setup();
       const unsubscribe = await channel.subscribe(onReceive);
 
-      if (unsubscribe) scope.add(unsubscribe);
+      if (unsubscribe !== undefined) scope.add(unsubscribe);
 
       if (canEncrypt()) {
         await handshakeScope.close();
@@ -272,12 +282,12 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
       }
 
       setStatus(Status.READY);
+      startHandshakeDeadline();
 
       if (!isHost) {
         // Enter HANDSHAKE before publishing: the host's pubkey reply can
         // arrive while the publish is still in flight.
         setStatus(Status.HANDSHAKE);
-        startHandshakeDeadline();
         await sendRepeating("handshake", {
           type: "flash",
           payload: {},

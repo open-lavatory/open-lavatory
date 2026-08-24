@@ -12,8 +12,8 @@ describe("createTimeout", () => {
     const callback = vi.fn();
     const timeout = createTimeout();
 
-    timeout.start(callback, 100);
-    timeout.start(callback, 200);
+    timeout.schedule(callback, 100);
+    timeout.schedule(callback, 200);
 
     vi.advanceTimersByTime(199);
     expect(callback).not.toHaveBeenCalled();
@@ -27,8 +27,8 @@ describe("createTimeout", () => {
     const callback = vi.fn();
     const timeout = createTimeout();
 
-    timeout.start(callback, 100);
-    timeout.stop();
+    timeout.schedule(callback, 100);
+    timeout.cancel();
     vi.advanceTimersByTime(100);
 
     expect(callback).not.toHaveBeenCalled();
@@ -71,5 +71,44 @@ describe("createRepeater", () => {
 
     expect(onError).toHaveBeenCalledTimes(2);
     expect(onError).toHaveBeenLastCalledWith(error);
+  });
+
+  it("does not reschedule after being stopped during a callback", async () => {
+    vi.useFakeTimers();
+    let isBlocked = true;
+    const callback = vi.fn(async () => {
+      while (isBlocked) await Promise.resolve();
+    });
+    const repeater = createRepeater(callback, 100);
+
+    const firstRun = repeater.start();
+
+    repeater.stop();
+    isBlocked = false;
+    await firstRun;
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(callback).toHaveBeenCalledOnce();
+  });
+
+  it("does not let a previous run reschedule after restarting", async () => {
+    vi.useFakeTimers();
+    let isFirstRunBlocked = true;
+    let runs = 0;
+    const callback = vi.fn(async () => {
+      runs += 1;
+
+      while (runs === 1 && isFirstRunBlocked) await Promise.resolve();
+    });
+    const repeater = createRepeater(callback, 100);
+
+    const firstRun = repeater.start();
+
+    await repeater.start();
+    isFirstRunBlocked = false;
+    await firstRun;
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(callback).toHaveBeenCalledTimes(3);
   });
 });

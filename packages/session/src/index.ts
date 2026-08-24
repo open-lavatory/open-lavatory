@@ -163,6 +163,7 @@ export const createSession = async (
   });
 
   const scope = createScope();
+  let connectionScope: ReturnType<typeof createScope> | undefined;
 
   scope.add([
     signal.teardown,
@@ -263,19 +264,19 @@ export const createSession = async (
   const TRANSPORT_LINK_TIMEOUT_MS = 45_000;
   const linkDeadline = createTimeout();
 
-  scope.add(linkDeadline.stop);
+  scope.add(linkDeadline.cancel);
 
   const onTransportStateChange = (transportStatus: TransportStatus) => {
     log("transport state change", transportStatus);
 
     if (transportStatus === TransportStatus.CONNECTED) {
-      linkDeadline.stop();
+      linkDeadline.cancel();
       setLastError(undefined);
       updateStatus(SessionStatus.CONNECTED);
     }
 
     if (transportStatus === TransportStatus.ERROR) {
-      linkDeadline.stop();
+      linkDeadline.cancel();
       setLastErrorIfUnset("Peer-to-peer transport failed");
       updateStatus(SessionStatus.DISCONNECTED);
     }
@@ -306,7 +307,7 @@ export const createSession = async (
       scope.listen(transport.emitter, "error", onTransportError);
     }
 
-    linkDeadline.start(() => {
+    linkDeadline.schedule(() => {
       if (status.get() === SessionStatus.CONNECTED) return;
 
       log("transport failed to connect in time");
@@ -316,7 +317,7 @@ export const createSession = async (
 
     Promise.resolve(transport.setup()).catch((error) => {
       log("transport setup failed", error);
-      linkDeadline.stop();
+      linkDeadline.cancel();
       setLastErrorIfUnset(error instanceof Error ? error.message : "Transport setup failed");
       updateStatus(SessionStatus.DISCONNECTED);
     });
@@ -382,14 +383,16 @@ export const createSession = async (
       updateStatus(SessionStatus.SIGNALING);
       log("connecting to session, isHost:", isHost);
 
-      scope.listen(signal, "message", onSignalMessage);
-      scope.add(signal.status.subscribe(onSignalStateChange));
+      connectionScope ??= createScope();
+      connectionScope.listen(signal, "message", onSignalMessage);
+      connectionScope.add(signal.status.subscribe(onSignalStateChange));
 
       try {
         await signal.setup();
       }
       catch (error) {
-        await scope.close();
+        await connectionScope.close();
+        connectionScope = undefined;
         throw error;
       }
     },
@@ -397,6 +400,7 @@ export const createSession = async (
       log("session teardown");
 
       try {
+        await connectionScope?.close();
         await scope.close();
       }
       finally {

@@ -1,25 +1,25 @@
 export type ManagedTimeout = {
-  start: (callback: () => void, delayMs: number) => void;
-  stop: () => void;
+  schedule: (callback: () => void, delayMs: number) => void;
+  cancel: () => void;
 };
 
 export const createTimeout = (): ManagedTimeout => {
   let timer: ReturnType<typeof globalThis.setTimeout> | undefined;
 
-  const stop = () => {
+  const cancel = () => {
     globalThis.clearTimeout(timer);
     timer = undefined;
   };
 
   return {
-    start(callback, delayMs) {
-      stop();
+    schedule(callback, delayMs) {
+      cancel();
       timer = globalThis.setTimeout(() => {
         timer = undefined;
         callback();
       }, delayMs);
     },
-    stop,
+    cancel,
   };
 };
 
@@ -29,7 +29,7 @@ export type ManagedRepeater = {
 };
 
 export const createRepeater = (
-  callback: () => Promise<void>,
+  callback: () => void | Promise<void>,
   intervalMs: number,
   onError: (error: unknown) => void = () => {},
 ): ManagedRepeater => {
