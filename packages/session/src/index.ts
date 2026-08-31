@@ -398,14 +398,12 @@ export const createSession = async (
     },
     async close() {
       log("session teardown");
+      await Promise.allSettled([
+        scope.close(),
+        connectionScope?.close() ?? Promise.resolve(),
+      ]);
 
-      try {
-        await connectionScope?.close();
-        await scope.close();
-      }
-      finally {
-        updateStatus(SessionStatus.DISCONNECTED);
-      }
+      updateStatus(SessionStatus.DISCONNECTED);
     },
     status,
     signalStatus: signal.status,
