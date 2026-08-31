@@ -6,6 +6,7 @@ import {
 } from "@openlv/core/encryption";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { HANDSHAKE_TIMEOUT_MS } from "./handshake.js";
 import { createSignalingLayer, type SignalingLayer, Status } from "./index.js";
 import type { PeerCapabilities } from "./messages.js";
 import type { SignalingChannel } from "./protocol.js";
@@ -228,7 +229,36 @@ describe("signaling handshake (in-memory relay)", () => {
     });
 
     await expect(layer.setup()).rejects.toThrow("relay unavailable");
+    expect(layer.status.get()).toBe(Status.ERROR);
     await expect(layer.setup()).resolves.toBeUndefined();
+  });
+
+  it("stops handshake timers before tearing down the channel", async () => {
+    vi.useFakeTimers();
+    const topic = createTopic();
+    const teardownControl = Promise.withResolvers<void>();
+    const channel: SignalingChannel = {
+      ...topic.channel(),
+      teardown: () => teardownControl.promise,
+    };
+    const { layer } = await createPeer(channel, {
+      isHost: false,
+      h: "test",
+      k: K,
+    });
+
+    await layer.setup();
+    const teardown = layer.teardown();
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    vi.advanceTimersByTime(HANDSHAKE_TIMEOUT_MS);
+    expect(layer.status.get()).toBe(Status.HANDSHAKE);
+
+    teardownControl.resolve();
+    await teardown;
+    vi.useRealTimers();
   });
 
   it("ignores garbage frames on the public topic", async () => {

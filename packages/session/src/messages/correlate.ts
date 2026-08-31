@@ -21,7 +21,8 @@ export const awaitCorrelatedResponse = (
   const responseTimer = createTimeout();
   const scope = createScope();
 
-  scope.add([ackTimer.cancel, responseTimer.cancel]);
+  scope.add(ackTimer.cancel);
+  scope.add(responseTimer.cancel);
 
   const handler = (message: SessionMessage) => {
     if (message.messageId !== messageId) return;

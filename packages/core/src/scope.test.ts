@@ -44,6 +44,22 @@ describe("createScope", () => {
     expect(cleanups).toEqual(["second", "first"]);
   });
 
+  it("runs separately registered cleanups in reverse order", async () => {
+    const cleanups: string[] = [];
+    const scope = createScope();
+
+    scope.add(() => {
+      cleanups.push("first");
+    });
+    scope.add(() => {
+      cleanups.push("second");
+    });
+
+    await scope.close();
+
+    expect(cleanups).toEqual(["second", "first"]);
+  });
+
   it("is idempotent and rejects cleanup added after closing", async () => {
     const cleanup = vi.fn();
     const scope = createScope();

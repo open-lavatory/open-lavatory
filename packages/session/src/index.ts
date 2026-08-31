@@ -165,18 +165,16 @@ export const createSession = async (
   const scope = createScope();
   let connectionScope: ReturnType<typeof createScope> | undefined;
 
-  scope.add([
-    signal.teardown,
-    signal.peerKey.subscribe((key) => {
-      const role = isHost ? "host" : "client";
+  scope.add(signal.teardown);
+  scope.add(signal.peerKey.subscribe((key) => {
+    const role = isHost ? "host" : "client";
 
-      log(`rpKey discovered by ${role}`, key);
-    }),
-    signal.peerCapabilities.subscribe((received) => {
-      log("peer capabilities received", received);
-      setPeerInfo(received?.info);
-    }),
-  ]);
+    log(`rpKey discovered by ${role}`, key);
+  }));
+  scope.add(signal.peerCapabilities.subscribe((received) => {
+    log("peer capabilities received", received);
+    setPeerInfo(received?.info);
+  }));
 
   let transport: TransportLayer | undefined;
 
@@ -300,10 +298,8 @@ export const createSession = async (
 
       log("selected transport", layer.transportId);
       transport = createTransport(layer);
-      scope.add([
-        transport.teardown,
-        transport.status.subscribe(onTransportStateChange),
-      ]);
+      scope.add(transport.teardown);
+      scope.add(transport.status.subscribe(onTransportStateChange));
       scope.listen(transport.emitter, "error", onTransportError);
     }
 

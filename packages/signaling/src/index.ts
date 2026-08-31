@@ -262,14 +262,13 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
     const handshakeScope = createScope();
     const nextConnection = { scope, handshakeScope };
 
-    handshakeScope.add([resend.stop, deadline.cancel]);
-    scope.add([
-      handshakeScope.close,
-      channel.teardown,
-      () => {
-        if (connection === nextConnection) connection = undefined;
-      },
-    ]);
+    handshakeScope.add(resend.stop);
+    handshakeScope.add(deadline.cancel);
+    scope.add(() => {
+      if (connection === nextConnection) connection = undefined;
+    });
+    scope.add(channel.teardown);
+    scope.add(handshakeScope.close);
     connection = nextConnection;
 
     try {
@@ -301,6 +300,7 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
       }
     }
     catch (error) {
+      setStatus(Status.ERROR);
       await scope.close();
       throw error;
     }
