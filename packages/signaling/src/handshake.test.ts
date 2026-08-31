@@ -312,17 +312,28 @@ describe("signaling handshake (in-memory relay)", () => {
       expect(client.status.get()).toBe(Status.ERROR);
     });
 
-    it("errors out when no client appears for the host", async () => {
+    it("keeps the host ready until a client starts the handshake", async () => {
       const topic = createTopic();
 
       ({ host, client } = await setupPair(topic));
 
       await host.setup();
 
-      const errored = waitForState(host, Status.ERROR);
+      await vi.advanceTimersByTimeAsync(31_000);
+      expect(host.status.get()).toBe(Status.READY);
+    });
+
+    it("errors out when a host handshake stalls", async () => {
+      const topic = createTopic();
+
+      topic.setDrop((_, index) => index > 0);
+      ({ host, client } = await setupPair(topic));
+
+      await host.setup();
+      await client.setup();
+      await waitForState(host, Status.HANDSHAKE);
 
       await vi.advanceTimersByTimeAsync(31_000);
-      await errored;
       expect(host.status.get()).toBe(Status.ERROR);
     });
   });

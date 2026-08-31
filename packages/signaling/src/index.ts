@@ -287,12 +287,12 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
       }
 
       setStatus(Status.READY);
-      startHandshakeDeadline();
 
       if (!isHost) {
         // Enter HANDSHAKE before publishing: the host's pubkey reply can
         // arrive while the publish is still in flight.
         setStatus(Status.HANDSHAKE);
+        startHandshakeDeadline();
         await sendRepeating("handshake", {
           type: "flash",
           payload: {},
