@@ -1,5 +1,18 @@
 # @openlv/session
 
+## 0.2.0
+
+### Minor Changes
+
+- 891501c: Migrated from Eventemitter-based to observables. Along the way deprecating `state_change` and `getState()` with `get()`, `subscribe()` and `until()`. Also renaming previously uppercase `SESSION_STATE` to `SessionStatus`, same for singaling and transport.
+
+### Patch Changes
+
+- Updated dependencies [891501c]
+  - @openlv/signaling@0.2.0
+  - @openlv/transport@0.2.0
+  - @openlv/core@0.2.0
+
 ## 0.1.3
 
 ### Patch Changes
