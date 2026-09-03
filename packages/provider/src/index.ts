@@ -16,7 +16,6 @@ import { webrtc, type WebRTCConfig } from "@openlv/transport/webrtc";
 import { Provider as OxProvider } from "ox";
 import type { EventMap } from "ox/Provider";
 import type { ExtractReturnType } from "ox/RpcSchema";
-import { match } from "ts-pattern";
 import type { Address, Prettify } from "viem";
 
 import {
@@ -236,84 +235,60 @@ export const createProvider = (
   ) => {
     log("ox request", request.method, request.params);
 
-    return (
-      match(request)
-        .with({ method: "eth_chainId" }, async () => {
-          log("eth_chainId");
+    if (request.method === "eth_chainId" && !session.get()) return "0x1";
 
-          const current = session.get();
+    if (request.method === "wallet_revokePermissions") {
+      await closeSession();
 
-          if (current) {
-            return await walletRpc.call({ method: "eth_chainId" });
-          }
+      return;
+    }
 
-          return "0x1";
-        })
-        .with({ method: "wallet_requestPermissions" }, () => {
-          throw new Error("Not implemented");
-        })
-        .with({ method: "wallet_revokePermissions" }, async () => {
-          await closeSession();
+    if (request.method === "eth_requestAccounts") {
+      log("eth_requestAccounts");
 
-          return;
-        })
-        .with({ method: "eth_requestAccounts" }, async () => {
-          log("eth_requestAccounts");
+      let provider: OpenLVProvider | undefined;
 
-          let provider: OpenLVProvider | undefined;
+      if (oxProvider) {
+        provider = oxProvider as OpenLVProvider;
+      }
 
-          if (oxProvider) {
-            provider = oxProvider as OpenLVProvider;
-          }
+      if (openModal && provider) {
+        await openModal(provider);
 
-          if (openModal && provider) {
-            await openModal(provider);
+        await new Promise<void>((resolve) => {
+          const onConnect = () => {
+            cleanup();
+            resolve();
+          };
+          const onDisconnect = () => {
+            cleanup();
+            resolve();
+          };
+          const cleanup = () => {
+            provider?.off("connect", onConnect);
+            provider?.off("disconnect", onDisconnect);
+          };
 
-            await new Promise<void>((resolve) => {
-              const onConnect = () => {
-                cleanup();
-                resolve();
-              };
-              const onDisconnect = () => {
-                cleanup();
-                resolve();
-              };
-              const cleanup = () => {
-                provider?.off("connect", onConnect);
-                provider?.off("disconnect", onDisconnect);
-              };
+          provider?.on("connect", onConnect);
+          provider?.on("disconnect", onDisconnect);
+        });
 
-              provider?.on("connect", onConnect);
-              provider?.on("disconnect", onDisconnect);
-            });
+        return await getAccounts();
+      }
 
-            return await getAccounts();
-          }
+      await start();
 
-          await start();
+      return await getAccounts();
+    }
 
-          return await getAccounts();
-        })
-        .with({ method: "eth_accounts" }, async () => {
-          log("eth_accounts");
+    if (!session.get()) throw new Error(`Method ${request.method} not supported`);
 
-          return await getAccounts();
-        })
-        .otherwise(async (v) => {
-          const current = session.get();
+    log("sending request to session", request);
+    const result = await walletRpc.call(request);
 
-          if (current) {
-            log("sending request to session", request);
-            const result = await walletRpc.call(request);
+    log("result from session", result);
 
-            log("result from session", result);
-
-            return result;
-          }
-
-          throw new Error(`Method ${v.method} not supported`);
-        }) as unknown as ExtractReturnType<RpcSchema, typeof request.method>
-    );
+    return result as ExtractReturnType<RpcSchema, typeof request.method>;
   };
   const oxProvider = OxProvider.from<
     ProviderConfig,
