@@ -1,6 +1,5 @@
 "use client";
 
-/* eslint-disable no-restricted-syntax */
 import { openlv } from "@openlv/connector";
 import { encodeConnectionURL } from "@openlv/core";
 import { connectSession, type Session, SessionStatus } from "@openlv/session";
@@ -53,9 +52,11 @@ const config = createConfig({
     }),
   ],
   transports: {
+    /* eslint-disable no-restricted-syntax */
     [mainnet.id]: http(),
     [sepolia.id]: http(),
     [holesky.id]: http(),
+    /* eslint-enable no-restricted-syntax */
   },
 });
 
@@ -190,6 +191,7 @@ const WalletUrlConnect = () => {
                 walletConnector
                   ? {
                       info: {
+                        // eslint-disable-next-line no-restricted-syntax
                         identity: `sh.openlv.docs.${walletConnector.id}`,
                         name: walletConnector.name,
                         ...(walletIcon && { icon: walletIcon }),
@@ -302,6 +304,7 @@ const Connectors = () => {
     <>
       <ul className="mx-auto max-w-xs space-y-2 p-4">
         {connectors.map(connector => (
+          /* eslint-disable-next-line no-restricted-syntax */
           <li key={connector.id}>
             <button
               type="button"

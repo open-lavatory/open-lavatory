@@ -84,6 +84,7 @@ const fail = (message: string): never => {
 const asObject = (v: unknown, label: string): JsonObject =>
   (isObject(v) ? v : fail(`${label} must be an object`));
 
+// eslint-disable-next-line unicorn/consistent-boolean-name
 const asBool = (v: unknown, label: string): boolean =>
   (typeof v === "boolean" ? v : fail(`${label} must be a boolean`));
 
@@ -96,8 +97,8 @@ const asProtocol = (v: unknown): SignalingProtocol =>
     : fail(`protocol must be one of: ${SIGNALING_PROTOCOLS.join(", ")}`));
 
 const asTheme = (v: unknown): UserThemePreference =>
-  (v === "light" || v === "dark" || v === "system"
-    ? v
+  (["light", "dark", "system"].includes(v as string)
+    ? (v as UserThemePreference)
     : fail("theme must be \"light\", \"dark\", or \"system\""));
 
 const asStringArray = (v: unknown, label: string): string[] => {
@@ -125,7 +126,7 @@ const readSignalingV1 = (v: unknown): SignalingSettingsV1 => {
   const s: Partial<Record<SignalingProtocol, string>> = {};
 
   for (const protocol of SIGNALING_PROTOCOLS) {
-    if (protocol in servers) {
+    if (Object.hasOwn(servers, protocol)) {
       s[protocol] = asString(servers[protocol], `signaling.s.${protocol}`);
     }
   }

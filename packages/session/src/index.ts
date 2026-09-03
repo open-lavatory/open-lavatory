@@ -1,4 +1,6 @@
 import {
+  createScope,
+  createTimeout,
   decodeConnectionURL,
   type Observable,
   observable,
@@ -160,16 +162,19 @@ export const createSession = async (
     isHost,
   });
 
-  signal.peerKey.subscribe((key) => {
+  const scope = createScope();
+  let connectionScope: ReturnType<typeof createScope> | undefined;
+
+  scope.add(signal.teardown);
+  scope.add(signal.peerKey.subscribe((key) => {
     const role = isHost ? "host" : "client";
 
     log(`rpKey discovered by ${role}`, key);
-  });
-
-  signal.peerCapabilities.subscribe((received) => {
+  }));
+  scope.add(signal.peerCapabilities.subscribe((received) => {
     log("peer capabilities received", received);
     setPeerInfo(received?.info);
-  });
+  }));
 
   let transport: TransportLayer | undefined;
 
@@ -255,25 +260,21 @@ export const createSession = async (
   // connect promptly; if it cannot (e.g. no ICE candidates on a restricted
   // network) fail loudly instead of sitting in "linking" forever.
   const TRANSPORT_LINK_TIMEOUT_MS = 45_000;
-  let linkDeadline: ReturnType<typeof setTimeout> | undefined;
-  let unsubscribeTransportStatus: (() => void) | undefined;
+  const linkDeadline = createTimeout();
 
-  const clearLinkDeadline = () => {
-    clearTimeout(linkDeadline);
-    linkDeadline = undefined;
-  };
+  scope.add(linkDeadline.cancel);
 
   const onTransportStateChange = (transportStatus: TransportStatus) => {
     log("transport state change", transportStatus);
 
     if (transportStatus === TransportStatus.CONNECTED) {
-      clearLinkDeadline();
+      linkDeadline.cancel();
       setLastError(undefined);
       updateStatus(SessionStatus.CONNECTED);
     }
 
     if (transportStatus === TransportStatus.ERROR) {
-      clearLinkDeadline();
+      linkDeadline.cancel();
       setLastErrorIfUnset("Peer-to-peer transport failed");
       updateStatus(SessionStatus.DISCONNECTED);
     }
@@ -297,11 +298,12 @@ export const createSession = async (
 
       log("selected transport", layer.transportId);
       transport = createTransport(layer);
-      unsubscribeTransportStatus = transport.status.subscribe(onTransportStateChange);
-      transport.emitter.on("error", onTransportError);
+      scope.add(transport.teardown);
+      scope.add(transport.status.subscribe(onTransportStateChange));
+      scope.listen(transport.emitter, "error", onTransportError);
     }
 
-    linkDeadline ??= setTimeout(() => {
+    linkDeadline.schedule(() => {
       if (status.get() === SessionStatus.CONNECTED) return;
 
       log("transport failed to connect in time");
@@ -311,7 +313,7 @@ export const createSession = async (
 
     Promise.resolve(transport.setup()).catch((error) => {
       log("transport setup failed", error);
-      clearLinkDeadline();
+      linkDeadline.cancel();
       setLastErrorIfUnset(error instanceof Error ? error.message : "Transport setup failed");
       updateStatus(SessionStatus.DISCONNECTED);
     });
@@ -372,29 +374,31 @@ export const createSession = async (
     }
   };
 
-  let unsubscribeSignalStatus: (() => void) | undefined;
-
   return {
     connect: async () => {
       updateStatus(SessionStatus.SIGNALING);
       log("connecting to session, isHost:", isHost);
 
-      signal.on("message", onSignalMessage);
-      unsubscribeSignalStatus = signal.status.subscribe(onSignalStateChange);
+      connectionScope ??= createScope();
+      connectionScope.listen(signal, "message", onSignalMessage);
+      connectionScope.add(signal.status.subscribe(onSignalStateChange));
 
-      await signal.setup();
+      try {
+        await signal.setup();
+      }
+      catch (error) {
+        await connectionScope.close();
+        connectionScope = undefined;
+        throw error;
+      }
     },
     async close() {
       log("session teardown");
-      clearLinkDeadline();
-      signal.off("message", onSignalMessage);
-      unsubscribeSignalStatus?.();
-      unsubscribeTransportStatus?.();
-      transport?.emitter.off("error", onTransportError);
-      await Promise.all([
-        transport?.teardown(),
-        signal.teardown(),
+      await Promise.allSettled([
+        scope.close(),
+        connectionScope?.close() ?? Promise.resolve(),
       ]);
+
       updateStatus(SessionStatus.DISCONNECTED);
     },
     status,

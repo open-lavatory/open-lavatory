@@ -6,7 +6,8 @@ import {
 } from "@openlv/core/encryption";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createSignalingLayer, Status, type SignalingLayer } from "./index.js";
+import { HANDSHAKE_TIMEOUT_MS } from "./handshake.js";
+import { createSignalingLayer, type SignalingLayer, Status } from "./index.js";
 import type { PeerCapabilities } from "./messages.js";
 import type { SignalingChannel } from "./protocol.js";
 
@@ -15,16 +16,16 @@ import type { SignalingChannel } from "./protocol.js";
  * all subscribers (including the sender, like MQTT echo). A `drop` predicate
  * simulates lossy delivery.
  */
-const neverDrop = () => false;
+const shouldNeverDrop = () => false;
 
 const createTopic = () => {
   const subscribers: ((payload: string) => void)[] = [];
-  let drop: (payload: string, index: number) => boolean = neverDrop;
+  let shouldDrop: (payload: string, index: number) => boolean = shouldNeverDrop;
   let published = 0;
 
   return {
-    setDrop(function_: (payload: string, index: number) => boolean) {
-      drop = function_;
+    setDrop(shouldDropPayload: (payload: string, index: number) => boolean) {
+      shouldDrop = shouldDropPayload;
     },
     inject(payload: string) {
       for (const subscriber of subscribers) subscriber(payload);
@@ -37,7 +38,7 @@ const createTopic = () => {
         publish: (payload: string) => {
           const index = published++;
 
-          if (drop(payload, index)) return;
+          if (shouldDrop(payload, index)) return;
 
           // Deliver asynchronously, as a real relay would.
           queueMicrotask(() => {
@@ -210,6 +211,59 @@ describe("signaling handshake (in-memory relay)", () => {
     expect(pair.getHostPeerCapabilities()).toEqual(CLIENT_CAPABILITIES);
   });
 
+  it("can retry setup after channel setup fails", async () => {
+    const topic = createTopic();
+    let attempts = 0;
+    const channel: SignalingChannel = {
+      ...topic.channel(),
+      setup: () => {
+        attempts += 1;
+
+        if (attempts === 1) throw new Error("relay unavailable");
+      },
+    };
+    const { layer } = await createPeer(channel, {
+      isHost: true,
+      h: "test",
+      k: K,
+    });
+
+    await expect(layer.setup()).rejects.toThrow("relay unavailable");
+    expect(layer.status.get()).toBe(Status.ERROR);
+    await expect(layer.setup()).resolves.toBeUndefined();
+  });
+
+  it("stops handshake timers before tearing down the channel", async () => {
+    vi.useFakeTimers();
+    const topic = createTopic();
+    let resolveTeardown = () => {};
+    const teardownControl = new Promise<void>((resolve) => {
+      resolveTeardown = () => resolve();
+    });
+    const channel: SignalingChannel = {
+      ...topic.channel(),
+      teardown: () => teardownControl,
+    };
+    const { layer } = await createPeer(channel, {
+      isHost: false,
+      h: "test",
+      k: K,
+    });
+
+    await layer.setup();
+    const teardown = layer.teardown();
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    vi.advanceTimersByTime(HANDSHAKE_TIMEOUT_MS);
+    expect(layer.status.get()).toBe(Status.HANDSHAKE);
+
+    resolveTeardown();
+    await teardown;
+    vi.useRealTimers();
+  });
+
   it("ignores garbage frames on the public topic", async () => {
     const topic = createTopic();
 
@@ -234,8 +288,7 @@ describe("signaling handshake (in-memory relay)", () => {
     await encrypted;
   });
 
-  // Skipped until handshake resend/timeout logic is (re)implemented.
-  describe.skip("lossy relay", () => {
+  describe("lossy relay", () => {
     beforeEach(() => {
       vi.useFakeTimers();
     });
@@ -290,6 +343,31 @@ describe("signaling handshake (in-memory relay)", () => {
       await vi.advanceTimersByTimeAsync(31_000);
       await errored;
       expect(client.status.get()).toBe(Status.ERROR);
+    });
+
+    it("keeps the host ready until a client starts the handshake", async () => {
+      const topic = createTopic();
+
+      ({ host, client } = await setupPair(topic));
+
+      await host.setup();
+
+      await vi.advanceTimersByTimeAsync(31_000);
+      expect(host.status.get()).toBe(Status.READY);
+    });
+
+    it("errors out when a host handshake stalls", async () => {
+      const topic = createTopic();
+
+      topic.setDrop((_, index) => index > 0);
+      ({ host, client } = await setupPair(topic));
+
+      await host.setup();
+      await client.setup();
+      await waitForState(host, Status.HANDSHAKE);
+
+      await vi.advanceTimersByTimeAsync(31_000);
+      expect(host.status.get()).toBe(Status.ERROR);
     });
   });
 });
