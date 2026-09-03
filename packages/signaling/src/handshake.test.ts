@@ -236,10 +236,13 @@ describe("signaling handshake (in-memory relay)", () => {
   it("stops handshake timers before tearing down the channel", async () => {
     vi.useFakeTimers();
     const topic = createTopic();
-    const teardownControl = Promise.withResolvers<void>();
+    let resolveTeardown = () => {};
+    const teardownControl = new Promise<void>((resolve) => {
+      resolveTeardown = () => resolve();
+    });
     const channel: SignalingChannel = {
       ...topic.channel(),
-      teardown: () => teardownControl.promise,
+      teardown: () => teardownControl,
     };
     const { layer } = await createPeer(channel, {
       isHost: false,
@@ -256,7 +259,7 @@ describe("signaling handshake (in-memory relay)", () => {
     vi.advanceTimersByTime(HANDSHAKE_TIMEOUT_MS);
     expect(layer.status.get()).toBe(Status.HANDSHAKE);
 
-    teardownControl.resolve();
+    resolveTeardown();
     await teardown;
     vi.useRealTimers();
   });

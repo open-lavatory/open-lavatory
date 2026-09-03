@@ -30,14 +30,12 @@ describe("createScope", () => {
     const cleanups: string[] = [];
     const scope = createScope();
 
-    scope.add([
-      () => {
-        cleanups.push("first");
-      },
-      () => {
-        cleanups.push("second");
-      },
-    ]);
+    scope.add(() => {
+      cleanups.push("first");
+    });
+    scope.add(() => {
+      cleanups.push("second");
+    });
 
     await scope.close();
 
