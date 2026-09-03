@@ -124,7 +124,7 @@ export const createProvider = (
     // Emit on the session emitter so observers (e.g. modal) can react.
     session.get()?.emitter.emit("request", message);
 
-    const requestIdentifier = jsonRpcRequest.safeParse(request).data?.["id"] ?? null;
+    const requestIdentifier = jsonRpcRequest.safeParse(message).data?.["id"] ?? null;
 
     return {
       jsonrpc: "2.0",
