@@ -36,7 +36,6 @@ export const openlv = ({
     storage,
     config,
   });
-
   const onDisconnect = async () => {
     log("onDisconnect called");
     await provider.closeSession();
@@ -54,6 +53,9 @@ export const openlv = ({
 
   return createConnector<OpenLVProvider>((wagmiConfig) => {
     const { chains } = wagmiConfig;
+    const onProviderDisconnect = () => wagmiConfig.emitter.emit("disconnect");
+
+    provider.on("disconnect", onProviderDisconnect);
 
     const connect = async (
       { withCapabilities = false },
@@ -81,7 +83,7 @@ export const openlv = ({
         throw new UserRejectedRequestError(new Error("User closed modal"));
       }
 
-      const accounts = await provider.getAccounts();
+      const accounts = await getAccounts();
 
       const chainIdHex = await provider.request({ method: "eth_chainId" });
       const chainId = Number.parseInt(chainIdHex as string, 16);

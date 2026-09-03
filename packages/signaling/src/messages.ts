@@ -161,6 +161,7 @@ export const parseSignalMessage = (raw: string): SignalMessage | undefined => {
       return typeof payload === "object"
         && payload !== null
         && typeof payload["publicKey"] === "string"
+        && payload["publicKey"].length > 0
         ? (message as SignalMessagePubkey)
         : undefined;
     }

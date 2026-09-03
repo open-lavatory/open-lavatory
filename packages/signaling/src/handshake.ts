@@ -12,8 +12,8 @@ export type SignalingStage = typeof XR_PREFIX | typeof XR_H_PREFIX;
  * is re-sent on an interval until the state machine observes progress.
  * Receivers treat duplicates as no-ops, which keeps re-sends wire-compatible.
  */
-// const HANDSHAKE_RESEND_INTERVAL_MS = 2000;
-// const HANDSHAKE_TIMEOUT_MS = 30_000;
+export const HANDSHAKE_RESEND_INTERVAL_MS = 2000;
+export const HANDSHAKE_TIMEOUT_MS = 30_000;
 
 export type HandshakeHooks = {
   isHost: boolean;

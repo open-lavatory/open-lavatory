@@ -1,10 +1,23 @@
-import { make, type Observable, observable } from "@openlv/core";
+import {
+  createRepeater,
+  createScope,
+  createTimeout,
+  make,
+  type Observable,
+  observable,
+} from "@openlv/core";
 import type { EncryptionKey, SymmetricKey } from "@openlv/core/encryption";
 import { parseEncryptionKey, validatePublicKeyHash } from "@openlv/core/encryption";
 import { EventEmitter } from "eventemitter3";
 import { match } from "ts-pattern";
 
-import { handshake, XR_H_PREFIX, XR_PREFIX } from "./handshake.js";
+import {
+  handshake,
+  HANDSHAKE_RESEND_INTERVAL_MS,
+  HANDSHAKE_TIMEOUT_MS,
+  XR_H_PREFIX,
+  XR_PREFIX,
+} from "./handshake.js";
 import {
   type PeerCapabilities,
   type SignalMessage,
@@ -87,6 +100,14 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
   const [peerKey, setPeerKey] = observable<EncryptionKey | undefined>(undefined);
   const [peerCapabilities, setPeerCapabilities] = observable<PeerCapabilities | undefined>(undefined);
 
+  const acceptPeerKey = (key: EncryptionKey) => {
+    if (peerKey.get() !== undefined) return false;
+
+    setStatus(Status.HANDSHAKE_PARTIAL);
+
+    return setPeerKey(key);
+  };
+
   const emitter = new EventEmitter<SignalEventMap>();
 
   const { frame, parse } = handshake({
@@ -97,6 +118,36 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
   });
 
   const send = async (method: "handshake" | "encrypted", payload: SignalMessage) => await channel.publish(await frame(method, payload));
+
+  let repeatingFrame: () => Promise<void> = async () => {};
+  const resend = createRepeater(
+    () => repeatingFrame(),
+    HANDSHAKE_RESEND_INTERVAL_MS,
+    (error: unknown) => log("handshake send failed, will retry", error),
+  );
+  const deadline = createTimeout();
+
+  let connection: {
+    scope: ReturnType<typeof createScope>;
+    handshakeScope: ReturnType<typeof createScope>;
+  } | undefined;
+
+  const sendRepeating = (method: "handshake" | "encrypted", payload: SignalMessage) => {
+    repeatingFrame = () => send(method, payload);
+
+    return resend.start();
+  };
+
+  const startHandshakeDeadline = () => {
+    deadline.schedule(() => {
+      if (status.get() === Status.ENCRYPTED) return;
+
+      log("handshake timed out");
+      void connection?.handshakeScope.close()
+        .catch(error => log("failed to clean up timed-out handshake", error));
+      setStatus(Status.ERROR);
+    }, HANDSHAKE_TIMEOUT_MS);
+  };
 
   const capabilitiesMessage = (): SignalMessage => ({
     type: "capabilities",
@@ -113,7 +164,8 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
     await match({ msg: message, status: status.get(), isHost })
       .with({ msg: { type: "flash" }, status: Status.READY, isHost: true }, async () => {
         setStatus(Status.HANDSHAKE);
-        await send("handshake", pubkeyMessage());
+        startHandshakeDeadline();
+        await sendRepeating("handshake", pubkeyMessage());
       })
       .with({ msg: { type: "pubkey" }, status: Status.HANDSHAKE, isHost: false }, async ({ msg: { payload: messagePayload } }) => {
         let receivedKey: EncryptionKey;
@@ -122,6 +174,7 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
           receivedKey = await parseEncryptionKey(messagePayload.publicKey);
 
           if (!await validatePublicKeyHash(receivedKey, h)) {
+            await connection?.handshakeScope.close();
             setStatus(Status.ERROR);
             log("Received host public key does not match expected hash -- possible tampering");
 
@@ -129,18 +182,16 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
           }
         }
         catch {
+          await connection?.handshakeScope.close();
           setStatus(Status.ERROR);
           log("Failed to parse received host public key");
 
           return;
         }
 
-        const changed = setPeerKey(receivedKey)
-          && setStatus(Status.HANDSHAKE_PARTIAL);
+        if (!acceptPeerKey(receivedKey)) return;
 
-        if (!changed) return;
-
-        return await send("encrypted", pubkeyMessage());
+        return await sendRepeating("encrypted", pubkeyMessage());
       })
       .otherwise(() => {
         log("Ignoring handshake frame", message.type, "in status", status.get());
@@ -155,17 +206,16 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
         async ({ msg: { payload: messagePayload } }) => {
           const receivedKey = await parseEncryptionKey(messagePayload.publicKey);
 
-          if (!setPeerKey(receivedKey)) return;
+          if (!acceptPeerKey(receivedKey)) return;
 
-          setStatus(Status.HANDSHAKE_PARTIAL);
-
-          return await send("encrypted", capabilitiesMessage());
+          return await sendRepeating("encrypted", capabilitiesMessage());
         },
       )
       .with(
         { msg: { type: "capabilities" }, status: Status.HANDSHAKE_PARTIAL },
         async ({ msg: { payload: messagePayload } }) => {
           await setPeerCapabilities(messagePayload);
+          await connection?.handshakeScope.close();
           setStatus(Status.ENCRYPTED);
 
           if (isHost) return;
@@ -208,33 +258,58 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
   };
 
   const setup = async () => {
-    setStatus(Status.CONNECTING);
-    await channel.setup();
-    await channel.subscribe(onReceive);
+    const scope = createScope();
+    const handshakeScope = createScope();
+    const nextConnection = { scope, handshakeScope };
 
-    if (canEncrypt()) {
-      setStatus(Status.ENCRYPTED);
+    handshakeScope.add(resend.stop);
+    handshakeScope.add(deadline.cancel);
+    scope.add(() => {
+      if (connection === nextConnection) connection = undefined;
+    });
+    scope.add(channel.teardown);
+    scope.add(handshakeScope.close);
+    connection = nextConnection;
 
-      return;
+    try {
+      setStatus(Status.CONNECTING);
+      await channel.setup();
+      const unsubscribe = await channel.subscribe(onReceive);
+
+      if (unsubscribe !== undefined) scope.add(unsubscribe);
+
+      if (canEncrypt()) {
+        await handshakeScope.close();
+        setStatus(Status.ENCRYPTED);
+
+        return;
+      }
+
+      setStatus(Status.READY);
+
+      if (!isHost) {
+        // Enter HANDSHAKE before publishing: the host's pubkey reply can
+        // arrive while the publish is still in flight.
+        setStatus(Status.HANDSHAKE);
+        startHandshakeDeadline();
+        await sendRepeating("handshake", {
+          type: "flash",
+          payload: {},
+          timestamp: Date.now(),
+        });
+      }
     }
-
-    setStatus(Status.READY);
-
-    if (!isHost) {
-      // Enter HANDSHAKE before publishing: the host's pubkey reply can
-      // arrive while the publish is still in flight.
-      setStatus(Status.HANDSHAKE);
-      await send("handshake", {
-        type: "flash",
-        payload: {},
-        timestamp: Date.now(),
-      });
+    catch (error) {
+      setStatus(Status.ERROR);
+      await scope.close();
+      throw error;
     }
   };
 
-  const teardown = async () => {
+  const teardown = () => {
     log("teardown");
-    await channel.teardown?.();
+
+    return connection?.scope.close() ?? Promise.resolve();
   };
 
   return make(emitter, {

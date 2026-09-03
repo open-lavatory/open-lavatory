@@ -25,11 +25,11 @@ import { Header } from "./Header.js";
 import { ModalSettings, type SettingsNavigationReference } from "./settings/index.js";
 import { UnknownState } from "./UnknownState.js";
 
-export interface ModalRootProps {
+export type ModalRootProperties = {
   onClose?: () => void;
   onStartConnection?: () => void;
   onCopy?: (uri: string) => void;
-}
+};
 
 export type ModalView = "start" | "settings" | "info";
 
@@ -55,7 +55,6 @@ const useModalState = () => {
 
 const useEscapeToClose = (handler: () => void) => {
   createEffect(() => {
-    // eslint-disable-next-line unicorn/consistent-function-scoping
     const keyHandler = (event: KeyboardEvent) => {
       if (event.key === "Escape") handler();
     };
@@ -72,6 +71,7 @@ const useDynamicDialogHeight = () => {
 
   const measureHeight = (
     targetElement?: HTMLElement | null,
+    // eslint-disable-next-line unicorn/consistent-boolean-name
     useScrollHeight = false,
   ) => {
     const node = targetElement || contentNode();
@@ -124,7 +124,9 @@ const useDynamicDialogHeight = () => {
   };
 };
 
-export const ModalRoot = (properties: { onClose: () => void; }) => {
+export const ModalRoot = (
+  properties: ModalRootProperties & { onClose: () => void; },
+) => {
   const { view: modalView, setView, copied, setCopied } = useModalState();
   const { uri } = useSession();
   const { provider } = useModalContext();
@@ -335,8 +337,8 @@ export const ModalRoot = (properties: { onClose: () => void; }) => {
   return (
     <div
       class="fixed inset-0 z-10000 flex animate-[bg-in_0.15s_ease-in-out] items-end justify-center md:items-center lg:p-4"
-      onMouseUp={(e) => {
-        if (e.target === e.currentTarget) properties.onClose();
+      onMouseUp={(event) => {
+        if (event.target === event.currentTarget) properties.onClose();
       }}
       role="presentation"
       data-openlv-modal-root
@@ -347,7 +349,7 @@ export const ModalRoot = (properties: { onClose: () => void; }) => {
     >
       <div
         class={classNames(
-          "relative w-full max-w-[400px] animate-[fade-in_0.15s_ease-in-out] transition-[height] duration-200 ease-out",
+          "relative w-full max-w-100 animate-[fade-in_0.15s_ease-in-out] transition-[height] duration-200 ease-out",
           shouldHideOverflow() || previousStatus()
             ? "overflow-hidden"
             : undefined,

@@ -3,7 +3,6 @@ import { useSession } from "../hooks/useSession.js";
 export const UnknownState = (properties: { state: unknown; }) => {
   const { uri, status } = useSession();
 
-  // biome-ignore lint/suspicious/noConsole: debug
   console.error("Unknown state:", {
     state: properties.state,
   });

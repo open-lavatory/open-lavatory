@@ -1,8 +1,3 @@
-
-/** biome-ignore-all lint/performance/noBarrelFile: package entrypoint */
-/** biome-ignore-all lint/performance/noReExportAll: package entrypoint */
-/** biome-ignore-all lint/suspicious/noConsole: temp */
-
 export { ModalRoot } from "./components/ModalRoot.js";
 export { default, OpenLVModalElement, type OpenLVModalElementProperties } from "./element.js";
 export type { ThemeConfig } from "./theme/index.js";

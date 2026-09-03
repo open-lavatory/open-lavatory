@@ -48,8 +48,8 @@ export const Input = (properties: InputProperties) => {
       placeholder={local.placeholder}
       aria-label={local.ariaLabel}
       readOnly={local.readOnly}
-      onInput={(e) => {
-        local.onChange?.(e.currentTarget.value);
+      onInput={(event) => {
+        local.onChange?.(event.currentTarget.value);
       }}
     />
   );
@@ -67,16 +67,14 @@ export const InputGroup = (properties: InputGroupProperties) => (
     <Label>{properties.label}</Label>
     <Index each={properties.values}>
       {(value, index) => {
-        // eslint-disable-next-line no-restricted-syntax
-        const id = properties.inputIdPrefix
+        const inputId = properties.inputIdPrefix
           ? `${properties.inputIdPrefix}-${index}`
           : undefined;
         const suffix = properties.values.length > 1 ? ` ${index + 1}` : "";
 
         return (
           <Input
-            // eslint-disable-next-line no-restricted-syntax
-            id={id}
+            id={inputId}
             value={value()}
             placeholder={properties.placeholder}
             ariaLabel={`${properties.label}${suffix}`}

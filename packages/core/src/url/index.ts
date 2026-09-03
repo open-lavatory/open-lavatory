@@ -1,3 +1,4 @@
+/* eslint-disable unicorn/no-declarations-before-early-exit */
 import type { SessionHandshakeParameters } from "../session.js";
 
 export const OPENLV_PROTOCOL_VERSION = 1;
@@ -41,12 +42,6 @@ export const decodeConnectionURL = (
       );
     }
 
-    const h = urlObject.searchParams.get("h") || "";
-    const k = urlObject.searchParams.get("k") || "";
-    const s = urlObject.searchParams.get("s") || undefined;
-
-    const p = urlObject.searchParams.get("p") || "mqtt";
-
     if (!sessionId) {
       throw new Error("Session ID is required in URL");
     }
@@ -57,6 +52,11 @@ export const decodeConnectionURL = (
         "Invalid session ID format: must be 16 URL-safe characters",
       );
     }
+
+    const h = urlObject.searchParams.get("h") || "";
+    const k = urlObject.searchParams.get("k") || "";
+    const s = urlObject.searchParams.get("s") || undefined;
+    const p = urlObject.searchParams.get("p") || "mqtt";
 
     if (!h) {
       throw new Error("Public key hash (h parameter) is required in URL");
@@ -94,6 +94,6 @@ export const decodeConnectionURL = (
     // Strip query string so handshake secrets (k) are not exposed in error messages
     const safeUrl = url.includes("?") ? url.slice(0, url.indexOf("?")) + "?[redacted]" : url;
 
-    throw new Error(`Failed to parse URL: ${safeUrl}. Original error: ${errorMessage}`);
+    throw new Error(`Failed to parse URL: ${safeUrl}. Original error: ${errorMessage}`, { cause: error });
   }
 };

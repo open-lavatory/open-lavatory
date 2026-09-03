@@ -82,7 +82,7 @@ export const webrtc: Transport = (
     const onIceGatheringStateChange = () => {
       log("iceGatheringState", connection?.iceGatheringState);
 
-      if (connection?.iceGatheringState === "complete" && localCandidates === 0) {
+      if (localCandidates === 0 && connection?.iceGatheringState === "complete") {
         // Deliberately not debug-gated: without a single local candidate the
         // connection can never establish, and the cause is environmental
         // (blocked UDP, no usable interface, unreachable STUN/TURN).
@@ -128,6 +128,27 @@ export const webrtc: Transport = (
       channel.addEventListener("open", onDataChannelOpen);
       channel.addEventListener("message", onDataChannelMessage);
       channel.addEventListener("close", onDataChannelClose);
+    };
+
+    const unhookChannel = (channel: RTCDataChannel) => {
+      channel.removeEventListener("open", onDataChannelOpen);
+      channel.removeEventListener("message", onDataChannelMessage);
+      channel.removeEventListener("close", onDataChannelClose);
+    };
+
+    const closeConnection = () => {
+      const activeConnection = connection;
+
+      connection = undefined;
+
+      if (!activeConnection) return;
+
+      activeConnection.onconnectionstatechange = null;
+      activeConnection.onicecandidate = null;
+      activeConnection.onicegatheringstatechange = null;
+      activeConnection.ondatachannel = null;
+      activeConnection.onnegotiationneeded = null;
+      activeConnection.close();
     };
 
     const handle = async (message: TransportMessage): Promise<void> => {
@@ -206,16 +227,12 @@ export const webrtc: Transport = (
       if (channel) {
         // Detach the close listener first: a deliberate teardown must not
         // surface as a transport error.
-        channel.removeEventListener("close", onDataChannelClose);
+        unhookChannel(channel);
         channel.close();
         channel = undefined;
       }
 
-      if (connection) {
-        connection.onconnectionstatechange = null;
-        connection.close();
-        connection = undefined;
-      }
+      closeConnection();
     };
 
     return {

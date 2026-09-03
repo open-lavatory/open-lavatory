@@ -4,7 +4,7 @@
  * A privacy-first, peer-to-peer protocol for connecting dApps with wallets
  * without relying on centralized infrastructure.
  */
-import { type Observable, observable } from "@openlv/core";
+import { createScope, type Observable, observable } from "@openlv/core";
 import type { DecryptionKey, EncryptionKey } from "@openlv/core/encryption";
 import { EventEmitter } from "eventemitter3";
 
@@ -31,7 +31,7 @@ export type TransportLayerParameters = {
   encrypt: EncryptionKey["encrypt"];
   decrypt: DecryptionKey["decrypt"];
   subsend: (message: TransportMessage) => Promise<void>;
-  onmessage: (message: { type: string; payload: object; messageId: string; }) => void;
+  onmessage: (message: { type: string; payload?: object | string; messageId: string; }) => void;
 };
 
 /**
@@ -115,6 +115,9 @@ export const createTransportBase = (
       emitter: internalEmitter,
       isHost,
     });
+    const scope = createScope();
+
+    scope.add(channel.teardown);
 
     const send = async (message: object) => {
       if (status.get() !== Status.CONNECTED)
@@ -126,19 +129,21 @@ export const createTransportBase = (
     };
 
     const setup = async () => {
-      setStatus(Status.CONNECTING);
-      await channel.setup();
-      setStatus(Status.READY);
-    };
-
-    const teardown = async () => {
-      await channel.teardown();
+      try {
+        setStatus(Status.CONNECTING);
+        await channel.setup();
+        setStatus(Status.READY);
+      }
+      catch (error) {
+        await scope.close();
+        throw error;
+      }
     };
 
     return {
       type: transportId,
       setup,
-      teardown,
+      teardown: scope.close,
       handle,
       send,
       emitter,
