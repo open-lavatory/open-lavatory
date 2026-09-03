@@ -31,30 +31,6 @@ export type JsonValue
     | JsonValue[]
     | { [key: string]: JsonValue; };
 
-const isJsonValue = (value: unknown): value is JsonValue => {
-  if (value === null) return true;
-
-  if (["boolean", "number", "string"].includes(typeof value)) return true;
-
-  if (Array.isArray(value)) return value.every(isJsonValue);
-
-  return typeof value === "object" && Object.values(value).every(isJsonValue);
-};
-
-const isInboundSessionMessage = (value: unknown): value is {
-  type: string;
-  messageId: string;
-  payload?: JsonValue;
-} =>
-  typeof value === "object"
-  && value !== null
-  && !Array.isArray(value)
-  && "type" in value
-  && typeof value.type === "string"
-  && "messageId" in value
-  && typeof value.messageId === "string"
-  && (!("payload" in value) || isJsonValue(value.payload));
-
 export type TLayerEventMap = {
   error: (reason?: string) => void;
 };
@@ -64,11 +40,7 @@ export type TransportLayerParameters = {
   encrypt: EncryptionKey["encrypt"];
   decrypt: DecryptionKey["decrypt"];
   subsend: (message: TransportMessage) => Promise<void>;
-  onmessage: (message: {
-    type: string;
-    messageId: string;
-    payload?: JsonValue;
-  }) => void;
+  onmessage: (message: object) => void;
 };
 
 /**
@@ -137,10 +109,10 @@ export const createTransportBase = (
       try {
         const data = await decrypt(message);
 
-        const parsed = JSON.parse(data);
+        const parsed: unknown = JSON.parse(data);
 
-        if (!isInboundSessionMessage(parsed)) {
-          throw new Error("Invalid session message");
+        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+          throw new Error("Invalid transport message");
         }
 
         onmessage(parsed);

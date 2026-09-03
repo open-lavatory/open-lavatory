@@ -56,6 +56,20 @@ export type SessionOptions = {
   info?: PeerInfo;
 };
 
+const isSessionMessage = (message: object): message is SessionMessage => {
+  if (
+    !("type" in message)
+    || !("messageId" in message)
+    || typeof message.type !== "string"
+    || typeof message.messageId !== "string"
+  ) {
+    return false;
+  }
+
+  return message.type === "ack"
+    || ((message.type === "request" || message.type === "response") && "payload" in message);
+};
+
 /**
  * an OpenLV Session
  *
@@ -194,6 +208,12 @@ export const createSession = async (
     onmessage: async (message) => {
       log("Session: received message from transport", message);
 
+      if (!isSessionMessage(message)) {
+        log("dropping invalid session message", message);
+
+        return;
+      }
+
       if (message["type"] === "request") {
         if (message.payload === undefined) {
           log("dropping request without payload", message);
@@ -230,7 +250,7 @@ export const createSession = async (
 
       if (message["type"] === "response" || message["type"] === "ack") {
         // Both acks and responses are forwarded to the send() correlator.
-        messages.emit("message", message as SessionMessage);
+        messages.emit("message", message);
       }
     },
     async subsend(message) {
