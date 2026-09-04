@@ -22,15 +22,6 @@ export const Status = {
 export type Status
   = (typeof Status)[keyof typeof Status];
 
-/** Any JSON-serializable value. */
-export type JsonValue
-  = | boolean
-    | null
-    | number
-    | string
-    | JsonValue[]
-    | { [key: string]: JsonValue; };
-
 export type TLayerEventMap = {
   error: (reason?: string) => void;
 };

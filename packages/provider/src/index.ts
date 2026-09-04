@@ -11,7 +11,7 @@ import {
   SessionStatus,
 } from "@openlv/session";
 import type { PeerInfo } from "@openlv/signaling";
-import type { JsonValue, TransportProtocol } from "@openlv/transport";
+import type { TransportProtocol } from "@openlv/transport";
 import { webrtc, type WebRTCConfig } from "@openlv/transport/webrtc";
 import { Provider as OxProvider } from "ox";
 import type { EventMap } from "ox/Provider";
@@ -117,7 +117,7 @@ export const createProvider = (
    * "Method not found" error so the wallet receives a proper response rather
    * than a no-op stub.
    */
-  const onMessage = async (message: JsonValue): Promise<JsonValue> => {
+  const onMessage = async (message: unknown): Promise<unknown> => {
     log("onMessage received from remote peer", message);
 
     // Emit on the session emitter so observers (e.g. modal) can react.

@@ -1,4 +1,3 @@
-import type { JsonValue } from "@openlv/transport";
 import { RpcResponse } from "ox";
 import type * as RpcSchema_ox from "ox/RpcSchema";
 import { z } from "zod";
@@ -17,9 +16,9 @@ const encode = (request: object, requestIdentifier: number) => ({
   ...request,
   jsonrpc: "2.0",
   ["id"]: requestIdentifier,
-} satisfies JsonValue);
+});
 
-const decode = (payload: JsonValue, requestIdentifier: number): JsonValue => {
+const decode = (payload: unknown, requestIdentifier: number): unknown => {
   const parsed = jsonRpcRequest.safeParse(payload);
 
   if (!parsed.success || parsed.data["id"] !== requestIdentifier) {
@@ -31,7 +30,7 @@ const decode = (payload: JsonValue, requestIdentifier: number): JsonValue => {
 
 /** Send a 1193 request to the wallet as JSON-RPC and decode the correlated response. */
 export const createWalletRpcClient = (
-  send: (payload: JsonValue) => Promise<JsonValue>,
+  send: (payload: unknown) => Promise<unknown>,
 ): {
   call: WalletRpcCall;
 } => {

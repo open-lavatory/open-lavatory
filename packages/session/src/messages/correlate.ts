@@ -1,4 +1,3 @@
-import type { JsonValue } from "@openlv/transport";
 import type { EventEmitter } from "eventemitter3";
 
 import type { SessionMessage } from "./index.js";
@@ -15,7 +14,7 @@ export const awaitCorrelatedResponse = (
   messageId: string,
   ackTimeoutMs: number,
   responseTimeoutMs: number,
-): Promise<JsonValue> => new Promise((resolve, reject) => {
+): Promise<unknown> => new Promise((resolve, reject) => {
   let isAckReceived = false;
   // eslint-disable-next-line prefer-const
   let ackTimer: ReturnType<typeof setTimeout> | undefined;
