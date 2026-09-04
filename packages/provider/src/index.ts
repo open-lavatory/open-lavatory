@@ -135,12 +135,6 @@ export const createProvider = (
     };
   };
 
-  const getAccounts = async (): Promise<Address[]> => {
-    accounts = [...await walletRpc.call({ method: "eth_accounts" })];
-
-    return accounts;
-  };
-
   /** Derive default link parameters from stored signaling settings. */
   const defaultLinkParameters = (): SessionLinkParameters | undefined => {
     const signaling = storage.getSettings().signaling ?? config?.signaling;
@@ -201,7 +195,7 @@ export const createProvider = (
 
       log("session linked");
 
-      accounts = await getAccounts();
+      accounts = [...await walletRpc.call({ method: "eth_accounts" })];
 
       const chainId = await walletRpc.call({ method: "eth_chainId" });
 
@@ -272,13 +266,12 @@ export const createProvider = (
           provider?.on("connect", onConnect);
           provider?.on("disconnect", onDisconnect);
         });
-
-        return await getAccounts();
+      }
+      else {
+        await start();
       }
 
-      await start();
-
-      return await getAccounts();
+      return [...await walletRpc.call({ method: "eth_accounts" })];
     }
 
     if (!session.get()) throw new Error(`Method ${request.method} not supported`);
@@ -299,7 +292,9 @@ export const createProvider = (
     ...oxEmitter,
     storage,
     request,
-    getAccounts,
+    getAccounts: async () => (
+      [...await walletRpc.call({ method: "eth_accounts" })]
+    ),
     createSession: start,
     closeSession,
     status,
