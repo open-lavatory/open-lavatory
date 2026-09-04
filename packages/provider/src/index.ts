@@ -231,23 +231,13 @@ export const createProvider = (
 
     if (request.method === "eth_chainId" && !session.get()) return "0x1";
 
-    if (request.method === "wallet_revokePermissions") {
-      await closeSession();
-
-      return;
-    }
+    if (request.method === "wallet_revokePermissions") return await closeSession();
 
     if (request.method === "eth_requestAccounts") {
       log("eth_requestAccounts");
 
-      let provider: OpenLVProvider | undefined;
-
-      if (oxProvider) {
-        provider = oxProvider as OpenLVProvider;
-      }
-
-      if (openModal && provider) {
-        await openModal(provider);
+      if (openModal) {
+        await openModal(oxProvider as OpenLVProvider);
 
         await new Promise<void>((resolve) => {
           const onConnect = () => {
@@ -259,12 +249,12 @@ export const createProvider = (
             resolve();
           };
           const cleanup = () => {
-            provider?.off("connect", onConnect);
-            provider?.off("disconnect", onDisconnect);
+            oxProvider.off("connect", onConnect);
+            oxProvider.off("disconnect", onDisconnect);
           };
 
-          provider?.on("connect", onConnect);
-          provider?.on("disconnect", onDisconnect);
+          oxProvider.on("connect", onConnect);
+          oxProvider.on("disconnect", onDisconnect);
         });
       }
       else {
