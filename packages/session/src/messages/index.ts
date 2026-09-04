@@ -6,13 +6,13 @@ export type SessionMessage
 export type SessionMessageRequest = {
   type: "request";
   messageId: string;
-  payload: object | string;
+  payload: unknown;
 };
 
 export type SessionMessageResponse = {
   type: "response";
   messageId: string;
-  payload: object | string;
+  payload: unknown;
 };
 
 export type SessionMessageAck = {

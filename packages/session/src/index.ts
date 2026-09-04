@@ -35,6 +35,7 @@ import type { SessionMessage } from "./messages/index.js";
 import { log } from "./utils/log.js";
 
 export { loadSignaling, loadTransport } from "./dynamic.js";
+export type { SessionMessage } from "./messages/index.js";
 
 // `peerInfo` is part of the session's surface, so consumers must be able to
 // name its type without reaching into @openlv/signaling.
@@ -54,6 +55,20 @@ export type SessionOptions = {
   info?: PeerInfo;
 };
 
+const isSessionMessage = (message: object): message is SessionMessage => {
+  if (
+    !("type" in message)
+    || !("messageId" in message)
+    || typeof message.type !== "string"
+    || typeof message.messageId !== "string"
+  ) {
+    return false;
+  }
+
+  return message.type === "ack"
+    || ((message.type === "request" || message.type === "response") && "payload" in message);
+};
+
 /**
  * an OpenLV Session
  *
@@ -67,7 +82,11 @@ export type Session = {
   getHandshakeParameters(): SessionHandshakeParameters;
   connect(): Promise<void>;
   close(): Promise<void>;
-  send(message: object, ackTimeout?: number, responseTimeout?: number): Promise<unknown>;
+  send(
+    message: unknown,
+    ackTimeout?: number,
+    responseTimeout?: number,
+  ): Promise<unknown>;
   emitter: EventEmitter<SessionEvents>;
   _internal: {
     signal: SignalingLayer;
@@ -84,7 +103,7 @@ export type Session = {
 export const createSession = async (
   initParameters: SessionLinkParameters,
   transportLayers: TransportLayerFunction[],
-  onMessage: (message: object) => Promise<object | string>,
+  onMessage: (message: unknown) => Promise<unknown>,
   options?: SessionOptions,
 ): Promise<Session> => {
   if (transportLayers.length === 0) {
@@ -185,10 +204,22 @@ export const createSession = async (
     },
     decrypt,
     isHost,
-    onmessage: async (message: { type: string; payload: object; messageId: string; }) => {
+    onmessage: async (message) => {
       log("Session: received message from transport", message);
 
+      if (!isSessionMessage(message)) {
+        log("dropping invalid session message", message);
+
+        return;
+      }
+
       if (message["type"] === "request") {
+        if (message.payload === undefined) {
+          log("dropping request without payload", message);
+
+          return;
+        }
+
         const messageId = message["messageId"] as string;
 
         try {
@@ -198,9 +229,9 @@ export const createSession = async (
 
           // Notify observers before processing (e.g. wallet UI can show a
           // pending indicator before the handler resolves).
-          emitter.emit("request", message["payload"] as object);
+          emitter.emit("request", message["payload"]);
 
-          const data = await onMessage(message["payload"] as object)
+          const data = await onMessage(message["payload"])
             // A throwing handler must still answer, otherwise the peer waits
             // out its full response timeout.
             .catch(() => ({ error: { code: -32_603, message: "Internal error" } }));
@@ -216,9 +247,9 @@ export const createSession = async (
         }
       }
 
-      if (message["type"] === "response" || message["type"] === "ack") {
+      else if (message["type"] === "response" || message["type"] === "ack") {
         // Both acks and responses are forwarded to the send() correlator.
-        messages.emit("message", message as SessionMessage);
+        messages.emit("message", message);
       }
     },
     async subsend(message) {
@@ -412,7 +443,7 @@ export const createSession = async (
       };
     },
     async send(
-      message: object,
+      message: unknown,
       ackTimeout: number = 10_000,
       responseTimeout: number = 60 * 60_000,
     ) {
@@ -446,7 +477,7 @@ export const createSession = async (
  */
 export const connectSession = async (
   connectionUrl: string,
-  onMessage: (message: object) => Promise<object | string>,
+  onMessage: (message: unknown) => Promise<unknown>,
   transports: TransportLayerFunction[],
   options?: SessionOptions,
 ): Promise<Session> => {

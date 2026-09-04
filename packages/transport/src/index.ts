@@ -31,7 +31,7 @@ export type TransportLayerParameters = {
   encrypt: EncryptionKey["encrypt"];
   decrypt: DecryptionKey["decrypt"];
   subsend: (message: TransportMessage) => Promise<void>;
-  onmessage: (message: { type: string; payload: object; messageId: string; }) => void;
+  onmessage: (message: object) => void;
 };
 
 /**
@@ -100,7 +100,13 @@ export const createTransportBase = (
       try {
         const data = await decrypt(message);
 
-        onmessage(JSON.parse(data) as { type: string; payload: object; messageId: string; });
+        const parsed: unknown = JSON.parse(data);
+
+        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+          throw new Error("Invalid transport message");
+        }
+
+        onmessage(parsed);
       }
       catch (error) {
         log("dropping undecryptable transport message", error);

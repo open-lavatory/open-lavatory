@@ -256,15 +256,24 @@ export const attachTryItSession = (
 
 export const shimWalletOnMessage = (
   role: TryItRole,
-  handler: (message: object) => Promise<object | string>,
+  handler: (message: object) => Promise<unknown>,
   actions: TryItSessionActions,
 ) => async (message: object) => {
   const request = message as { method?: string; };
+  const identifier
+    = "id" in message && typeof message["id"] === "number"
+      ? message["id"]
+      : null;
 
   logRpc(actions, role, "in", message, request.method);
 
   try {
-    const response = await handler(message);
+    const result = await handler(message);
+    const response = {
+      jsonrpc: "2.0",
+      ["id"]: identifier,
+      result,
+    };
 
     logRpc(actions, role, "out", response, request.method);
 
@@ -279,7 +288,20 @@ export const shimWalletOnMessage = (
       request.method,
       true,
     );
-    throw error;
+
+    return {
+      jsonrpc: "2.0",
+      ["id"]: identifier,
+      error: {
+        code: typeof error === "object"
+          && error !== null
+          && "code" in error
+          && typeof error.code === "number"
+          ? error.code
+          : -32_603,
+        message: error instanceof Error ? error.message : "Internal error",
+      },
+    };
   }
 };
 

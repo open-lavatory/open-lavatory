@@ -42,19 +42,29 @@ export const useWalletSession = () => {
             method?: string;
             params?: unknown;
           };
+          const identifier
+            = typeof message === "object"
+              && message !== null
+              && "id" in message
+              && typeof message["id"] === "number"
+              ? message["id"]
+              : null;
+          let result: unknown;
 
           if (
             req.method === "eth_accounts"
             || req.method === "eth_requestAccounts"
           ) {
-            return [DUMMY_ADDRESS];
+            result = [DUMMY_ADDRESS];
+          }
+          else if (req.method === "personal_sign") {
+            result = DUMMY_SIGNATURE;
+          }
+          else {
+            result = "Unsupported method";
           }
 
-          if (req.method === "personal_sign") {
-            return DUMMY_SIGNATURE;
-          }
-
-          return "Unsupported method";
+          return { jsonrpc: "2.0", ["id"]: identifier, result };
         },
         [webrtc()],
       );
