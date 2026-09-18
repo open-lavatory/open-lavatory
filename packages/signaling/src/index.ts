@@ -42,6 +42,8 @@ export type SignalingHooks = {
   encrypt: (message: string) => Promise<string>;
   // our public key
   publicKey: EncryptionKey;
+  // Persisted peer key to authenticate a resumed session.
+  expectedPeerKey?: EncryptionKey;
   canEncrypt: () => boolean;
 };
 
@@ -80,6 +82,7 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
     h,
     k: handshakeKey,
     publicKey,
+    expectedPeerKey,
     isHost,
   } = hooks;
 
@@ -127,6 +130,13 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
 
             return;
           }
+
+          if (expectedPeerKey && receivedKey.toString() !== expectedPeerKey.toString()) {
+            setStatus(Status.ERROR);
+            log("Received host public key does not match saved session state");
+
+            return;
+          }
         }
         catch {
           setStatus(Status.ERROR);
@@ -154,6 +164,13 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
         { msg: { type: "pubkey" }, isHost: true, status: Status.HANDSHAKE },
         async ({ msg: { payload: messagePayload } }) => {
           const receivedKey = await parseEncryptionKey(messagePayload.publicKey);
+
+          if (expectedPeerKey && receivedKey.toString() !== expectedPeerKey.toString()) {
+            setStatus(Status.ERROR);
+            log("Received client public key does not match saved session state");
+
+            return;
+          }
 
           if (!setPeerKey(receivedKey)) return;
 

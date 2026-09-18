@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { generateKeyPair, parseEncryptionKey } from "./asymmetric.js";
+import { generateKeyPair, parseDecryptionKey, parseEncryptionKey } from "./asymmetric.js";
 
 describe("Asymmetric encryption", () => {
   test("should generate a key pair", async () => {
@@ -33,6 +33,17 @@ describe("Asymmetric encryption", () => {
     const decodedParsedEncrypted = await decryptionKey.decrypt(parsedEncrypted);
 
     expect(decodedParsedEncrypted).toBe(message);
+  });
+
+  test("should decrypt with a restored private key", async () => {
+    const { encryptionKey, decryptionKey } = await generateKeyPair();
+    const restoredKey = await parseDecryptionKey(decryptionKey.toString());
+
+    await expect(restoredKey.decrypt(await encryptionKey.encrypt("test"))).resolves.toBe("test");
+  });
+
+  test("should reject a malformed restored private key", async () => {
+    await expect(parseDecryptionKey("AQI=")).rejects.toThrow("Private key must be 32 bytes");
   });
 
   test("should be able to encrypt large blob", async () => {

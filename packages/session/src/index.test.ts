@@ -66,4 +66,46 @@ describe("Session", () => {
 
     expect(response).toEqual({ result: "success" });
   });
+
+  test("Should resume a saved session", { timeout: 30_000 }, async () => {
+    const sessionA = await createSession(
+      {
+        sessionId: "resumingsession1",
+        p: "ntfy",
+        s: "https://ntfy.sh/",
+      },
+      [webrtc()],
+      async () => ({ result: "host" }),
+    );
+
+    await sessionA.connect();
+
+    const sessionB = await connectSession(
+      encodeConnectionURL(sessionA.getHandshakeParameters()),
+      async () => ({ result: "client" }),
+      [webrtc()],
+    );
+
+    await sessionB.connect();
+    await Promise.all([sessionA, sessionB].map(
+      session => session.status.until(current => current === SessionStatus.CONNECTED),
+    ));
+
+    const savedA = sessionA.getConnectionParameters();
+    const savedB = sessionB.getConnectionParameters();
+
+    await Promise.all([sessionA.close(), sessionB.close()]);
+
+    const resumedA = await createSession(savedA, [webrtc()], async () => ({ result: "host" }));
+    const resumedB = await createSession(savedB, [webrtc()], async () => ({ result: "client" }));
+
+    await resumedA.connect();
+    await resumedB.connect();
+    await Promise.all([resumedA, resumedB].map(
+      session => session.status.until(current => current === SessionStatus.CONNECTED),
+    ));
+
+    await expect(resumedA.send({ method: "eth_chainId" })).resolves.toEqual({ result: "client" });
+    await Promise.all([resumedA.close(), resumedB.close()]);
+  });
 });

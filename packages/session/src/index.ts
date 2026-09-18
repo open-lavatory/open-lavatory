@@ -3,6 +3,7 @@ import {
   type Observable,
   observable,
   OPENLV_PROTOCOL_VERSION,
+  type SessionConnectionParameters,
   type SessionHandshakeParameters,
   type SessionLinkParameters,
 } from "@openlv/core";
@@ -65,6 +66,7 @@ export type Session = {
   error: Observable<string | undefined>;
   peerInfo: Observable<PeerInfo | undefined>;
   getHandshakeParameters(): SessionHandshakeParameters;
+  getConnectionParameters(): SessionConnectionParameters;
   connect(): Promise<void>;
   close(): Promise<void>;
   send(message: object, ackTimeout?: number, responseTimeout?: number): Promise<unknown>;
@@ -105,8 +107,10 @@ export const createSession = async (
       : generateSessionId();
   const {
     encryptionKey,
-    decryptionKey: { decrypt },
+    decryptionKey,
+    relyingEncryptionKey,
   } = await initEncryptionKeys(initParameters);
+  const { decrypt } = decryptionKey;
   const handshakeKey
     = "k" in initParameters
       ? await deriveSymmetricKey(initParameters.k)
@@ -155,6 +159,7 @@ export const createSession = async (
     },
     decrypt,
     publicKey: encryptionKey,
+    expectedPeerKey: relyingEncryptionKey,
     k: handshakeKey,
     capabilities,
     isHost,
@@ -409,6 +414,25 @@ export const createSession = async (
         k: handshakeKey.toString(),
         p: protocol,
         s: server,
+      };
+    },
+    getConnectionParameters() {
+      const relyingPublicKey = signal.peerKey.get();
+
+      if (!relyingPublicKey) {
+        throw new Error("Cannot save session before the peer key is exchanged");
+      }
+
+      return {
+        version: OPENLV_PROTOCOL_VERSION,
+        sessionId,
+        h: hash,
+        k: handshakeKey.toString(),
+        p: protocol,
+        s: server,
+        relyingPublicKey: relyingPublicKey.toString(),
+        encryptionKey: encryptionKey.toString(),
+        decryptionKey: decryptionKey.toString(),
       };
     },
     async send(

@@ -92,6 +92,12 @@ export const parseEncryptionKey = async (
 export const createDecryptionKey = async (
   secretKey: Uint8Array,
 ): Promise<DecryptionKey> => {
+  if (secretKey.length !== PUBLIC_KEY_BYTES) {
+    throw new Error(
+      `Private key must be ${PUBLIC_KEY_BYTES} bytes, got ${secretKey.length}`,
+    );
+  }
+
   const serializedSecretKey = toBase64(secretKey);
 
   return {
@@ -113,6 +119,10 @@ export const createDecryptionKey = async (
   };
 };
 
+export const parseDecryptionKey = async (
+  serializedKey: string,
+): Promise<DecryptionKey> => await createDecryptionKey(fromBase64(serializedKey));
+
 export type EncKeypair = {
   encryptionKey: EncryptionKey;
   decryptionKey: DecryptionKey;
@@ -131,20 +141,23 @@ export const generateKeyPair = async (): Promise<EncKeypair> => {
 export const initEncryptionKeys = async (
   initParameters?: SessionLinkParameters,
 ): Promise<EncKeypair & { relyingEncryptionKey?: EncryptionKey; }> => {
-  const { encryptionKey, decryptionKey } = await generateKeyPair();
+  if (
+    initParameters
+    && "encryptionKey" in initParameters
+    && "decryptionKey" in initParameters
+    && "relyingPublicKey" in initParameters
+  ) {
+    return {
+      encryptionKey: await parseEncryptionKey(initParameters.encryptionKey),
+      decryptionKey: await parseDecryptionKey(initParameters.decryptionKey),
+      relyingEncryptionKey: await parseEncryptionKey(initParameters.relyingPublicKey),
+    };
+  }
 
-  // Note: the peer key is deliberately left undefined until discovered --
-  // falling back to our own key would silently encrypt to ourselves.
-  const publicKey
-    = initParameters && "publicKey" in initParameters
-      ? (initParameters.publicKey as string)
-      : undefined;
+  const { encryptionKey, decryptionKey } = await generateKeyPair();
 
   return {
     encryptionKey,
     decryptionKey,
-    relyingEncryptionKey: publicKey
-      ? await parseEncryptionKey(publicKey)
-      : undefined,
   };
 };
