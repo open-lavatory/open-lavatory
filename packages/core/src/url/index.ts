@@ -45,7 +45,7 @@ export const decodeConnectionURL = (
     const k = urlObject.searchParams.get("k") || "";
     const s = urlObject.searchParams.get("s") || undefined;
 
-    const p = urlObject.searchParams.get("p") || "mqtt";
+    const p = urlObject.searchParams.get("p") || "";
 
     if (!sessionId) {
       throw new Error("Session ID is required in URL");

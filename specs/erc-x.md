@@ -1,7 +1,7 @@
 ---
 title: open-lavatory Wallet-Dapp Transport Layer
 description: A wire protocol for establishing wallet-dapp EIP-1193-compatible transport.
-author: TBD
+author: Luc van Kampen (@lucemans) <luc.van.kampen@ethereum.org>
 discussions-to: TBD
 status: Draft
 type: Standards Track
@@ -14,7 +14,7 @@ requires: 1193
 
 This specification defines `open-lavatory`, hereafter `openlv`, an Ethereum wallet-dapp wire protocol for session establishment and transport of EIP-1193 messages.
 `openlv` standardizes a bootstrap URI, encrypted signaling frames, transport negotiation messages, a correlated session message envelope, and an optional session resumption model.
-It builds upon the wallet pairing flow introduced by [EIP-1328](./eip-1328.md).
+It builds upon the wallet pairing flow introduced by [ERC-1328](./eip-1328.md).
 
 ## Motivation
 
@@ -26,6 +26,8 @@ It offers an open and interoperable approach to wallet connectivity while keepin
 
 ## Specification
 
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in RFC 2119 and RFC 8174.
+
 ### Overview
 
 `openlv` operates in five steps:
@@ -34,7 +36,7 @@ It offers an open and interoperable approach to wallet connectivity while keepin
 2. That URI is transferred out-of-band to a joining peer.
 3. Both peers use shared signaling infrastructure to exchange encrypted bootstrap messages and negotiate transport.
 4. The peers establish a direct transport.
-5. EIP-1193 request and response messages flow over the established transport.
+5. Application messages, such as EIP-1193 requests and responses, flow over the established transport.
 
 Peers are asymmetric only during bootstrap and signaling.
 After transport establishment, both parties are simply peers and may send requests and responses bidirectionally.
@@ -54,7 +56,7 @@ Version 1 has two communication layers.
 - **Transport layer**: used after negotiation for ordinary application traffic.
 
 The signaling layer exists only to establish secure peer communication.
-After the transport layer is established, EIP-1193 messages are carried using the session envelope described below.
+After the transport layer is established, application messages, such as EIP-1193 requests, are carried in the session envelope described below.
 
 ### Session URI
 
@@ -69,8 +71,8 @@ All fields are REQUIRED for deterministic interoperability.
 - `sessionId`: 16 URL-safe characters matching `^[A-Za-z0-9_-]{16}$`
 - `h`: 16 lowercase hexadecimal characters matching `^[0-9a-f]{16}$`
 - `k`: 32 lowercase hexadecimal characters matching `^[0-9a-f]{32}$`
-- `p`: signaling protocol identifier
-- `s`: signaling server locator
+- `p`: signaling protocol identifier, e.g. `mqtt` or `ntfy`
+- `s`: URL-encoded signaling server URL
 
 `sessionId` identifies the shared signaling namespace.
 
@@ -80,8 +82,9 @@ Implementations MAY expose local defaults, but interoperable peers MUST NOT assu
 
 `k` provides the shared symmetric key material used for the initial signaling stage before peer public keys have been exchanged.
 
-`h` provides a short hash hint for the advertising peer public key.
-In version 1, `h` is derived by serializing the advertising peer encryption public key as a string, hashing the bytes with SHA-256, lower-hex encoding the digest, and truncating to the first 16 hexadecimal characters.
+`h` commits the URI to the advertising peer public key.
+`h` is the first 16 characters of the lowercase hex encoding of the SHA-256 digest of the 32-byte X25519 public key.
+The joining peer MUST compute `h` from the public key it receives in `pubkey`, and MUST abort the handshake if the result differs from the `h` in the URI.
 
 In the current interoperable behavior, `k` is hex-decoded and imported as symmetric handshake key material.
 
@@ -134,8 +137,8 @@ Receivers MUST ignore frames where `recipient` does not match the local role.
 After decryption, a signaling payload MUST be valid JSON containing:
 
 - `type`: one of `flash`, `pubkey`, `capabilities`, or `data`
-- `payload`
-- `timestamp`
+- `payload`: defined below based on `type`.
+- `timestamp`: time in milliseconds since Unix epoch.
 
 The signaling message types have the following meanings:
 
@@ -158,7 +161,11 @@ The `capabilities` payload is:
 ```
 
 - `transports`: REQUIRED, a non-empty array of transport identifiers in preference order. Version 1 defines `wrtc` (WebRTC) and reserves `ws` (relayed WebSocket). Receivers MUST skip unknown identifiers rather than reject the message.
-- `info`: OPTIONAL self-description shown in the other peer's UI. When present, `identity` (a reverse-DNS application identifier) and `name` are REQUIRED; `icon` is OPTIONAL and MAY be a data URI or an image URL. Receivers MUST enforce size limits and MUST treat `info` as untrusted display data: an implementation that renders or fetches `icon` is responsible for validating it first. Senders MUST keep `icon` within the size limits, which are chosen to survive relay message limits.
+- `info`: OPTIONAL self-description shown in the other peer's UI. When present, `identity` (a reverse-DNS application identifier) and `name` are REQUIRED; `icon` is OPTIONAL and MAY be a data URI or an image URL. 
+ 
+Receivers MUST treat `info` as untrusted display data: an implementation that renders or fetches `icon` is responsible for validating it first.
+
+Relays cap message size, so `icon` SHOULD NOT exceed 8192 characters, a limit that testing with common relays showed to be safe, and implementations SHOULD apply sane limits to the other fields.
 
 ### Handshake Sequence
 
@@ -199,23 +206,25 @@ For the `wrtc` transport, version 1 standardizes carriage of WebRTC negotiation 
 { "type": "candidate", "payload": "<candidate-json-string>" }
 ```
 
+The advertising peer sends the `offer` with its available transports, the joining peer replies with a decisive `answer`.
+
+When a protocol has negotiated a transport, both peers send `candidate` messages as they discover them.
+
 ### Session Envelope
 
 Once transport is established, peers exchange session messages over it.
 A session message is a JSON object with a string member `type`.
-Version 1 defines the types `request`, `ack`, `response`, `notify`, and `close`.
+Version 1 defines the types `request`, `ack`, `response`, and `close`.
 
 A receiver MUST ignore a session message whose `type` it does not recognise.
 
 The `payload` member of a session message is an opaque JSON value.
 The session layer MUST NOT inspect or modify `payload`.
 The application that uses the session defines what `payload` contains.
-The EIP-1193 Payloads section defines `payload` for EIP-1193 traffic.
+For EIP-1193 traffic, each `payload` is an EIP-1193 request or response, carried unchanged.
 
 The examples in this section carry EIP-1193 payloads.
 These payloads only illustrate the envelope, and any JSON value can take their place.
-
-#### Request, ack, and response
 
 Either peer MAY send a `request`.
 A `request` carries a `messageId` and a `payload`:
@@ -245,11 +254,14 @@ A sender MUST ignore an `ack` or `response` whose `messageId` does not match one
 A sender SHOULD fail a request that receives no `ack` within a bounded interval.
 The `ack` separates a lost message from a slow user, so a sender SHOULD NOT apply a short deadline after the `ack` arrives.
 
+Either peer MAY end the session by sending `{ "type": "close" }` before it closes the transport.
+A `close` has no `messageId` and is not acknowledged.
+After a peer sends or receives `close`, it MUST NOT send further session messages and MUST fail its open requests.
+
 ### Session Resumption
 
-Wallets and dapps MAY persist session state locally to support later resumption.
-
-Persisted state MAY include `sessionId`, `p`, `s`, `k`, local key material, peer public key, and transport configuration.
+Peers MAY persist session state locally to support later resumption.
+Persisted state SHOULD include `sessionId`, `p`, `s`, `k`, session X25519 key pair, peer public key, and transport configuration.
 
 Resumption in version 1 means re-invoking communication using prior local session material.
 It does not guarantee transport continuity.
@@ -343,6 +355,11 @@ const session = await connectSession(
 ## Security Considerations
 
 The session URI contains sensitive bootstrap material and MUST be handled as a secret until the handshake completes.
+
+Session establishment is first-come-first-serve; a shoulder-surfing attacker could frontrun QR code scanning but not man-in-the-middle; this would immediately be noticable to the user as their device would fail to connect.
+
+An attacker who can replace the URI shown is assumed to already have control over the dApp and is therefore out of scope of this specification.
+
 Implementations MUST use fresh randomness for IVs, nonces, ephemeral keys, and generated session identifiers.
 
 Signaling infrastructure is untrusted and can observe metadata such as timing, size, and namespace.
