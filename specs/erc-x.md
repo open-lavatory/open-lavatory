@@ -201,25 +201,49 @@ For the `wrtc` transport, version 1 standardizes carriage of WebRTC negotiation 
 
 ### Session Envelope
 
-Once transport is established, ordinary application traffic uses the following envelope:
+Once transport is established, peers exchange session messages over it.
+A session message is a JSON object with a string member `type`.
+Version 1 defines the types `request`, `ack`, `response`, `notify`, and `close`.
+
+A receiver MUST ignore a session message whose `type` it does not recognise.
+
+The `payload` member of a session message is an opaque JSON value.
+The session layer MUST NOT inspect or modify `payload`.
+The application that uses the session defines what `payload` contains.
+The EIP-1193 Payloads section defines `payload` for EIP-1193 traffic.
+
+The examples in this section carry EIP-1193 payloads.
+These payloads only illustrate the envelope, and any JSON value can take their place.
+
+#### Request, ack, and response
+
+Either peer MAY send a `request`.
+A `request` carries a `messageId` and a `payload`:
 
 ```json
-{ "type": "request", "messageId": "<id>", "payload": { "method": "eth_requestAccounts", "params": [] } }
+{ "type": "request", "messageId": "5b0e6f3c...", "payload": { "jsonrpc": "2.0", "id": 1, "method": "eth_requestAccounts" } }
 ```
+
+`messageId` is a string.
+It MUST be unique among the requests that its sender sends in the session.
+Implementations SHOULD use a random UUID.
+
+The receiver SHOULD send `ack` as soon as it receives a `request`, before any user interaction:
 
 ```json
-{ "type": "ack", "messageId": "<id>" }
+{ "type": "ack", "messageId": "5b0e6f3c..." }
 ```
+
+The receiver MUST send exactly one `response` for each `request`, with the same `messageId`:
 
 ```json
-{ "type": "response", "messageId": "<id>", "payload": ["0x1234567890abcdef1234567890abcdef12345678"] }
+{ "type": "response", "messageId": "5b0e6f3c...", "payload": { "jsonrpc": "2.0", "id": 1, "result": ["0x1234567890abcdef1234567890abcdef12345678"] } }
 ```
 
-`messageId` MUST uniquely identify a request within the active session.
-A receiver SHOULD send `ack` immediately on receipt of a request, before the (possibly user-interactive) handler produces the `response`.
-A `response.messageId` MUST match a prior request.
-All session `payload` values are EIP-1193 request or response payloads.
-This specification transports those payloads, and does not redefine its semantics.
+A sender MUST accept a `response` that arrives without a prior `ack`.
+A sender MUST ignore an `ack` or `response` whose `messageId` does not match one of its open requests.
+A sender SHOULD fail a request that receives no `ack` within a bounded interval.
+The `ack` separates a lost message from a slow user, so a sender SHOULD NOT apply a short deadline after the `ack` arrives.
 
 ### Session Resumption
 
