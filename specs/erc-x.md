@@ -179,35 +179,6 @@ After the handshake, signaling application payloads MUST be carried in `data` me
 
 Both `transports` lists are preference-ordered. The selected transport is the first entry in the advertising peer's list that also appears in the joining peer's list. Both peers compute this independently once they hold both lists; no additional confirmation message is exchanged. If the intersection is empty, the session MUST fail with a no-common-transport error.
 
-### Cryptography
-
-`openlv` uses a two-stage encryption model during session establishment.
-
-The initial signaling stage uses the pre-shared key `k` from the session URI.
-This key is used only before peers have exchanged public keys, and allows the first bootstrap messages to be encrypted over untrusted signaling infrastructure.
-For current interoperability, the 32-character hexadecimal `k` value is hex-decoded to 16 bytes and imported as an AES-GCM key.
-
-Handshake encryption uses the Web Crypto API AES-GCM implementation with a fresh 12-byte random IV per message.
-The serialized encrypted payload is:
-
-```text
-base64(iv || ciphertext)
-```
-
-After public keys are exchanged, signaling switches to peer public-key encryption.
-Each peer generates an asymmetric encryption keypair and encrypts to the other peer's public key.
-In the current implementation, this mechanism uses X25519 key agreement (`@noble/curves`) and XSalsa20-Poly1305 authenticated encryption (`@noble/ciphers`), with an ephemeral sender key for each encrypted message.
-
-Peer-encrypted payloads are serialized as:
-
-```text
-base64(ephemeralPublicKey || nonce || ciphertext)
-```
-
-This same peer-key mechanism is also used to protect payloads exchanged through the negotiated transport layer.
-
-These cryptographic mechanisms define the current interoperable behavior, but future revisions MAY define alternative suites or explicit cryptographic negotiation.
-
 ### Transport Negotiation
 
 After the handshake selects a transport, peers negotiate the direct connection through the signaling layer.
@@ -259,6 +230,35 @@ Persisted state MAY include `sessionId`, `p`, `s`, `k`, local key material, peer
 Resumption in version 1 means re-invoking communication using prior local session material.
 It does not guarantee transport continuity.
 Implementations MAY need to reconnect to the signaling infrastructure, re-establish peer public-key signaling, and renegotiate transport.
+
+### Cryptography
+
+`openlv` uses a two-stage encryption model during session establishment.
+
+The initial signaling stage uses the pre-shared key `k` from the session URI.
+This key is used only before peers have exchanged public keys, and allows the first bootstrap messages to be encrypted over untrusted signaling infrastructure.
+For current interoperability, the 32-character hexadecimal `k` value is hex-decoded to 16 bytes and imported as an AES-GCM key.
+
+Handshake encryption uses the Web Crypto API AES-GCM implementation with a fresh 12-byte random IV per message.
+The serialized encrypted payload is:
+
+```text
+base64(iv || ciphertext)
+```
+
+After public keys are exchanged, signaling switches to peer public-key encryption.
+Each peer generates an asymmetric encryption keypair and encrypts to the other peer's public key.
+In the current implementation, this mechanism uses X25519 key agreement (`@noble/curves`) and XSalsa20-Poly1305 authenticated encryption (`@noble/ciphers`), with an ephemeral sender key for each encrypted message.
+
+Peer-encrypted payloads are serialized as:
+
+```text
+base64(ephemeralPublicKey || nonce || ciphertext)
+```
+
+This same peer-key mechanism is also used to protect payloads exchanged through the negotiated transport layer.
+
+These cryptographic mechanisms define the current interoperable behavior, but future revisions MAY define alternative suites or explicit cryptographic negotiation.
 
 ## Rationale
 
