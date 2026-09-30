@@ -30,8 +30,12 @@ import { EventEmitter } from "eventemitter3";
 
 import { loadSignaling } from "./dynamic.js";
 import type { SessionEvents } from "./events.js";
-import { awaitCorrelatedResponse } from "./messages/correlate.js";
-import type { SessionMessage } from "./messages/index.js";
+import { awaitCorrelatedResponse, type CorrelationEvents } from "./messages/correlate.js";
+import type {
+  SessionMessage,
+  SessionMessageAck,
+  SessionMessageResponse,
+} from "./messages/index.js";
 import { log } from "./utils/log.js";
 
 export { loadSignaling, loadTransport } from "./dynamic.js";
@@ -98,7 +102,7 @@ export const createSession = async (
   }
 
   const emitter = new EventEmitter<SessionEvents>();
-  const messages = new EventEmitter<{ message: SessionMessage; }>();
+  const messages = new EventEmitter<CorrelationEvents>();
   const sessionId
     = "sessionId" in initParameters
       ? initParameters.sessionId
@@ -134,6 +138,12 @@ export const createSession = async (
     log("updateStatus", newStatus);
     setStatus(newStatus);
   };
+
+  status.subscribe((current) => {
+    if (current === SessionStatus.DISCONNECTED) {
+      messages.emit("ended", lastError.get() ?? "Session closed");
+    }
+  });
 
   const signalLayer = await loadSignaling(protocol);
   const signaling = await signalLayer({
@@ -188,6 +198,12 @@ export const createSession = async (
     onmessage: async (message: { type: string; payload: object; messageId: string; }) => {
       log("Session: received message from transport", message);
 
+      if (message["type"] === "close") {
+        await teardown();
+
+        return;
+      }
+
       if (message["type"] === "request") {
         const messageId = message["messageId"] as string;
 
@@ -218,7 +234,7 @@ export const createSession = async (
 
       if (message["type"] === "response" || message["type"] === "ack") {
         // Both acks and responses are forwarded to the send() correlator.
-        messages.emit("message", message as SessionMessage);
+        messages.emit("message", message as SessionMessageAck | SessionMessageResponse);
       }
     },
     async subsend(message) {
@@ -374,6 +390,19 @@ export const createSession = async (
 
   let unsubscribeSignalStatus: (() => void) | undefined;
 
+  const teardown = async () => {
+    clearLinkDeadline();
+    signal.off("message", onSignalMessage);
+    unsubscribeSignalStatus?.();
+    unsubscribeTransportStatus?.();
+    transport?.emitter.off("error", onTransportError);
+    await Promise.all([
+      transport?.teardown(),
+      signal.teardown(),
+    ]);
+    updateStatus(SessionStatus.DISCONNECTED);
+  };
+
   return {
     connect: async () => {
       updateStatus(SessionStatus.SIGNALING);
@@ -386,16 +415,9 @@ export const createSession = async (
     },
     async close() {
       log("session teardown");
-      clearLinkDeadline();
-      signal.off("message", onSignalMessage);
-      unsubscribeSignalStatus?.();
-      unsubscribeTransportStatus?.();
-      transport?.emitter.off("error", onTransportError);
-      await Promise.all([
-        transport?.teardown(),
-        signal.teardown(),
-      ]);
-      updateStatus(SessionStatus.DISCONNECTED);
+      await transport?.send({ type: "close" } satisfies SessionMessage)
+        .catch(error => log("failed to send close to peer", error));
+      await teardown();
     },
     status,
     signalStatus: signal.status,
