@@ -1,6 +1,12 @@
 import type { EventEmitter } from "eventemitter3";
 
-import type { SessionMessage } from "./index.js";
+import type { SessionMessageAck, SessionMessageResponse } from "./index.js";
+
+export type CorrelationEvents = {
+  message: SessionMessageAck | SessionMessageResponse;
+  /** The session ended; every open request fails with `reason`. */
+  ended: (reason: string) => void;
+};
 
 /**
  * Await the ack and response correlated to a sent request.
@@ -10,7 +16,7 @@ import type { SessionMessage } from "./index.js";
  * -- enough for user-interactive flows such as `eth_sendTransaction`.
  */
 export const awaitCorrelatedResponse = (
-  messages: EventEmitter<{ message: SessionMessage; }>,
+  messages: EventEmitter<CorrelationEvents>,
   messageId: string,
   ackTimeoutMs: number,
   responseTimeoutMs: number,
@@ -24,9 +30,15 @@ export const awaitCorrelatedResponse = (
     clearTimeout(ackTimer);
     clearTimeout(responseTimer);
     messages.off("message", handler);
+    messages.off("ended", onEnded);
   };
 
-  const handler = (message: SessionMessage) => {
+  const onEnded = (reason: string) => {
+    cleanup();
+    reject(new Error(reason));
+  };
+
+  const handler = (message: SessionMessageAck | SessionMessageResponse) => {
     if (message.messageId !== messageId) return;
 
     if (message.type === "ack" && !isAckReceived) {
@@ -48,6 +60,7 @@ export const awaitCorrelatedResponse = (
   };
 
   messages.on("message", handler);
+  messages.on("ended", onEnded);
 
   // Short window for the ack -- tells us the peer is alive and processing.
   ackTimer = setTimeout(() => {
