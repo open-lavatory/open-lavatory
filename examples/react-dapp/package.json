@@ -23,7 +23,7 @@
     "autoprefixer": "^10.4.21",
     "globals": "^16.0.0",
     "mqtt": "^5.13.1",
-    "postcss": "^8.5.1",
+    "postcss": "^8.5.23",
     "postcss-nested": "^7.0.2",
     "prettier": "^3.5.3",
     "protobufjs": "^7.5.3",
