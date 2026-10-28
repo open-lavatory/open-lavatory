@@ -5,52 +5,50 @@ showAskAi: false
 ---
 
 import { HomePage } from 'vocs'
-import { TryItOut } from '../components/TryItOut'
+import { ConnectionDemo } from '../components/ConnectionDemo'
+import { Sdks } from '../components/Sdks'
 import { FiBook, FiLock, FiServer, FiUser } from 'react-icons/fi';
 
-<HomePage.Root>
-  <div className="flex flex-col gap-8 w-full text-start">
-    <div className="flex flex-col items-start gap-4">
+export const features = [
+  { icon: FiBook, title: 'Open specification', text: 'The URI, handshake, session, signaling and transport, documented, open, and available.', href: '/api/intro' },
+  { icon: FiLock, title: 'Privacy-first', text: 'End-to-end encrypted, ephemeral keys, relayer agnostic & private by design', href: '/api/handshake' },
+  { icon: FiServer, title: 'Self-hostable', text: 'Use a public MQTT, ntfy or Gun relay, or run your own.', href: '/api/signaling' },
+  { icon: FiUser, title: 'Permissionless', text: 'No cloud account, no API keys, no credit card.', href: '/faq' },
+];
+
+<HomePage.Root className="pt-12 md:pt-20">
+  <div className="flex w-full flex-col gap-14 text-start">
+    <div className="flex flex-col items-start gap-5">
       <HomePage.Logo />
-      <HomePage.Tagline>Secure peer-to-peer JSON-RPC connectivity between dApps and wallets</HomePage.Tagline>
-      <HomePage.Description>Because the defacto way to connect your wallet should be private, transparent, and permissionless</HomePage.Description>
-      <div className="w-full flex gap-4 text-sm items-center text-nowrap"><div className="w-full h-[1px] vocs:bg-primary" /><span>Ready to get started?</span></div>
-      <div className="w-full flex justify-end">
-      <HomePage.Buttons>
-        <HomePage.Button href="/try" variant="accent">Try it out</HomePage.Button>
-        <HomePage.Button href="/getting-started">Integrate</HomePage.Button>
-      </HomePage.Buttons>
-      </div>
-      <div className="w-full flex flex-col gap-2 md:grid grid-cols-2 pt-8">
-        <div className="border rounded-lg vocs:border-primary p-4">
-          <div className="flex items-center gap-2">
-            <FiBook />
-            <span>Open Specification</span>
-          </div>
-          <span className="text-sm text-muted">The protocol specification for openlv</span>
-        </div>
-        <div className="border rounded-lg vocs:border-primary p-4">
-          <div className="flex items-center gap-2">
-            <FiLock />
-            <span>Privacy-first</span>
-          </div>
-          <span className="text-sm text-muted">Encryption, ephemeral keys, security by design</span>
-        </div>
-        <div className="border rounded-lg vocs:border-primary p-4">
-          <div className="flex items-center gap-2">
-            <FiServer />
-            <span>Self-hostable</span>
-          </div>
-          <span className="text-sm text-muted">Leverage public infrastructure, or easily host your own</span>
-        </div>
-        <div className="border rounded-lg vocs:border-primary p-4">
-          <div className="flex items-center gap-2">
-            <FiUser />
-            <span>Permissionless</span>
-          </div>
-          <span className="text-sm text-muted">No cloud, no api keys, no credit card</span>
+      <h1 className="m-0 text-xl font-normal leading-relaxed text-pretty md:text-2xl vocs:text-primary">Secure peer-to-peer JSON-RPC connectivity <br className="hidden lg:inline" />between dApps and wallets</h1>
+      <div className="flex w-full flex-col gap-5 md:flex-row md:items-end md:justify-between">
+        <p className="m-0 max-w-xl text-base leading-relaxed vocs:text-secondary">Because the de facto way to connect your wallet should be private, transparent and permissionless.</p>
+        <div className="flex flex-col items-start gap-2 md:items-end">
+          <span className="text-sm vocs:text-secondary">Ready to get started?</span>
+          <HomePage.Buttons className="justify-start">
+            <HomePage.Button href="/try" variant="accent" className="text-sm!">Try it out</HomePage.Button>
+            <HomePage.Button href="/getting-started" className="text-sm!">Integrate</HomePage.Button>
+          </HomePage.Buttons>
         </div>
       </div>
     </div>
+    <ul className="m-0 grid list-none gap-3 p-0 md:grid-cols-2">
+      {features.map(({ icon: Icon, title, text, href }) => (
+        <li key={title} className="flex">
+          <a
+            href={href}
+            className="flex w-full flex-col gap-1.5 rounded-lg border p-4 no-underline transition-colors vocs:border-primary vocs:bg-surface hover:bg-[var(--vocs-background-color-surfaceTint)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--vocs-color-accent)]"
+          >
+            <span className="flex items-center gap-2 vocs:text-primary">
+              <Icon aria-hidden="true" />
+              {title}
+            </span>
+            <span className="text-sm leading-relaxed vocs:text-secondary">{text}</span>
+          </a>
+        </li>
+      ))}
+    </ul>
+    <ConnectionDemo />
+    <Sdks />
   </div>
 </HomePage.Root>

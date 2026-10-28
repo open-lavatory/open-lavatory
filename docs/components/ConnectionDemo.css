@@ -1,0 +1,961 @@
+/* Homepage connection demo: a laptop running the dApp and a phone running
+   the wallet, drawn as skeletons in the docs' colours, with the relay and the
+   direct line between them and the controls under them. */
+
+.lv-demo {
+  --lv-border: var(--vocs-border-color-primary);
+  --lv-text: var(--vocs-text-color-primary);
+  --lv-heading: var(--vocs-text-color-heading);
+  --lv-secondary: var(--vocs-text-color-secondary);
+  --lv-page: var(--vocs-background-color-primary);
+  --lv-screen: var(--vocs-background-color-surface);
+  --lv-tint: var(--vocs-background-color-surfaceTint);
+  --lv-bezel: color-mix(in oklab, var(--lv-text) 7%, var(--lv-screen));
+  --lv-skel: color-mix(in oklab, var(--lv-text) 11%, transparent);
+  --lv-relay: var(--vocs-color-accent);
+  --lv-direct: var(--vocs-color-green);
+
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2rem;
+  color: var(--lv-text);
+}
+
+.lv-demo h2 {
+  margin: 0;
+  color: var(--lv-heading);
+  font-size: 1.5rem;
+  font-weight: 500;
+  line-height: 1.5rem;
+}
+
+.lv-demo__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.lv-demo code {
+  padding: 0;
+  font-family: var(--vocs-font-mono);
+  font-size: 1em;
+}
+
+/* Stage: laptop, lane with the message feed under it, phone. */
+
+.lv-demo__stage {
+  display: grid;
+  grid-template-areas: "dapp lane wallet";
+  grid-template-columns: minmax(0, 1.5fr) minmax(13rem, 1fr) auto;
+  align-items: center;
+}
+
+.lv-demo__stage p {
+  margin: 0;
+}
+
+.lv-demo__dapp {
+  grid-area: dapp;
+}
+
+.lv-demo__wallet {
+  grid-area: wallet;
+}
+
+.lv-skel {
+  display: block;
+  flex: none;
+  height: 0.5rem;
+  border-radius: 0.25rem;
+  background: var(--lv-skel);
+}
+
+.lv-skel--short {
+  width: 2.5rem;
+}
+
+.lv-skel--mid {
+  width: 45%;
+}
+
+.lv-skel--long {
+  width: 70%;
+}
+
+.lv-demo__message {
+  color: var(--lv-heading);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.125rem;
+}
+
+.lv-demo__dapp-logo {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 0.25rem;
+  background: var(--lv-heading);
+}
+
+.lv-demo__button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  min-width: 3.5rem;
+  min-height: 1.375rem;
+  padding: 0 0.625rem;
+  border: 1px solid var(--lv-border);
+  border-radius: 0.375rem;
+  background: var(--lv-screen);
+  color: var(--lv-heading);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.125rem;
+  white-space: nowrap;
+  transition: opacity 200ms ease-out, transform 120ms ease-out;
+}
+
+.lv-demo__button--wide {
+  min-width: 5.5rem;
+}
+
+.lv-demo__button--primary {
+  border-color: transparent;
+  background: var(--lv-heading);
+  color: var(--lv-screen);
+}
+
+.lv-demo__button[data-pressed="true"] {
+  opacity: 0.7;
+  transform: scale(0.94);
+}
+
+.lv-demo__button[data-disabled="true"] {
+  opacity: 0.35;
+}
+
+.lv-demo__account {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.lv-demo__avatar {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background: var(--lv-direct);
+}
+
+.lv-demo__qr {
+  width: 5rem;
+  height: 5rem;
+  fill: var(--lv-heading);
+}
+
+.lv-demo__spinner {
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 2px solid var(--lv-border);
+  border-top-color: var(--lv-heading);
+  border-radius: 50%;
+  animation: lv-spin 800ms linear infinite;
+}
+
+.lv-demo__button .lv-demo__spinner {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-width: 1.5px;
+  border-color: color-mix(in oklab, var(--lv-screen) 35%, transparent);
+  border-top-color: var(--lv-screen);
+}
+
+/* Laptop and the dApp on it */
+
+.lv-laptop {
+  display: grid;
+  justify-items: center;
+}
+
+.lv-laptop__screen {
+  display: flex;
+  flex-direction: column;
+  width: calc(100% - 2rem);
+  aspect-ratio: 16 / 11;
+  padding: 0.375rem;
+  border: 1px solid var(--lv-border);
+  border-radius: 0.75rem 0.75rem 0.25rem 0.25rem;
+  background: var(--lv-bezel);
+}
+
+.lv-laptop__base {
+  width: 100%;
+  height: 0.625rem;
+  border: 1px solid var(--lv-border);
+  border-top: 0;
+  border-radius: 0 0 0.75rem 0.75rem;
+  background: var(--lv-bezel);
+}
+
+.lv-laptop__bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.375rem 0.5rem;
+  border-radius: 0.375rem 0.375rem 0 0;
+  background: var(--lv-tint);
+}
+
+.lv-laptop__dots {
+  width: 1.75rem;
+  height: 0.5rem;
+  background: radial-gradient(circle, var(--lv-skel) 0.2rem, transparent 0.21rem) 0 0 / 0.625rem 100% repeat-x;
+}
+
+.lv-dapp {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 0 0 0.375rem 0.375rem;
+  background: var(--lv-screen);
+}
+
+.lv-dapp__nav {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--lv-border);
+}
+
+.lv-dapp__spacer {
+  flex: 1;
+}
+
+.lv-dapp__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 0;
+  padding: 0.75rem;
+}
+
+.lv-dapp__card {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.375rem;
+  background: var(--lv-tint);
+}
+
+.lv-dapp__signature {
+  color: var(--lv-secondary);
+  font-size: 0.75rem;
+  line-height: 1.375rem;
+}
+
+/* The openlv modal's shape and layout (packages/modal) at about 0.4 of its
+   real size, in the page's colours. */
+
+.lv-demo__overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: light-dark(rgb(0 0 0 / 10%), rgb(0 0 0 / 55%));
+  backdrop-filter: blur(3px);
+  animation: lv-fade 150ms ease-out;
+}
+
+.lv-modal {
+  --lv-modal-text: var(--lv-heading);
+  --lv-modal-muted: var(--lv-secondary);
+  --lv-modal-line: var(--lv-skel);
+  --lv-modal-card: var(--lv-tint);
+
+  display: flex;
+  flex-direction: column;
+  width: 10rem;
+  overflow: hidden;
+  border: 1px solid var(--lv-border);
+  border-radius: 0.625rem;
+  background: var(--lv-screen);
+  color: var(--lv-modal-text);
+  box-shadow: 0 0.375rem 1rem light-dark(rgb(0 0 0 / 8%), rgb(0 0 0 / 50%));
+}
+
+.lv-modal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.375rem 0.5rem;
+  color: var(--lv-modal-muted);
+}
+
+.lv-modal__head svg {
+  width: 0.625rem;
+  height: 0.625rem;
+}
+
+.lv-modal__icon {
+  width: 0.5rem;
+  height: 0.5rem;
+  border: 1.5px solid var(--lv-modal-muted);
+  border-radius: 50%;
+}
+
+.lv-modal__line {
+  width: 4.5rem;
+  height: 0.3125rem;
+  border-radius: 0.25rem;
+  background: var(--lv-modal-line);
+}
+
+.lv-modal__line--title {
+  width: 3.5rem;
+  height: 0.375rem;
+  background: color-mix(in oklab, var(--lv-modal-text) 30%, transparent);
+}
+
+.lv-modal__body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4375rem;
+  min-height: 6.75rem;
+  padding: 0.25rem 0.5rem 0.5rem;
+}
+
+.lv-modal__devices {
+  display: flex;
+  align-items: flex-end;
+}
+
+.lv-modal__tablet {
+  width: 3rem;
+  height: 2.375rem;
+  border-radius: 0.25rem;
+  background: color-mix(in oklab, var(--lv-text) 18%, var(--lv-screen));
+}
+
+.lv-modal__phone {
+  width: 0.75rem;
+  height: 1.125rem;
+  border-radius: 0.25rem;
+  background: color-mix(in oklab, var(--lv-text) 10%, var(--lv-screen));
+  transform: translateX(-0.25rem);
+}
+
+.lv-modal__actions {
+  display: flex;
+  gap: 1px;
+}
+
+.lv-modal__primary {
+  padding: 0.1875rem 0.5rem;
+  border-radius: 0.375rem 0 0 0.375rem;
+  background: var(--lv-relay);
+  color: var(--vocs-color-accentInvert);
+  font-size: 0.625rem;
+  font-weight: 600;
+  line-height: 0.875rem;
+  white-space: nowrap;
+  transition: transform 100ms ease-out;
+}
+
+.lv-modal__primary[data-pressed="true"] {
+  opacity: 0.75;
+  transform: scale(0.95);
+}
+
+.lv-modal__square {
+  width: 1.25rem;
+  border-radius: 0 0.375rem 0.375rem 0;
+  background: var(--lv-modal-line);
+}
+
+.lv-modal__card {
+  display: grid;
+  justify-items: center;
+  gap: 0.375rem;
+  width: 100%;
+  padding: 0.375rem;
+  border-radius: 0.375rem;
+  background: var(--lv-modal-card);
+}
+
+.lv-modal__card .lv-demo__qr {
+  width: 4rem;
+  height: 4rem;
+  padding: 0.1875rem;
+  border-radius: 0.25rem;
+  background: white;
+  fill: black;
+}
+
+.lv-modal__secondary {
+  width: 100%;
+  height: 0.875rem;
+  border-radius: 0.375rem;
+  background: var(--lv-modal-line);
+}
+
+.lv-modal__done {
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0.125rem;
+  border-radius: 0.25rem;
+  background: var(--lv-direct);
+  color: var(--lv-screen);
+  stroke-width: 3.5;
+}
+
+.lv-modal__foot {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.3125rem 0.5rem;
+  color: var(--lv-modal-muted);
+  font-size: 0.625rem;
+  font-weight: 600;
+  line-height: 0.875rem;
+}
+
+.lv-modal__status {
+  justify-self: end;
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 50%;
+  background: var(--lv-relay);
+}
+
+.lv-modal__status[data-on="true"] {
+  background: var(--lv-direct);
+}
+
+/* Phone and the wallet on it */
+
+.lv-phone {
+  width: 10.5rem;
+  padding: 0.375rem;
+  border: 1px solid var(--lv-border);
+  border-radius: 1.75rem;
+  background: var(--lv-bezel);
+}
+
+.lv-phone__screen {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  aspect-ratio: 9 / 18.5;
+  border-radius: 1.375rem;
+  background: var(--lv-screen);
+}
+
+.lv-phone__notch {
+  position: absolute;
+  top: 0.5rem;
+  left: 50%;
+  width: 2.5rem;
+  height: 0.5rem;
+  border-radius: 0.25rem;
+  background: var(--lv-bezel);
+  transform: translateX(-50%);
+}
+
+.lv-phone__viewfinder {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 6.5rem;
+  height: 6.5rem;
+  border: 1.5px solid var(--lv-border);
+  border-radius: 0.5rem;
+}
+
+.lv-phone__viewfinder[data-scanning="true"] {
+  border-color: var(--lv-relay);
+}
+
+.lv-phone__scanline {
+  position: absolute;
+  top: 15%;
+  right: 0.5rem;
+  left: 0.5rem;
+  height: 1.5px;
+  background: var(--lv-relay);
+  opacity: 0;
+}
+
+.lv-phone__viewfinder[data-scanning="true"] > .lv-phone__scanline {
+  opacity: 1;
+  animation: lv-scan 1100ms ease-in-out infinite alternate;
+}
+
+.lv-phone__status {
+  display: grid;
+  justify-items: center;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.lv-phone__status .lv-demo__dapp-logo,
+.lv-phone__sheet .lv-demo__dapp-logo {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.5rem;
+}
+
+.lv-phone__session {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.lv-phone__live {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--lv-direct);
+}
+
+.lv-phone__sheet {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: grid;
+  justify-items: center;
+  gap: 0.625rem;
+  padding: 1rem 0.75rem 1.25rem;
+  border-top: 1px solid var(--lv-border);
+  border-radius: 1rem 1rem 0 0;
+  background: var(--lv-tint);
+  animation: lv-rise 200ms ease-out;
+}
+
+.lv-phone__value {
+  color: var(--lv-secondary);
+  font-size: 0.75rem;
+  line-height: 1.125rem;
+  white-space: nowrap;
+}
+
+.lv-phone__actions {
+  display: grid;
+  gap: 0.375rem;
+  width: 100%;
+}
+
+/* Lane: the relay between the peers and the direct line under it. It starts
+   under the laptop base's overhang, so the lines meet the screen. */
+
+.lv-demo__lane {
+  position: relative;
+  grid-area: lane;
+  align-self: stretch;
+  margin-left: -1rem;
+}
+
+.lv-demo__lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.lv-demo__lines--vertical {
+  display: none;
+}
+
+.lv-demo__line {
+  fill: none;
+  stroke: var(--lv-border);
+  stroke-width: 1.5;
+  stroke-dasharray: 2 4;
+  transition: opacity 400ms ease-out, stroke-width 400ms ease-out;
+}
+
+.lv-demo__line--relay[data-on="true"] {
+  stroke: var(--lv-relay);
+  stroke-dasharray: 6 4;
+  opacity: 0.6;
+}
+
+.lv-demo__line--direct[data-on="true"] {
+  stroke: var(--lv-direct);
+  stroke-dasharray: none;
+  opacity: 0.9;
+}
+
+.lv-demo__line[data-lit="true"] {
+  stroke-width: 2.5;
+  opacity: 1;
+  transition: none;
+}
+
+.lv-demo__lane:has(.lv-demo__relay[data-idle="true"]) .lv-demo__line--relay:not([data-lit="true"]) {
+  opacity: 0.25;
+}
+
+.lv-demo__relay,
+.lv-demo__lock,
+.lv-demo__packet {
+  position: absolute;
+  top: calc(var(--v) * 100%);
+  left: calc(var(--u) * 100%);
+  transform: translate(-50%, -50%);
+}
+
+.lv-demo__relay {
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 1px solid var(--lv-border);
+  border-radius: 0.5rem;
+  background: var(--lv-screen);
+  color: var(--lv-secondary);
+  transition: color 300ms ease-out, border-color 300ms ease-out, opacity 300ms ease-out;
+}
+
+.lv-demo__relay[data-on="true"] {
+  border-color: var(--lv-relay);
+  color: var(--lv-relay);
+}
+
+.lv-demo__relay[data-idle="true"] {
+  opacity: 0.5;
+}
+
+.lv-demo__relay svg {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+.lv-demo__lock {
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  background: var(--lv-page);
+  color: var(--lv-direct);
+  opacity: 0;
+  transition: opacity 300ms ease-out;
+}
+
+.lv-demo__lock[data-on="true"] {
+  opacity: 1;
+}
+
+.lv-demo__lock svg {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.lv-demo__packet,
+.lv-feed__route {
+  width: 0.4375rem;
+  height: 0.4375rem;
+  background: var(--lv-relay);
+}
+
+.lv-demo__packet {
+  z-index: 2;
+}
+
+.lv-demo__packet--direct,
+.lv-feed__route--direct {
+  border-radius: 50%;
+  background: var(--lv-direct);
+}
+
+/* The last messages, newest at the bottom. */
+
+.lv-feed {
+  display: grid;
+  grid-area: lane;
+  grid-auto-rows: 1.5rem;
+  align-self: end;
+  justify-self: center;
+  width: min(100% - 2rem, 14rem);
+  margin: 0;
+  padding: 0;
+  color: var(--lv-secondary);
+  font-size: 0.875rem;
+  list-style: none;
+}
+
+.lv-feed li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.lv-feed li:last-child {
+  color: var(--lv-heading);
+}
+
+.lv-feed svg {
+  flex: none;
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.lv-feed__route {
+  flex: none;
+}
+
+.lv-feed code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Controls: one player bar. Each step is a segment of the progress track and
+   fills as playback runs through it. The track runs through the middle of
+   the play and speed buttons; the step labels hang under it. */
+
+.lv-demo__controls {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.lv-demo__play,
+.lv-demo__speed {
+  display: grid;
+  flex: none;
+  place-items: center;
+  height: 2.25rem;
+  border: 0;
+  border-radius: 0.375rem;
+  background: none;
+  color: var(--lv-heading);
+  cursor: pointer;
+}
+
+/* The negative margins line the icon and the speed text up with the edges
+   of the picture. */
+.lv-demo__play {
+  width: 2.25rem;
+  margin-inline-start: -0.625rem;
+}
+
+.lv-demo__play svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.lv-demo__speed {
+  min-width: 3.25rem;
+  margin-inline-end: -0.5rem;
+  padding: 0 0.5rem;
+  color: var(--lv-secondary);
+  font: inherit;
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (hover: hover) {
+  .lv-demo__play:hover,
+  .lv-demo__speed:hover {
+    background: var(--lv-tint);
+    color: var(--lv-heading);
+  }
+
+  .lv-demo__step:hover {
+    color: var(--lv-heading);
+  }
+}
+
+.lv-demo__steps {
+  display: flex;
+  flex: 1;
+  gap: 0.25rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lv-demo__steps li {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.lv-demo__step {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.375rem;
+  min-width: 0;
+  padding: 1.0625rem 0 0;
+  border: 0;
+  background: none;
+  color: var(--lv-secondary);
+  font: inherit;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  text-align: start;
+  cursor: pointer;
+}
+
+.lv-demo__step::before {
+  content: "";
+  height: 0.125rem;
+  border-radius: 0.125rem;
+  background:
+    linear-gradient(var(--lv-secondary), var(--lv-secondary)) 0 0 / calc(var(--fill) * 100%) 100% no-repeat,
+    var(--lv-skel);
+}
+
+.lv-demo__step[aria-current="step"] {
+  color: var(--lv-heading);
+}
+
+.lv-demo__step-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lv-demo__play:focus-visible,
+.lv-demo__speed:focus-visible,
+.lv-demo__step:focus-visible {
+  outline: 2px solid var(--lv-relay);
+  outline-offset: 2px;
+}
+
+/* Phones: the peers stack, the lane turns on its side, the feed is left out
+   so the whole demo fits on one screen, and the laptop is reduced to its
+   browser window. Only the current step keeps its label; the other steps
+   are bare track segments. */
+
+@media (max-width: 40rem) {
+  .lv-demo__stage {
+    grid-template-areas: "dapp" "lane" "wallet";
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto 6rem auto;
+  }
+
+  .lv-laptop__screen {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    padding: 0;
+    overflow: hidden;
+    border-radius: 0.5rem;
+    background: var(--lv-screen);
+  }
+
+  .lv-laptop__base {
+    display: none;
+  }
+
+  .lv-demo__lane {
+    margin-left: 0;
+  }
+
+  .lv-demo__wallet {
+    justify-self: center;
+    width: 8rem;
+  }
+
+  .lv-feed {
+    display: none;
+  }
+
+  .lv-demo__controls {
+    gap: 0.5rem;
+  }
+
+  .lv-demo__steps li {
+    flex: 1 1 0;
+  }
+
+  .lv-demo__steps li:has([aria-current="step"]) {
+    flex: none;
+  }
+
+  .lv-demo__step:not([aria-current="step"]) .lv-demo__step-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    clip-path: inset(50%);
+  }
+
+  .lv-demo__lines--horizontal {
+    display: none;
+  }
+
+  .lv-demo__lines--vertical {
+    display: block;
+  }
+
+  .lv-demo__relay,
+  .lv-demo__lock,
+  .lv-demo__packet {
+    top: calc(var(--u) * 100%);
+    left: calc(var(--v) * 100%);
+  }
+}
+
+.lv-demo[data-playing="false"] .lv-demo__spinner,
+.lv-demo[data-playing="false"] .lv-phone__scanline {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lv-demo * {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .lv-demo__spinner {
+    border-top-color: var(--lv-border);
+  }
+
+  .lv-phone__viewfinder[data-scanning="true"] > .lv-phone__scanline {
+    opacity: 0;
+  }
+}
+
+@keyframes lv-fade {
+  from { opacity: 0; }
+}
+
+@keyframes lv-rise {
+  from { transform: translateY(100%); }
+}
+
+@keyframes lv-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes lv-scan {
+  from { top: 15%; }
+  to { top: 85%; }
+}
