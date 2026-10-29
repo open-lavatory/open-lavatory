@@ -1,5 +1,21 @@
 # @openlv/session
 
+## 0.3.0
+
+### Minor Changes
+
+- 9530ad8: Breaking: a wallet's request handler returns a full JSON-RPC 2.0 response. The dApp rejects a bare result.
+
+  New session message `failed`. The receiver sends it when its handler throws. It carries no detail.
+
+### Patch Changes
+
+- Updated dependencies [52bc497]
+- Updated dependencies [9530ad8]
+  - @openlv/core@0.3.0
+  - @openlv/transport@0.3.0
+  - @openlv/signaling@0.2.1
+
 ## 0.2.0
 
 ### Minor Changes
