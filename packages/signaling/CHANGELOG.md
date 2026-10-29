@@ -1,5 +1,12 @@
 # @openlv/signaling
 
+## 0.2.1
+
+### Patch Changes
+
+- Updated dependencies [52bc497]
+  - @openlv/core@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes

@@ -1,6 +1,6 @@
 {
   "name": "@openlv/modal",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "SolidJS-based modal custom element for Open Lavatory",
   "keywords": [
     "open-lavatory",
