@@ -66,7 +66,8 @@ The version 1 session URI format is:
 openlv://<sessionId>@1?h=<h>&k=<k>&p=<p>&s=<s>
 ```
 
-All fields are REQUIRED for deterministic interoperability.
+All fields shown are REQUIRED for deterministic interoperability.
+The URI MAY carry more parameters, such as `h2`, `k2`, `s2`, see [Forwards Compatability](#forwards-compatability)
 
 - `sessionId`: 16 URL-safe characters matching `^[A-Za-z0-9_-]{16}$`
 - `h`: 16 lowercase hexadecimal characters matching `^[0-9a-f]{16}$`
@@ -279,11 +280,11 @@ Implementations MAY need to reconnect to the signaling infrastructure, re-establ
 `openlv` uses a two-stage encryption model during session establishment.
 
 The initial signaling stage uses the pre-shared key `k` from the session URI.
-This key is used only before peers have exchanged public keys, and allows the first bootstrap messages to be encrypted over untrusted signaling infrastructure.
-For current interoperability, the 32-character hexadecimal `k` value is hex-decoded to 16 bytes and imported as an AES-GCM key.
+This key is used only before peers have exchanged public keys, and allows the first handshake messages to be encrypted over untrusted signaling infrastructure.
+The 32-character hexadecimal `k` value is hex-decoded to 16 bytes and imported as an AES-GCM key.
 
 Handshake encryption uses the Web Crypto API AES-GCM implementation with a fresh 12-byte random IV per message.
-The serialized encrypted payload is:
+The serialized encrypted payload is as follows:
 
 ```text
 base64(iv || ciphertext)
@@ -293,8 +294,7 @@ After public keys are exchanged, signaling switches to peer public-key encryptio
 Each peer encrypts every peer public-key encrypted frame with its session X25519 key pair.
 Each direction has its own 32-byte key, derived with HKDF-SHA256 from the X25519 shared secret, an empty salt, and as `info` the UTF-8 bytes of `openlv/1 peer-key`, the sender public key, and the receiver public key, concatenated.
 The sender encrypts with AES-256-GCM under that key and a random 12-byte nonce.
-A peer MUST reject a frame when the X25519 shared secret is all zero bytes.
-A peer MUST reject a frame whose `senderPublicKey` differs from the recorded peer public key.
+A peer MUST reject a frame when the X25519 shared secret is all zero bytes or a frame whose `senderPublicKey` differs from the expected peer key.
 Before it has recorded one, the advertising peer MUST reject the joining peer's `pubkey` unless the key in its payload equals the `senderPublicKey` of the frame.
 
 Peer-encrypted payloads are serialized as:
@@ -307,7 +307,7 @@ base64(senderPublicKey || nonce || ciphertext)
 
 This same peer-key mechanism is also used to protect payloads exchanged through the negotiated transport layer.
 
-These cryptographic mechanisms define the current interoperable behavior, but future revisions MAY define alternative suites or explicit cryptographic negotiation.
+These cryptographic mechanisms define the current behavior, future revisions MAY define alternative suites or cryptographic negotiation.
 
 ## Rationale
 
@@ -329,6 +329,11 @@ This is a new protocol and does not change existing EIP-1193 semantics.
 Wallets and dapps that do not implement `openlv` remain unaffected.
 
 Version 1 compatibility depends on the `openlv://` URI shape, URI version `@1`, the `sessionId`/`h`/`k` constraints, signaling frame markers, signaling message types, and the session envelope.
+
+## Forwards Compatability
+
+In anticipation of the post-quantum cryptography era, and potential sequencing improvements, implementors must anticipate additional URL parameters such as `h2`, `k2` and `s2`, similarly the `rev` key in `flash`.
+This allows for potential minor revisions, therefore not requiring a `@1` -> `@2` uri version bump, to take place while maintaining graceful interop with yet-to-update clients.
 
 ## Reference Implementation
 
