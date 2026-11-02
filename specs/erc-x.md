@@ -269,11 +269,19 @@ After a peer sends or receives `close`, it MUST NOT send further session message
 ### Session Resumption
 
 Peers MAY persist session state locally to support later resumption.
-Persisted state SHOULD include `sessionId`, `p`, `s`, `k`, session X25519 key pair, peer public key, and transport configuration.
+Persisted state SHOULD include `sessionURI`, `sessionKeys`, `peerKey`, `revision`, and transport configuration.
+When a session resumes it uses the saved `sessionKeys` and only peer public-key encrypted frames.
 
-Resumption in version 1 means re-invoking communication using prior local session material.
-It does not guarantee transport continuity.
-Implementations MAY need to reconnect to the signaling infrastructure, re-establish peer public-key signaling, and renegotiate transport.
+The advertising peer MAY attempt a resume when it loads, or when the transport is interrupted.
+The joining peer resumes on explicit user intent, and MAY also resume if transport is interrupted.
+
+A resuming peer connects to the prior used signaling infrastructure.
+The joining peer sends `capabilities` at a 2 second interval until acknowledgement.
+The advertising peer answers with `capabilities`, and both peers collect their offer info.
+Both peers share `offer`s and `answer` until a new transport is in place or a timeout is reached.
+Once a new transport is opened any late-arriving or remaining `capabilities`, `offer`, or `answer` requests are discarded.
+
+Requests that were open during transport failure fail locally and are not re-sent after resumed transport.
 
 ### Cryptography
 
