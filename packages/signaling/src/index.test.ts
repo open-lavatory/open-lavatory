@@ -1,12 +1,12 @@
-import { deriveSymmetricKey, generateKeyPair } from "@openlv/core/encryption";
+import { createHandshakeCipher, generateKeyPair, hashPublicKey } from "@openlv/core/encryption";
 import { describe, expect, it } from "vitest";
 
+import { Status } from "./index.js";
 import { mqtt } from "./mqtt/index.js";
 import { ntfy } from "./ntfy/index.js";
 import type { SignalingProtocol, SignalingProtocolOptions } from "./protocol.js";
 import { log } from "./utils/log.js";
 
-const hKey = "test";
 const K = "00112233445566778899aabbccddeeff";
 
 const providersByType: readonly [
@@ -82,43 +82,42 @@ const testSignalingLayer = async (
   layer: SignalingProtocol,
   properties: SignalingProtocolOptions,
 ): Promise<void> => {
-  const { encryptionKey: publicKey, decryptionKey } = await generateKeyPair();
-  const h = hKey;
-  const k = await deriveSymmetricKey(K);
+  const hostKeys = generateKeyPair();
+  const h = await hashPublicKey(hostKeys.publicKey);
+  const handshakeCipher = await createHandshakeCipher(K);
 
   const signalingLayer = await layer(properties);
   const signalA = await signalingLayer({
     h,
-    k,
+    handshakeCipher,
     capabilities: { transports: ["wrtc"] },
-    canEncrypt: () => true,
-    encrypt: publicKey.encrypt,
-    decrypt: decryptionKey.decrypt,
-    publicKey,
+    keyPair: hostKeys,
     isHost: true,
   });
 
-  signalA.peerKey.subscribe(v => log("rpKey", v));
+  signalA.peer.subscribe(v => log("rpKey", v?.peerKey));
   signalA.peerCapabilities.subscribe(v => log("peerCapabilities", v));
 
   const signalB = await signalingLayer({
     h,
-    k,
+    handshakeCipher,
     capabilities: { transports: ["wrtc"] },
-    canEncrypt: () => true,
-    encrypt: publicKey.encrypt,
-    decrypt: decryptionKey.decrypt,
-    publicKey,
+    keyPair: generateKeyPair(),
     isHost: false,
   });
 
-  signalB.peerKey.subscribe(v => log("rpKey", v));
+  signalB.peer.subscribe(v => log("rpKey", v?.peerKey));
   signalB.peerCapabilities.subscribe(v => log("peerCapabilities", v));
 
   expect(signalA).toBeDefined();
   expect(signalB).toBeDefined();
 
-  await Promise.all([signalA.setup(), signalB.setup()]);
+  await signalA.setup();
+  await signalB.setup();
+  await Promise.all([
+    signalA.status.until(state => state === Status.ENCRYPTED),
+    signalB.status.until(state => state === Status.ENCRYPTED),
+  ]);
 
   const messageReceivedA = new Promise<void>((resolve) => {
     signalA.on("message", (message) => {

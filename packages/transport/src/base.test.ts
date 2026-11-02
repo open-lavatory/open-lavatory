@@ -1,4 +1,4 @@
-import { generateKeyPair } from "@openlv/core/encryption";
+import { createPeerCipher, generateKeyPair } from "@openlv/core/encryption";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -44,13 +44,13 @@ describe("createTransportBase", () => {
   });
 
   it("relays negotiate events through subsend", async () => {
-    const { encryptionKey, decryptionKey } = await generateKeyPair();
+    const keyPair = generateKeyPair();
+    const cipher = await createPeerCipher(keyPair, keyPair.publicKey);
     const { factory, getEmitter } = createFakeTransport();
     const relayed: TransportMessage[] = [];
 
     const layer = factory.create({
-      encrypt: encryptionKey.encrypt,
-      decrypt: decryptionKey.decrypt,
+      cipher,
       isHost: true,
       onmessage: () => {},
       subsend: async (message) => {
@@ -72,13 +72,13 @@ describe("createTransportBase", () => {
   });
 
   it("encrypts outgoing messages and decrypts incoming ones", async () => {
-    const { encryptionKey, decryptionKey } = await generateKeyPair();
+    const keyPair = generateKeyPair();
+    const cipher = await createPeerCipher(keyPair, keyPair.publicKey);
     const { factory, sent, getEmitter } = createFakeTransport();
     const received: object[] = [];
 
     const layer = factory.create({
-      encrypt: encryptionKey.encrypt,
-      decrypt: decryptionKey.decrypt,
+      cipher,
       isHost: true,
       onmessage: (message) => {
         received.push(message);
@@ -101,12 +101,12 @@ describe("createTransportBase", () => {
   });
 
   it("rejects sends before the transport is connected", async () => {
-    const { encryptionKey, decryptionKey } = await generateKeyPair();
+    const keyPair = generateKeyPair();
+    const cipher = await createPeerCipher(keyPair, keyPair.publicKey);
     const { factory } = createFakeTransport();
 
     const layer = factory.create({
-      encrypt: encryptionKey.encrypt,
-      decrypt: decryptionKey.decrypt,
+      cipher,
       isHost: true,
       onmessage: () => {},
       subsend: async () => {},

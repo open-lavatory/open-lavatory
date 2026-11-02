@@ -1,11 +1,18 @@
 import { make, type Observable, observable } from "@openlv/core";
-import type { EncryptionKey, SymmetricKey } from "@openlv/core/encryption";
-import { parseEncryptionKey, validatePublicKeyHash } from "@openlv/core/encryption";
+import type { AcceptedPeer, Cipher, KeyPair, PublicKey } from "@openlv/core/encryption";
+import {
+  acceptPeer,
+  createPeerCipher,
+  hashPublicKey,
+  parsePublicKey,
+  toBase64,
+} from "@openlv/core/encryption";
 import { EventEmitter } from "eventemitter3";
 import { match } from "ts-pattern";
 
-import { handshake, XR_H_PREFIX, XR_PREFIX } from "./handshake.js";
+import { composeFrame, parseFrame, type SignalingPrefix, XR_H_PREFIX, XR_PREFIX } from "./handshake.js";
 import {
+  parseSignalMessage,
   type PeerCapabilities,
   type SignalMessage,
 } from "./messages.js";
@@ -33,16 +40,16 @@ export type SignalEventMap = {
 export type SignalingHooks = {
   isHost: boolean;
   h: string;
-  k: SymmetricKey;
+  // Encrypts the handshake frames, which come before any public key is known
+  handshakeCipher: Cipher;
+  keyPair: KeyPair;
   // Our capabilities, advertised to the peer during the handshake
   capabilities: PeerCapabilities;
-  // Decrypt using our private key
-  decrypt: (message: string) => Promise<string>;
-  // Encrypt to relying party
-  encrypt: (message: string) => Promise<string>;
-  // our public key
-  publicKey: EncryptionKey;
-  canEncrypt: () => boolean;
+};
+
+export type Peer = {
+  peerKey: PublicKey;
+  cipher: Cipher;
 };
 
 export type SignalingContext = {
@@ -54,7 +61,7 @@ export type SignalingContext = {
   teardown: () => Promise<void>;
 
   status: Observable<Status>;
-  peerKey: Observable<EncryptionKey | undefined>;
+  peer: Observable<Peer | undefined>;
   peerCapabilities: Observable<PeerCapabilities | undefined>;
 };
 export type SignalingLayer = EventEmitter<SignalEventMap> & SignalingContext;
@@ -73,30 +80,30 @@ export type CreateSignalingLayerFunction = (
  */
 export const createSignalingLayer: CreateSignalingLayerFunction = channel => async (hooks: SignalingHooks) => {
   const {
-    canEncrypt,
-    encrypt,
-    decrypt,
     capabilities,
     h,
-    k: handshakeKey,
-    publicKey,
+    handshakeCipher,
+    keyPair,
     isHost,
   } = hooks;
 
   const [status, setStatus] = observable<Status>(Status.STANDBY);
-  const [peerKey, setPeerKey] = observable<EncryptionKey | undefined>(undefined);
+  const [peer, setPeer] = observable<Peer | undefined>(undefined);
   const [peerCapabilities, setPeerCapabilities] = observable<PeerCapabilities | undefined>(undefined);
 
   const emitter = new EventEmitter<SignalEventMap>();
 
-  const { frame, parse } = handshake({
-    isHost,
-    handshakeKey,
-    encrypt,
-    decrypt,
-  });
+  const send = async (prefix: SignalingPrefix, message: SignalMessage) => {
+    const cipher = prefix === XR_H_PREFIX ? handshakeCipher : peer.get()?.cipher;
 
-  const send = async (method: "handshake" | "encrypted", payload: SignalMessage) => await channel.publish(await frame(method, payload));
+    if (!cipher) {
+      throw new Error("Cannot encrypt peer-key frame: peer key not available");
+    }
+
+    const ciphertext = await cipher.encrypt(JSON.stringify(message));
+
+    await channel.publish(composeFrame(prefix, isHost ? "c" : "h", ciphertext));
+  };
 
   const capabilitiesMessage = (): SignalMessage => ({
     type: "capabilities",
@@ -105,7 +112,7 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
   });
   const pubkeyMessage = (): SignalMessage => ({
     type: "pubkey",
-    payload: { publicKey: publicKey.toString() },
+    payload: { publicKey: toBase64(keyPair.publicKey) },
     timestamp: Date.now(),
   });
 
@@ -113,55 +120,58 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
     await match({ msg: message, status: status.get(), isHost })
       .with({ msg: { type: "flash" }, status: Status.READY, isHost: true }, async () => {
         setStatus(Status.HANDSHAKE);
-        await send("handshake", pubkeyMessage());
+        await send(XR_H_PREFIX, pubkeyMessage());
       })
       .with({ msg: { type: "pubkey" }, status: Status.HANDSHAKE, isHost: false }, async ({ msg: { payload: messagePayload } }) => {
-        let receivedKey: EncryptionKey;
+        const peerKey = parsePublicKey(messagePayload.publicKey);
 
-        try {
-          receivedKey = await parseEncryptionKey(messagePayload.publicKey);
-
-          if (!await validatePublicKeyHash(receivedKey, h)) {
-            setStatus(Status.ERROR);
-            log("Received host public key does not match expected hash -- possible tampering");
-
-            return;
-          }
-        }
-        catch {
+        if (!peerKey || await hashPublicKey(peerKey) !== h) {
           setStatus(Status.ERROR);
-          log("Failed to parse received host public key");
+          log("Received host public key is malformed or does not match expected hash -- possible tampering");
 
           return;
         }
 
-        const changed = setPeerKey(receivedKey)
+        const cipher = await createPeerCipher(keyPair, peerKey);
+        const changed = setPeer({ peerKey, cipher })
           && setStatus(Status.HANDSHAKE_PARTIAL);
 
         if (!changed) return;
 
-        return await send("encrypted", pubkeyMessage());
+        return await send(XR_PREFIX, pubkeyMessage());
       })
       .otherwise(() => {
         log("Ignoring handshake frame", message.type, "in status", status.get());
       });
   };
 
+  /**
+   * The host has no peer key yet when the joining peer's `pubkey` arrives, so
+   * the key in the frame is the only one it can check the announced key against.
+   */
+  const handleAcceptedPeer = async ({ peerKey, cipher, message }: AcceptedPeer) => {
+    const signalMessage = parseSignalMessage(message);
+
+    if (!isHost || status.get() !== Status.HANDSHAKE || signalMessage?.type !== "pubkey") {
+      log("Ignoring first peer-key frame in status", status.get());
+
+      return;
+    }
+
+    if (signalMessage.payload.publicKey !== toBase64(peerKey)) {
+      log("Ignoring pubkey that differs from the frame key");
+
+      return;
+    }
+
+    setPeer({ peerKey, cipher });
+    setStatus(Status.HANDSHAKE_PARTIAL);
+
+    return await send(XR_PREFIX, capabilitiesMessage());
+  };
+
   const handleEncryptedFrame = async (message: SignalMessage) => {
     await match({ msg: message, status: status.get(), isHost })
-      // Host: client responded with its public key.
-      .with(
-        { msg: { type: "pubkey" }, isHost: true, status: Status.HANDSHAKE },
-        async ({ msg: { payload: messagePayload } }) => {
-          const receivedKey = await parseEncryptionKey(messagePayload.publicKey);
-
-          if (!setPeerKey(receivedKey)) return;
-
-          setStatus(Status.HANDSHAKE_PARTIAL);
-
-          return await send("encrypted", capabilitiesMessage());
-        },
-      )
       .with(
         { msg: { type: "capabilities" }, status: Status.HANDSHAKE_PARTIAL },
         async ({ msg: { payload: messagePayload } }) => {
@@ -170,7 +180,7 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
 
           if (isHost) return;
 
-          return await send("encrypted", capabilitiesMessage());
+          return await send(XR_PREFIX, capabilitiesMessage());
         },
       )
       // Client already encrypted, but the host is still re-sending its
@@ -178,7 +188,7 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
       // can finish.
       .with(
         { msg: { type: "capabilities" }, status: Status.ENCRYPTED, isHost: false },
-        async () => await send("encrypted", capabilitiesMessage()),
+        async () => await send(XR_PREFIX, capabilitiesMessage()),
       )
       .with({ msg: { type: "data" }, status: Status.ENCRYPTED }, async () => {
         emitter.emit("message", message.payload as object);
@@ -188,19 +198,29 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
       });
   };
 
-  const onReceive = async (payload: string) => {
+  const onReceive = async (frame: string) => {
     try {
-      const parsed = await parse(payload);
+      const parsed = parseFrame(frame);
 
-      if (!parsed) return;
+      if (parsed?.recipient !== (isHost ? "h" : "c")) return;
 
-      const [stage, message] = parsed;
+      const { prefix, ciphertext } = parsed;
 
-      if (stage === XR_H_PREFIX && message) return await handleHandshakeFrame(message);
+      if (prefix === XR_H_PREFIX) {
+        const message = parseSignalMessage(await handshakeCipher.decrypt(ciphertext));
 
-      if (stage === XR_PREFIX && message) return await handleEncryptedFrame(message);
+        if (message) await handleHandshakeFrame(message);
 
-      log("Dropping frame with unknown prefix");
+        return;
+      }
+
+      const current = peer.get();
+
+      if (!current) return await handleAcceptedPeer(await acceptPeer(keyPair, ciphertext));
+
+      const message = parseSignalMessage(await current.cipher.decrypt(ciphertext));
+
+      if (message) await handleEncryptedFrame(message);
     }
     catch (error) {
       log("Dropping undecryptable or malformed frame", error);
@@ -212,19 +232,13 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
     await channel.setup();
     await channel.subscribe(onReceive);
 
-    if (canEncrypt()) {
-      setStatus(Status.ENCRYPTED);
-
-      return;
-    }
-
     setStatus(Status.READY);
 
     if (!isHost) {
       // Enter HANDSHAKE before publishing: the host's pubkey reply can
       // arrive while the publish is still in flight.
       setStatus(Status.HANDSHAKE);
-      await send("handshake", {
+      await send(XR_H_PREFIX, {
         type: "flash",
         payload: {},
         timestamp: Date.now(),
@@ -242,20 +256,20 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
     setup,
     teardown,
     send(message: object) {
-      if (!canEncrypt()) {
+      if (!peer.get()) {
         return Promise.reject(
           new Error("Cannot encrypt message before keys are exchanged"),
         );
       }
 
-      return send("encrypted", {
+      return send(XR_PREFIX, {
         type: "data",
         payload: message,
         timestamp: Date.now(),
       });
     },
     status,
-    peerKey,
+    peer,
     peerCapabilities,
   });
 };

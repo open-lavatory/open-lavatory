@@ -1,4 +1,4 @@
-import { generateKeyPair } from "@openlv/core/encryption";
+import { createPeerCipher, generateKeyPair } from "@openlv/core/encryption";
 import { EventEmitter } from "eventemitter3";
 import { describe, expect, it } from "vitest";
 
@@ -7,15 +7,13 @@ import { webrtc } from "./webrtc/index.js";
 
 describe("Transport", () => {
   it("should be able to create a transport", async () => {
-    const { encryptionKey: publicKey, decryptionKey } = await generateKeyPair();
-    const { encrypt } = publicKey;
-    const { decrypt } = decryptionKey;
+    const keyPair = generateKeyPair();
+    const cipher = await createPeerCipher(keyPair, keyPair.publicKey);
     const signalA = new EventEmitter<{ signal: string; message: object; }>();
     const signalB = new EventEmitter<{ signal: string; message: object; }>();
 
     const transportA = webrtc().create({
-      encrypt,
-      decrypt,
+      cipher,
       subsend: async (m) => {
         signalA.emit("signal", m);
       },
@@ -25,8 +23,7 @@ describe("Transport", () => {
       },
     });
     const transportB = webrtc().create({
-      encrypt,
-      decrypt,
+      cipher,
       subsend: async (m) => {
         signalB.emit("signal", m);
       },

@@ -5,7 +5,7 @@
  * without relying on centralized infrastructure.
  */
 import { type Observable, observable } from "@openlv/core";
-import type { DecryptionKey, EncryptionKey } from "@openlv/core/encryption";
+import type { Cipher } from "@openlv/core/encryption";
 import { EventEmitter } from "eventemitter3";
 
 import type { TransportLayerBaseEventMap, TransportLayerImplFunction } from "./layer.js";
@@ -28,8 +28,7 @@ export type TLayerEventMap = {
 
 export type TransportLayerParameters = {
   isHost: boolean;
-  encrypt: EncryptionKey["encrypt"];
-  decrypt: DecryptionKey["decrypt"];
+  cipher: Cipher;
   subsend: (message: TransportMessage) => Promise<void>;
   onmessage: (message: object) => void;
 };
@@ -69,7 +68,7 @@ export const createTransportBase = (
   init: TransportLayerImplFunction,
 ): TransportLayerFunction => ({
   transportId,
-  create: ({ encrypt, decrypt, subsend, isHost, onmessage }) => {
+  create: ({ cipher, subsend, isHost, onmessage }) => {
     const emitter = new EventEmitter<TLayerEventMap>();
     const internalEmitter = new EventEmitter<TransportLayerBaseEventMap>();
 
@@ -98,7 +97,7 @@ export const createTransportBase = (
       // Peer data is untrusted until decrypted AND parsed; drop anything that
       // fails either step rather than surfacing an unhandled rejection.
       try {
-        const data = await decrypt(message);
+        const data = await cipher.decrypt(message);
 
         const parsed: unknown = JSON.parse(data);
 
@@ -126,7 +125,7 @@ export const createTransportBase = (
       if (status.get() !== Status.CONNECTED)
         throw new Error("Transport not connected");
 
-      const payload = await encrypt(JSON.stringify(message));
+      const payload = await cipher.encrypt(JSON.stringify(message));
 
       await sendLayer(payload);
     };

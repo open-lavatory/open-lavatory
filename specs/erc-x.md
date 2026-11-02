@@ -290,14 +290,20 @@ base64(iv || ciphertext)
 ```
 
 After public keys are exchanged, signaling switches to peer public-key encryption.
-Each peer generates an asymmetric encryption keypair and encrypts to the other peer's public key.
-In the current implementation, this mechanism uses X25519 key agreement (`@noble/curves`) and XSalsa20-Poly1305 authenticated encryption (`@noble/ciphers`), with an ephemeral sender key for each encrypted message.
+Each peer encrypts every peer public-key encrypted frame with its session X25519 key pair.
+Each direction has its own 32-byte key, derived with HKDF-SHA256 from the X25519 shared secret, an empty salt, and as `info` the UTF-8 bytes of `openlv/1 peer-key`, the sender public key, and the receiver public key, concatenated.
+The sender encrypts with AES-256-GCM under that key and a random 12-byte nonce.
+A peer MUST reject a frame when the X25519 shared secret is all zero bytes.
+A peer MUST reject a frame whose `senderPublicKey` differs from the recorded peer public key.
+Before it has recorded one, the advertising peer MUST reject the joining peer's `pubkey` unless the key in its payload equals the `senderPublicKey` of the frame.
 
 Peer-encrypted payloads are serialized as:
 
 ```text
-base64(ephemeralPublicKey || nonce || ciphertext)
+base64(senderPublicKey || nonce || ciphertext)
 ```
+
+`senderPublicKey` is the sender's 32-byte session public key, and `ciphertext` ends with the 16-byte AES-GCM tag.
 
 This same peer-key mechanism is also used to protect payloads exchanged through the negotiated transport layer.
 

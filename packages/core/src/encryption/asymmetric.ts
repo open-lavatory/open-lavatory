@@ -1,150 +1,147 @@
-import { secretbox } from "@noble/ciphers/salsa.js";
+import { gcm } from "@noble/ciphers/aes.js";
+import {
+  bytesToHex,
+  bytesToUtf8,
+  concatBytes,
+  equalBytes,
+  utf8ToBytes,
+} from "@noble/ciphers/utils.js";
 import { x25519 } from "@noble/curves/ed25519.js";
 
-import type { SessionLinkParameters } from "../session.js";
 import { fromBase64, toBase64 } from "./base64.js";
 
 const PUBLIC_KEY_BYTES = 32;
-const NONCE_BYTES = 24;
+const NONCE_BYTES = 12;
+const HASH_LENGTH = 16;
+const KEY_INFO = new TextEncoder().encode("openlv/1 peer-key");
 
-const composePayload = (
-  ephemeralPublicKey: Uint8Array,
-  nonce: Uint8Array,
-  ciphertext: Uint8Array,
-): string => {
-  const payload = new Uint8Array(
-    ephemeralPublicKey.length + nonce.length + ciphertext.length,
-  );
+export type PublicKey = Uint8Array<ArrayBuffer>;
 
-  payload.set(ephemeralPublicKey, 0);
-  payload.set(nonce, ephemeralPublicKey.length);
-  payload.set(ciphertext, ephemeralPublicKey.length + nonce.length);
-
-  return toBase64(payload);
+export type KeyPair = {
+  publicKey: PublicKey;
+  secretKey: Uint8Array;
 };
 
-const decomposePayload = (
-  payload: string,
-): {
-  ephemeralPublicKey: Uint8Array;
+export type Cipher = {
+  encrypt: (message: string) => Promise<string>;
+  decrypt: (ciphertext: string) => Promise<string>;
+};
+
+export type AcceptedPeer = {
+  peerKey: PublicKey;
+  cipher: Cipher;
+  message: string;
+};
+
+type DecodedCiphertext = {
+  peerKey: PublicKey;
   nonce: Uint8Array;
   ciphertext: Uint8Array;
-} => {
-  const bytes = fromBase64(payload);
+};
+
+export const generateKeyPair = (): KeyPair => {
+  const secretKey = x25519.utils.randomSecretKey();
+
+  return {
+    publicKey: Uint8Array.from(x25519.getPublicKey(secretKey)),
+    secretKey,
+  };
+};
+
+export const parsePublicKey = (encoded: string): PublicKey | undefined => {
+  try {
+    const publicKey = fromBase64(encoded);
+
+    return publicKey.length === PUBLIC_KEY_BYTES ? publicKey : undefined;
+  }
+  catch {
+    return undefined;
+  }
+};
+
+export const hashPublicKey = async (publicKey: PublicKey): Promise<string> => {
+  const hash = await crypto.subtle.digest("SHA-256", publicKey);
+
+  return bytesToHex(new Uint8Array(hash)).slice(0, HASH_LENGTH);
+};
+
+const deriveKeys = async (
+  keyPair: KeyPair,
+  peerKey: PublicKey,
+): Promise<{ sendKey: Uint8Array; receiveKey: Uint8Array; }> => {
+  const shared = await crypto.subtle.importKey(
+    "raw",
+    Uint8Array.from(x25519.getSharedSecret(keyPair.secretKey, peerKey)),
+    "HKDF",
+    false,
+    ["deriveBits"],
+  );
+  const deriveDirectionKey = async (sender: PublicKey, recipient: PublicKey) => {
+    const key = await crypto.subtle.deriveBits(
+      {
+        name: "HKDF",
+        hash: "SHA-256",
+        salt: new Uint8Array(),
+        info: Uint8Array.from(concatBytes(KEY_INFO, sender, recipient)),
+      },
+      shared,
+      256,
+    );
+
+    return new Uint8Array(key);
+  };
+
+  return {
+    sendKey: await deriveDirectionKey(keyPair.publicKey, peerKey),
+    receiveKey: await deriveDirectionKey(peerKey, keyPair.publicKey),
+  };
+};
+
+const decodeCiphertext = (ciphertext: string): DecodedCiphertext => {
+  const bytes = fromBase64(ciphertext);
 
   if (bytes.length <= PUBLIC_KEY_BYTES + NONCE_BYTES) {
-    throw new Error("Encrypted payload is malformed.");
+    throw new Error("Ciphertext is malformed");
   }
 
-  const ephemeralPublicKey = bytes.slice(0, PUBLIC_KEY_BYTES);
-  const nonce = bytes.slice(PUBLIC_KEY_BYTES, PUBLIC_KEY_BYTES + NONCE_BYTES);
-  const ciphertext = bytes.slice(PUBLIC_KEY_BYTES + NONCE_BYTES);
-
   return {
-    ephemeralPublicKey,
-    nonce,
-    ciphertext,
+    peerKey: bytes.slice(0, PUBLIC_KEY_BYTES),
+    nonce: bytes.slice(PUBLIC_KEY_BYTES, PUBLIC_KEY_BYTES + NONCE_BYTES),
+    ciphertext: bytes.slice(PUBLIC_KEY_BYTES + NONCE_BYTES),
   };
 };
 
-export type EncryptionKey = {
-  toString: () => string;
-  encrypt: (message: string) => Promise<string>;
-};
-
-export type DecryptionKey = {
-  toString: () => string;
-  decrypt: (message: string) => Promise<string>;
-};
-
-export const createEncryptionKey = async (
-  publicKey: Uint8Array,
-): Promise<EncryptionKey> => {
-  if (publicKey.length !== PUBLIC_KEY_BYTES) {
-    throw new Error(
-      `Public key must be ${PUBLIC_KEY_BYTES} bytes, got ${publicKey.length}`,
-    );
-  }
-
-  const serializedPublicKey = toBase64(publicKey);
+export const createPeerCipher = async (
+  keyPair: KeyPair,
+  peerKey: PublicKey,
+): Promise<Cipher> => {
+  const { sendKey, receiveKey } = await deriveKeys(keyPair, peerKey);
 
   return {
-    toString: () => serializedPublicKey,
-    encrypt: async (message: string) => {
-      const ephemeralSecret = x25519.utils.randomSecretKey();
-      const ephemeralPublic = x25519.getPublicKey(ephemeralSecret);
+    encrypt: async (message) => {
       const nonce = crypto.getRandomValues(new Uint8Array(NONCE_BYTES));
-      const { seal } = secretbox(
-        x25519.getSharedSecret(ephemeralSecret, publicKey),
-        nonce,
-      );
-      const ciphertext = seal(new TextEncoder().encode(message));
+      const ciphertext = gcm(sendKey, nonce).encrypt(utf8ToBytes(message));
 
-      return composePayload(ephemeralPublic, nonce, ciphertext);
+      return toBase64(concatBytes(keyPair.publicKey, nonce, ciphertext));
     },
-  };
-};
+    decrypt: async (ciphertext) => {
+      const decoded = decodeCiphertext(ciphertext);
 
-export const parseEncryptionKey = async (
-  serializedKey: string,
-): Promise<EncryptionKey> => createEncryptionKey(fromBase64(serializedKey));
-
-export const createDecryptionKey = async (
-  secretKey: Uint8Array,
-): Promise<DecryptionKey> => {
-  const serializedSecretKey = toBase64(secretKey);
-
-  return {
-    toString: () => serializedSecretKey,
-    decrypt: async (message: string) => {
-      if (!message) {
-        throw new Error("Cannot decrypt an empty payload");
+      if (!equalBytes(decoded.peerKey, peerKey)) {
+        throw new Error("Ciphertext is not from the peer");
       }
 
-      const { ephemeralPublicKey, nonce, ciphertext }
-        = decomposePayload(message);
-      const { open } = secretbox(
-        x25519.getSharedSecret(secretKey, ephemeralPublicKey),
-        nonce,
-      );
-
-      return new TextDecoder().decode(open(ciphertext));
+      return bytesToUtf8(gcm(receiveKey, decoded.nonce).decrypt(decoded.ciphertext));
     },
   };
 };
 
-export type EncKeypair = {
-  encryptionKey: EncryptionKey;
-  decryptionKey: DecryptionKey;
-};
+export const acceptPeer = async (
+  keyPair: KeyPair,
+  ciphertext: string,
+): Promise<AcceptedPeer> => {
+  const { peerKey } = decodeCiphertext(ciphertext);
+  const cipher = await createPeerCipher(keyPair, peerKey);
 
-export const generateKeyPair = async (): Promise<EncKeypair> => {
-  const secretKey = x25519.utils.randomSecretKey();
-  const publicKey = x25519.getPublicKey(secretKey);
-
-  return {
-    encryptionKey: await createEncryptionKey(publicKey),
-    decryptionKey: await createDecryptionKey(secretKey),
-  };
-};
-
-export const initEncryptionKeys = async (
-  initParameters?: SessionLinkParameters,
-): Promise<EncKeypair & { relyingEncryptionKey?: EncryptionKey; }> => {
-  const { encryptionKey, decryptionKey } = await generateKeyPair();
-
-  // Note: the peer key is deliberately left undefined until discovered --
-  // falling back to our own key would silently encrypt to ourselves.
-  const publicKey
-    = initParameters && "publicKey" in initParameters
-      ? (initParameters.publicKey as string)
-      : undefined;
-
-  return {
-    encryptionKey,
-    decryptionKey,
-    relyingEncryptionKey: publicKey
-      ? await parseEncryptionKey(publicKey)
-      : undefined,
-  };
+  return { peerKey, cipher, message: await cipher.decrypt(ciphertext) };
 };

@@ -7,11 +7,12 @@ import {
   type SessionLinkParameters,
 } from "@openlv/core";
 import {
-  deriveSymmetricKey,
+  type Cipher,
+  createHandshakeCipher,
   generateHandshakeKey,
+  generateKeyPair,
   generateSessionId,
-  initEncryptionKeys,
-  initHash,
+  hashPublicKey,
 } from "@openlv/core/encryption";
 import {
   type PeerCapabilities,
@@ -109,18 +110,11 @@ export const createSession = async (
     = "sessionId" in initParameters
       ? initParameters.sessionId
       : generateSessionId();
-  const {
-    encryptionKey,
-    decryptionKey: { decrypt },
-  } = await initEncryptionKeys(initParameters);
-  const handshakeKey
-    = "k" in initParameters
-      ? await deriveSymmetricKey(initParameters.k)
-      : await generateHandshakeKey();
-  const { hash, isHost } = await initHash(
-    "h" in initParameters ? initParameters.h : undefined,
-    encryptionKey,
-  );
+  const keyPair = generateKeyPair();
+  const k = "k" in initParameters ? initParameters.k : generateHandshakeKey();
+  const ownHash = await hashPublicKey(keyPair.publicKey);
+  const hash = ("h" in initParameters && initParameters.h) || ownHash;
+  const isHost = hash === ownHash;
   const protocol = initParameters.p;
   const server = initParameters.s;
   const capabilities: PeerCapabilities = {
@@ -152,30 +146,18 @@ export const createSession = async (
     topic: sessionId,
     url: server,
   });
-  const canEncrypt = () => signal.peerKey.get() !== undefined;
   const signal = await signaling({
     h: hash,
-    canEncrypt,
-    async encrypt(message) {
-      const key = signal.peerKey.get();
-
-      if (!key) {
-        throw new Error("Relying party public key not found");
-      }
-
-      return await key.encrypt(message);
-    },
-    decrypt,
-    publicKey: encryptionKey,
-    k: handshakeKey,
+    handshakeCipher: await createHandshakeCipher(k),
+    keyPair,
     capabilities,
     isHost,
   });
 
-  signal.peerKey.subscribe((key) => {
+  signal.peer.subscribe((peer) => {
     const role = isHost ? "host" : "client";
 
-    log(`rpKey discovered by ${role}`, key);
+    log(`rpKey discovered by ${role}`, peer?.peerKey);
   });
 
   signal.peerCapabilities.subscribe((received) => {
@@ -185,17 +167,8 @@ export const createSession = async (
 
   let transport: TransportLayer | undefined;
 
-  const createTransport = (layer: TransportLayerFunction): TransportLayer => layer.create({
-    async encrypt(message) {
-      const key = signal.peerKey.get();
-
-      if (!key) {
-        throw new Error("Relying party public key not found");
-      }
-
-      return await key.encrypt(message);
-    },
-    decrypt,
+  const createTransport = (layer: TransportLayerFunction, cipher: Cipher): TransportLayer => layer.create({
+    cipher,
     isHost,
     onmessage: async (message) => {
       log("Session: received message from transport", message);
@@ -327,7 +300,13 @@ export const createSession = async (
       }
 
       log("selected transport", layer.transportId);
-      transport = createTransport(layer);
+      const peer = signal.peer.get();
+
+      if (!peer) {
+        throw new Error("Relying party public key not found");
+      }
+
+      transport = createTransport(layer, peer.cipher);
       unsubscribeTransportStatus = transport.status.subscribe(onTransportStateChange);
       transport.emitter.on("error", onTransportError);
     }
@@ -443,7 +422,7 @@ export const createSession = async (
         version: OPENLV_PROTOCOL_VERSION,
         sessionId,
         h: hash,
-        k: handshakeKey.toString(),
+        k,
         p: protocol,
         s: server,
       };

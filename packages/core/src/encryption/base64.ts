@@ -8,13 +8,5 @@ export const toBase64 = (data: Uint8Array): string => {
   return btoa(binary);
 };
 
-export const fromBase64 = (value: string): Uint8Array<ArrayBuffer> => {
-  const binary = atob(value);
-  const bytes = new Uint8Array(binary.length);
-
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.codePointAt(index)!;
-  }
-
-  return bytes;
-};
+export const fromBase64 = (value: string): Uint8Array<ArrayBuffer> =>
+  Uint8Array.from(atob(value), char => char.codePointAt(0) ?? 0);

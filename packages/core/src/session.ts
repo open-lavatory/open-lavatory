@@ -1,4 +1,4 @@
-import type { DecryptionKey, EncryptionKey } from "./encryption/asymmetric.js";
+import type { KeyPair, PublicKey } from "./encryption/asymmetric.js";
 
 // typescript type for 32 character hex string
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -27,11 +27,10 @@ export type SessionHandshakeParameters = {
  * these can be used to restart a session
  */
 export type SessionConnectionParameters = SessionHandshakeParameters & {
-  relyingPublicKey: EncryptionKey;
-  // Our public key for the relying party to encrypt messages to us
-  encryptionKey: EncryptionKey;
-  // Our private key for decrypting messages from the relying party
-  decryptionKey: DecryptionKey;
+  // Our key pair
+  keyPair: KeyPair;
+  // The relying party's public key
+  peerKey: PublicKey;
 };
 
 export type SessionCreationParameters = Pick<

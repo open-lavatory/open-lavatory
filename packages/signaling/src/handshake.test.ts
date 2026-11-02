@@ -1,6 +1,5 @@
 import {
-  deriveSymmetricKey,
-  type EncryptionKey,
+  createHandshakeCipher,
   generateKeyPair,
   hashPublicKey,
 } from "@openlv/core/encryption";
@@ -61,34 +60,21 @@ const createPeer = async (
   channel: SignalingChannel,
   { isHost, h, k }: { isHost: boolean; h: string; k: string; },
 ) => {
-  const { encryptionKey, decryptionKey } = await generateKeyPair();
-  let relyingKey: EncryptionKey | undefined;
   let peerCapabilities: PeerCapabilities | undefined;
 
   const layer = await createSignalingLayer(channel)({
     isHost,
     h,
-    k: await deriveSymmetricKey(k),
-    publicKey: encryptionKey,
-    canEncrypt: () => relyingKey !== undefined,
-    encrypt: (message: string) => {
-      if (!relyingKey) throw new Error("no peer key");
-
-      return relyingKey.encrypt(message);
-    },
-    decrypt: (message: string) => decryptionKey.decrypt(message),
+    handshakeCipher: await createHandshakeCipher(k),
+    keyPair: generateKeyPair(),
     capabilities: CLIENT_CAPABILITIES,
-  });
-
-  layer.peerKey.subscribe((key) => {
-    relyingKey = key;
   });
 
   layer.peerCapabilities.subscribe(async (capabilities) => {
     peerCapabilities = capabilities;
   });
 
-  return { layer, encryptionKey, getPeerCapabilities: () => peerCapabilities };
+  return { layer, getPeerCapabilities: () => peerCapabilities };
 };
 
 const K = "00112233445566778899aabbccddeeff";
@@ -96,33 +82,21 @@ const K = "00112233445566778899aabbccddeeff";
 const setupPair = async (topic: ReturnType<typeof createTopic>) => {
   // Mirror createSession: the host's h is the hash of its own key, the
   // client receives that h out-of-band (via the URI).
-  const hostKeys = await generateKeyPair();
-  const h = await hashPublicKey(hostKeys.encryptionKey);
+  const hostKeys = generateKeyPair();
+  const h = await hashPublicKey(hostKeys.publicKey);
 
   const HOST_CAPABILITIES: PeerCapabilities = {
     transports: ["wrtc", "ws"],
     info: { identity: "com.example.dapp", name: "Example dApp" },
   };
 
-  let hostRelying: EncryptionKey | undefined;
   let hostPeerCapabilities: PeerCapabilities | undefined;
   const host = await createSignalingLayer(topic.channel())({
     isHost: true,
     h,
-    k: await deriveSymmetricKey(K),
-    publicKey: hostKeys.encryptionKey,
-    canEncrypt: () => hostRelying !== undefined,
-    encrypt: (message: string) => {
-      if (!hostRelying) throw new Error("no peer key");
-
-      return hostRelying.encrypt(message);
-    },
-    decrypt: (message: string) => hostKeys.decryptionKey.decrypt(message),
+    handshakeCipher: await createHandshakeCipher(K),
+    keyPair: hostKeys,
     capabilities: HOST_CAPABILITIES,
-  });
-
-  host.peerKey.subscribe((key) => {
-    hostRelying = key;
   });
 
   host.peerCapabilities.subscribe((capabilities) => {
