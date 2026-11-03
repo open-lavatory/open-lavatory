@@ -261,7 +261,15 @@ export const createProvider = (
         await start();
       }
 
-      return [...await walletRpc.call({ method: "eth_accounts" })];
+      const requestedAccounts = [
+        ...await walletRpc.call({ method: "eth_requestAccounts" }),
+      ];
+      const accountsChanged = requestedAccounts.length !== accounts.length
+        || requestedAccounts.some((account, index) => account !== accounts[index]);
+      accounts = requestedAccounts;
+      if (accountsChanged) oxEmitter.emit("accountsChanged", accounts);
+
+      return [...accounts];
     }
 
     if (!session.get()) throw new Error(`Method ${request.method} not supported`);
