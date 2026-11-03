@@ -47,6 +47,8 @@ const chainId = await provider.request({ method: 'eth_chainId' })
 - `error`
 - `session`
 
+`createSession()` establishes the wallet session and reads accounts already available to the dApp. To ask the wallet to grant account access, call `provider.request({ method: 'eth_requestAccounts' })`.
+
 ## Provider states
 
 `ProviderStatus` values:
