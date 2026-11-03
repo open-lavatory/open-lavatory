@@ -11,7 +11,6 @@
   color: var(--vocs-text-color-primary);
 }
 
-.lv-sdks p,
 .lv-sdks ul,
 .lv-sdks h3 {
   margin: 0;
@@ -59,11 +58,6 @@
   background: var(--vocs-background-color-surface);
 }
 
-.lv-sdks__tile[data-unavailable] {
-  border-style: dashed;
-  background: none;
-}
-
 .lv-sdks__tile h3 {
   display: flex;
   align-items: center;
@@ -109,11 +103,6 @@
 
 .lv-sdks__mark--dart {
   color: light-dark(#0175c2, #40c4ff);
-}
-
-.lv-sdks__status {
-  color: var(--lv-sdks-secondary);
-  font-size: 0.875rem;
 }
 
 .lv-sdks__links {

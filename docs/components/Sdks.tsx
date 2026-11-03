@@ -18,17 +18,15 @@ type Sdk = {
   language: "typescript" | "react-native" | "rust" | "dart";
   name: string;
   marks: (keyof typeof MARKS)[];
-} & (
-  | { status: "available"; install: string; links: { label: string; href: string; }[]; }
-  | { status: "coming-soon"; }
-);
+  install: string;
+  links: { label: string; href: string; }[];
+};
 
 const SDKS: Sdk[] = [
   {
     language: "typescript",
     name: "TypeScript / JavaScript",
     marks: ["typescript", "javascript"],
-    status: "available",
     install: "pnpm add @openlv/connector",
     links: [
       { label: "Docs", href: "/getting-started" },
@@ -39,7 +37,6 @@ const SDKS: Sdk[] = [
     language: "rust",
     name: "Rust",
     marks: ["rust"],
-    status: "available",
     install: "cargo add openlv",
     links: [{ label: "GitHub", href: "https://github.com/open-lavatory/openlv-rs" }],
   },
@@ -47,14 +44,22 @@ const SDKS: Sdk[] = [
     language: "react-native",
     name: "React Native",
     marks: ["react"],
-    status: "available",
     install: "pnpm add @openlv/react-native",
     links: [
       { label: "Docs", href: "/wallets/react-native" },
       { label: "GitHub", href: "https://github.com/open-lavatory/open-lavatory/tree/master/packages/react-native" },
     ],
   },
-  { language: "dart", name: "Dart", marks: ["dart"], status: "coming-soon" },
+  {
+    language: "dart",
+    name: "Dart",
+    marks: ["dart"],
+    install: "dart pub add openlv",
+    links: [
+      { label: "pub.dev", href: "https://pub.dev/packages/openlv" },
+      { label: "GitHub", href: "https://github.com/open-lavatory/openlv-dart" },
+    ],
+  },
 ];
 
 const Install = ({ command }: { command: string; }) => {
@@ -87,7 +92,7 @@ export const Sdks = () => (
     <h2 id="lv-sdks-title">SDKs</h2>
     <ul className="lv-sdks__tiles">
       {SDKS.map(sdk => (
-        <li key={sdk.language} className="lv-sdks__tile" data-unavailable={sdk.status === "available" ? undefined : ""}>
+        <li key={sdk.language} className="lv-sdks__tile">
           <h3>
             <span className="lv-sdks__marks" aria-hidden="true">
               {sdk.marks.map((brand) => {
@@ -98,23 +103,17 @@ export const Sdks = () => (
             </span>
             {sdk.name}
           </h3>
-          {sdk.status === "available"
-            ? (
-                <>
-                  <Install command={sdk.install} />
-                  <ul className="lv-sdks__links">
-                    {sdk.links.map(link => (
-                      <li key={link.href}>
-                        <a href={link.href}>
-                          {link.label}
-                          {link.href.startsWith("https://") && <FiArrowUpRight aria-hidden="true" />}
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              )
-            : <p className="lv-sdks__status">Coming soon</p>}
+          <Install command={sdk.install} />
+          <ul className="lv-sdks__links">
+            {sdk.links.map(link => (
+              <li key={link.href}>
+                <a href={link.href}>
+                  {link.label}
+                  {link.href.startsWith("https://") && <FiArrowUpRight aria-hidden="true" />}
+                </a>
+              </li>
+            ))}
+          </ul>
         </li>
       ))}
     </ul>
