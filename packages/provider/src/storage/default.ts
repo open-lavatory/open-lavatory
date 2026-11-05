@@ -10,7 +10,7 @@ export const DEFAULT_SETTINGS: ProviderStorage = {
       nostr: "wss://relay.nostr.net/",
     },
   },
-  autoReconnect: false,
+  autoReconnect: true,
   retainHistory: false,
   language: undefined,
   transport: {
