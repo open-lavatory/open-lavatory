@@ -68,3 +68,8 @@ const peerInfo = session.peerInfo.get();
 
 The transport array passed to `createSession`/`connectSession` doubles as your preference list.
 During the handshake both peers exchange their supported transports and the first entry in the dApp's list that the wallet also supports is used — see [transport selection](/api/handshake#transport-selection).
+
+## Resuming a session
+
+Session resumption restores the saved session keys and pinned peer identity, reconnects to the session's original signaling infrastructure, and renegotiates the saved transport. 
+`Session` exposes `getResumeParameters()` once the session is connected. It returns the connection data required to resume.

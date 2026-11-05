@@ -22,6 +22,19 @@ export type SessionHandshakeParameters = {
   s: string;
 };
 
+/**
+ * The parameters that describe a session
+ * these can be used to restart a session
+ */
+export type SessionConnectionParameters = SessionHandshakeParameters & {
+  // Our key pair
+  keyPair: KeyPair;
+  // The relying party's public key
+  peerKey: PublicKey;
+  // Transport selected during the previous connection.
+  selectedTransportId: string;
+};
+
 export type SessionCreationParameters = Pick<
   SessionHandshakeParameters,
   "p" | "s"

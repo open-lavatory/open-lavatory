@@ -72,5 +72,33 @@ describe("Session", () => {
 
     // A throwing handler fails the request at once instead of leaving it to time out.
     await expect(sessionA.send({ data: "boom" })).rejects.toBeInstanceOf(RequestFailedError);
+
+    const resumeParametersA = sessionA.getResumeParameters();
+    const resumeParametersB = sessionB.getResumeParameters();
+
+    expect(resumeParametersA.selectedTransportId).toBe("wrtc");
+    expect(resumeParametersB.peerKey).toBeDefined();
+
+    await Promise.all([sessionA.close(), sessionB.close()]);
+
+    const resumedA = await createSession(
+      resumeParametersA,
+      [webrtc()],
+      async () => ({ result: "resumed" }),
+    );
+    const resumedB = await createSession(
+      resumeParametersB,
+      [webrtc()],
+      async () => ({ result: "resumed" }),
+    );
+
+    await Promise.all([resumedA.connect(), resumedB.connect()]);
+    await Promise.all([resumedA, resumedB].map(
+      session => session.status.until(current => current === SessionStatus.CONNECTED),
+    ));
+
+    await expect(resumedA.send({ data: "after resume" })).resolves.toEqual({ result: "resumed" });
+
+    await Promise.all([resumedA.close(), resumedB.close()]);
   });
 });
