@@ -34,18 +34,20 @@ const chainId = await provider.request({ method: 'eth_chainId' })
 
 ## Parameters
 
-- `config?`: protocol defaults (signaling + transport)
-- `storage?`: custom storage backend (defaults to localStorage where available)
+- `storage?`: custom settings storage backend (defaults to `localStorage` where available)
+- `sessionStorage?`: session state storage backend (defaults to `sessionStorage`, defaults to in-memory storage)
 - `openModal?`: optional UI hook used by connector/modal integrations
 
 ## Provider helpers
 
 - `createSession(parameters?)`
+- `restoreSession()`: resumes the previously saved session, if one exists
 - `closeSession()`
-- `getAccounts()`
 - `status`
 - `error`
 - `session`
+
+`restoreSession()` restores an existing session from validated local session state. It does not create a new pairing: if saved state is missing or invalid, restoration fails and malformed state is discarded. The saved peer identity and key material are retained; resume does not repeat the invitation handshake.
 
 ## Provider states
 
