@@ -1,13 +1,9 @@
-// utils/assign.ts
-
-/** Make intersection shapes readable in tooltips */
 type Simplify<T> = { [K in keyof T]: T[K] } & {};
 
-/** Right-most wins for overlapping keys */
 type Overwrite<L, R> = Omit<L, keyof R> & R;
 
-/** Merge a tuple of objects so later entries overwrite earlier ones */
 type MergeRight<T extends readonly unknown[]> = T extends []
+  // eslint-disable-next-line @stylistic/operator-linebreak
   ? // eslint-disable-next-line @typescript-eslint/no-empty-object-type
     {}
   : T extends [infer A]
@@ -16,13 +12,6 @@ type MergeRight<T extends readonly unknown[]> = T extends []
       ? Overwrite<Simplify<A>, Simplify<MergeRight<R>>>
       : never;
 
-/**
- * Object.assign but fully typed. Creates a new object.
- * Later sources overwrite earlier ones in both runtime and type.
- */
 export const merge = <T extends readonly object[]>(
   ...sources: T
-): Simplify<MergeRight<T>> =>
-// Shallow merge, same semantics as Object.assign({}, ...sources)
-  Object.assign({}, ...sources) as Simplify<MergeRight<T>>
-;
+): Simplify<MergeRight<T>> => Object.assign({}, ...sources) as Simplify<MergeRight<T>>;

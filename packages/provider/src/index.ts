@@ -1,4 +1,3 @@
-
 import {
   encodeConnectionURL,
   type Observable,
@@ -107,16 +106,6 @@ export const createProvider = (
 
   status.subscribe(current => log("status", current));
 
-  /**
-   * Called when the remote peer (wallet) sends a request to the dApp.
-   *
-   * In the normal EIP-1193 flow the dApp is always the requester, so this
-   * path is unusual. We emit a `request` event on the session (once the
-   * session is available) so the modal or other UI consumers can react.
-   * For any method we have no built-in handler for, we return a JSON-RPC
-   * "Method not found" error so the wallet receives a proper response rather
-   * than a no-op stub.
-   */
   const onMessage = async (message: unknown): Promise<unknown> => {
     log("onMessage received from remote peer", message);
 
@@ -135,7 +124,6 @@ export const createProvider = (
     };
   };
 
-  /** Derive default link parameters from stored signaling settings. */
   const defaultLinkParameters = (): SessionLinkParameters | undefined => {
     const signaling = storage.getSettings().signaling ?? config?.signaling;
     const p = signaling?.p;
@@ -153,9 +141,6 @@ export const createProvider = (
       throw new Error("No link parameters provided and no signaling defaults configured");
     }
 
-    // Stored user settings win over constructor config; both fall back to the
-    // transport's built-in defaults, so an empty list must stay undefined
-    // rather than become an empty iceServers array.
     const stored = storage.getSettings().transport?.s?.webrtc;
     const iceServers = [
       ...stored?.stun?.map(urls => ({ urls })) ?? [],
@@ -206,8 +191,6 @@ export const createProvider = (
       return next;
     }
     catch (error_) {
-      // Surface the failure to UI consumers (e.g. the modal) instead of
-      // leaving the provider stuck in "connecting".
       setError(
         session.get()?.error.get()
         ?? (error_ instanceof Error ? error_.message : "Connection failed"),

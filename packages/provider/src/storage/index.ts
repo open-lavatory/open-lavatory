@@ -14,7 +14,6 @@ export type {
 } from "./version.js";
 
 export type ProviderStorageParameters = {
-  // Defaults to localStorage
   storage?: Storage;
 };
 
