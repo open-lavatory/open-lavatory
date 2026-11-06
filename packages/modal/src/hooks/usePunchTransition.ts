@@ -1,4 +1,4 @@
-import { type Accessor, createEffect, createSignal, onCleanup } from "solid-js";
+import { type Accessor, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js";
 
 export interface PunchTransitionOptions {
   duration?: number;
@@ -10,36 +10,18 @@ export const usePunchTransition = <T>(
 ) => {
   const readValue: Accessor<T>
     = typeof value === "function" ? (value as Accessor<T>) : () => value;
-  const initialValue = readValue();
-  const [current, setCurrent] = createSignal<T>(initialValue);
+  const changed = createMemo(readValue, undefined, { equals: Object.is });
+  const [current, setCurrent] = createSignal<T>(changed());
   const [previous, setPrevious] = createSignal<T | undefined>(undefined);
-  let timeoutReference: ReturnType<typeof setTimeout> | undefined;
-  let lastValueReference = initialValue;
 
-  createEffect(() => {
-    const nextValue = readValue();
+  createEffect(on(changed, (next) => {
+    setPrevious(() => current());
+    setCurrent(() => next);
 
-    if (Object.is(nextValue, lastValueReference)) return;
+    const timer = globalThis.setTimeout(() => setPrevious(() => undefined), duration);
 
-    if (timeoutReference) {
-      globalThis.clearTimeout(timeoutReference);
-    }
-
-    setPrevious(() => lastValueReference);
-    setCurrent(() => nextValue);
-    lastValueReference = nextValue;
-
-    timeoutReference = globalThis.setTimeout(() => {
-      setPrevious(() => undefined);
-      timeoutReference = undefined;
-    }, duration);
-
-    onCleanup(() => {
-      if (timeoutReference) {
-        globalThis.clearTimeout(timeoutReference);
-      }
-    });
-  });
+    onCleanup(() => globalThis.clearTimeout(timer));
+  }, { defer: true }));
 
   return {
     current,

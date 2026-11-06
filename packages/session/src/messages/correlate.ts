@@ -1,3 +1,4 @@
+import { createScope, type Scope } from "@openlv/core";
 import type { EventEmitter } from "eventemitter3";
 
 import type { SessionMessageAck, SessionMessageFailed, SessionMessageResponse } from "./index.js";
@@ -24,67 +25,41 @@ export type CorrelationEvents = {
  * received the message; after the ack the wait extends to `responseTimeoutMs`
  * -- enough for user-interactive flows such as `eth_sendTransaction`.
  */
-export const awaitCorrelatedResponse = (
+export const awaitCorrelatedResponse = async (
   messages: EventEmitter<CorrelationEvents>,
   messageId: string,
   ackTimeoutMs: number,
   responseTimeoutMs: number,
-): Promise<unknown> => new Promise((resolve, reject) => {
-  let isAckReceived = false;
-  // eslint-disable-next-line prefer-const
-  let ackTimer: ReturnType<typeof setTimeout> | undefined;
-  let responseTimer: ReturnType<typeof setTimeout> | undefined;
-
-  const cleanup = () => {
-    clearTimeout(ackTimer);
-    clearTimeout(responseTimer);
-    messages.off("message", handler);
-    messages.off("ended", onEnded);
-  };
-
-  const onEnded = (reason: string) => {
-    cleanup();
-    reject(new Error(reason));
-  };
-
-  const handler = (message: SessionMessageAck | SessionMessageFailed | SessionMessageResponse) => {
-    if (message.messageId !== messageId) return;
-
-    if (message.type === "failed") {
-      cleanup();
-      reject(new RequestFailedError());
-
-      return;
-    }
-
-    if (message.type === "ack" && !isAckReceived) {
-      isAckReceived = true;
-      clearTimeout(ackTimer);
-      // The other side confirmed receipt; wait for the full response.
-      responseTimer = setTimeout(() => {
-        cleanup();
-        reject(new Error("Request timed out: no response after acknowledgement"));
-      }, responseTimeoutMs);
-
-      return;
-    }
-
-    if (message.type === "response") {
-      cleanup();
-      resolve(message.payload);
-    }
-  };
-
-  messages.on("message", handler);
-  messages.on("ended", onEnded);
-
+): Promise<unknown> => {
+  const request = createScope();
   // Short window for the ack -- tells us the peer is alive and processing.
-  ackTimer = setTimeout(() => {
-    if (isAckReceived) {
-      return;
-    }
+  const ackWait = request.child();
 
-    cleanup();
-    reject(new Error("Request timed out: remote peer did not acknowledge"));
-  }, ackTimeoutMs);
-});
+  const timeout = (scope: Scope, delayMs: number, reason: string) => new Promise<never>((_resolve, reject) => {
+    scope.timeout(delayMs, () => reject(new Error(`Request timed out: ${reason}`)));
+  });
+  const acknowledged = new Promise<void>((resolve) => {
+    ackWait.listen(messages, "message", (message: CorrelationEvents["message"]) => {
+      if (message.messageId === messageId && message.type === "ack") resolve();
+    });
+  });
+  const response = new Promise<unknown>((resolve, reject) => {
+    request.listen(messages, "ended", (reason: string) => reject(new Error(reason)));
+    request.listen(messages, "message", (message: CorrelationEvents["message"]) => {
+      if (message.messageId !== messageId) return;
+
+      if (message.type === "failed") reject(new RequestFailedError());
+      else if (message.type === "response") resolve(message.payload);
+    });
+  });
+
+  try {
+    await Promise.race([acknowledged, response, timeout(ackWait, ackTimeoutMs, "remote peer did not acknowledge")]);
+    await ackWait.close();
+
+    return await Promise.race([response, timeout(request, responseTimeoutMs, "no response after acknowledgement")]);
+  }
+  finally {
+    await request.close();
+  }
+};

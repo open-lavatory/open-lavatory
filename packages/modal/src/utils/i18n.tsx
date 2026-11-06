@@ -206,7 +206,7 @@ const loadLanguagePack = async (
 
 export const TranslationProvider: ParentComponent = (properties) => {
   const { provider } = useModalContext();
-  const initialLanguageTag = provider.storage.getSettings().language as LanguageTag | undefined;
+  const initialLanguageTag = provider.storage.settings.get().language as LanguageTag | undefined;
   const [languageTag, setLanguageTag] = createSignal<LanguageTag>(
     initialLanguageTag ?? "en",
   );

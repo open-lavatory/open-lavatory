@@ -1,4 +1,5 @@
 import {
+  createScope,
   decodeConnectionURL,
   type Observable,
   observable,
@@ -154,6 +155,10 @@ export const createSession = async (
     isHost,
   });
 
+  const scope = createScope();
+
+  scope.add(signal.teardown);
+
   signal.peer.subscribe((peer) => {
     const role = isHost ? "host" : "client";
 
@@ -259,25 +264,20 @@ export const createSession = async (
   // connect promptly; if it cannot (e.g. no ICE candidates on a restricted
   // network) fail loudly instead of sitting in "linking" forever.
   const TRANSPORT_LINK_TIMEOUT_MS = 45_000;
-  let linkDeadline: ReturnType<typeof setTimeout> | undefined;
-  let unsubscribeTransportStatus: (() => void) | undefined;
+  // From transport start until the session connects or ends
+  const linking = scope.child();
 
-  const clearLinkDeadline = () => {
-    clearTimeout(linkDeadline);
-    linkDeadline = undefined;
-  };
+  linking.closeWhen(status, value => value === SessionStatus.CONNECTED || value === SessionStatus.DISCONNECTED);
 
   const onTransportStateChange = (transportStatus: TransportStatus) => {
     log("transport state change", transportStatus);
 
     if (transportStatus === TransportStatus.CONNECTED) {
-      clearLinkDeadline();
       setLastError(undefined);
       updateStatus(SessionStatus.CONNECTED);
     }
 
     if (transportStatus === TransportStatus.ERROR) {
-      clearLinkDeadline();
       setLastErrorIfUnset("Peer-to-peer transport failed");
       updateStatus(SessionStatus.DISCONNECTED);
     }
@@ -307,21 +307,18 @@ export const createSession = async (
       }
 
       transport = createTransport(layer, peer.cipher);
-      unsubscribeTransportStatus = transport.status.subscribe(onTransportStateChange);
-      transport.emitter.on("error", onTransportError);
+      scope.add(transport.teardown);
+      scope.add(transport.status.subscribe(onTransportStateChange));
+      scope.listen(transport.emitter, "error", onTransportError);
+      linking.timeout(TRANSPORT_LINK_TIMEOUT_MS, () => {
+        log("transport failed to connect in time");
+        setLastErrorIfUnset("Timed out establishing the peer-to-peer connection");
+        updateStatus(SessionStatus.DISCONNECTED);
+      });
     }
-
-    linkDeadline ??= setTimeout(() => {
-      if (status.get() === SessionStatus.CONNECTED) return;
-
-      log("transport failed to connect in time");
-      setLastErrorIfUnset("Timed out establishing the peer-to-peer connection");
-      updateStatus(SessionStatus.DISCONNECTED);
-    }, TRANSPORT_LINK_TIMEOUT_MS);
 
     Promise.resolve(transport.setup()).catch((error) => {
       log("transport setup failed", error);
-      clearLinkDeadline();
       setLastErrorIfUnset(error instanceof Error ? error.message : "Transport setup failed");
       updateStatus(SessionStatus.DISCONNECTED);
     });
@@ -382,18 +379,8 @@ export const createSession = async (
     }
   };
 
-  let unsubscribeSignalStatus: (() => void) | undefined;
-
   const teardown = async () => {
-    clearLinkDeadline();
-    signal.off("message", onSignalMessage);
-    unsubscribeSignalStatus?.();
-    unsubscribeTransportStatus?.();
-    transport?.emitter.off("error", onTransportError);
-    await Promise.all([
-      transport?.teardown(),
-      signal.teardown(),
-    ]);
+    await scope.close();
     updateStatus(SessionStatus.DISCONNECTED);
   };
 
@@ -402,8 +389,8 @@ export const createSession = async (
       updateStatus(SessionStatus.SIGNALING);
       log("connecting to session, isHost:", isHost);
 
-      signal.on("message", onSignalMessage);
-      unsubscribeSignalStatus = signal.status.subscribe(onSignalStateChange);
+      scope.listen(signal, "message", onSignalMessage);
+      scope.add(signal.status.subscribe(onSignalStateChange));
 
       await signal.setup();
     },

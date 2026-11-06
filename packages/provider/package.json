@@ -48,7 +48,6 @@
     "@openlv/session": "workspace:*",
     "@openlv/signaling": "workspace:*",
     "@openlv/transport": "workspace:*",
-    "eventemitter3": "^5.0.1",
     "ox": "^0.9.14",
     "zod": "^4.4.3"
   },

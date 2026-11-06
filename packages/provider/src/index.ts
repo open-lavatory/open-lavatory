@@ -1,4 +1,5 @@
 import {
+  createScope,
   encodeConnectionURL,
   type Observable,
   observable,
@@ -87,15 +88,15 @@ export type OpenLVProvider = OxProvider.Provider<
 export const createProvider = (
   parameters: OpenLVProviderParameters,
 ): OpenLVProvider => {
-  const oxEmitter = OxProvider.createEmitter<EventMap>();
+  const { openModal, config, storage } = parameters;
 
+  const store = createProviderStorage({ storage });
   const [session, setSession] = observable<Session | undefined>(undefined);
   const [status, setStatus] = observable<ProviderStatus>(ProviderStatus.STANDBY);
   const [error, setError] = observable<string | undefined>(undefined);
 
-  let accounts: Address[] = [];
-  const storage = createProviderStorage({ storage: parameters.storage });
-  const { openModal, config } = parameters;
+  const oxEmitter = OxProvider.createEmitter<EventMap>();
+
   const walletRpc = createWalletRpcClient(async (payload) => {
     const current = session.get();
 
@@ -104,6 +105,9 @@ export const createProvider = (
     return await current.send(payload);
   });
 
+  const getAccounts = async () => [...await walletRpc.call({ method: "eth_accounts" })];
+
+  // For debug purposes
   status.subscribe(current => log("status", current));
 
   const onMessage = async (message: unknown): Promise<unknown> => {
@@ -125,7 +129,7 @@ export const createProvider = (
   };
 
   const defaultLinkParameters = (): SessionLinkParameters | undefined => {
-    const signaling = storage.getSettings().signaling ?? config?.signaling;
+    const signaling = store.settings.get().signaling ?? config?.signaling;
     const p = signaling?.p;
     const s = p ? signaling?.s?.[p] : undefined;
 
@@ -141,7 +145,7 @@ export const createProvider = (
       throw new Error("No link parameters provided and no signaling defaults configured");
     }
 
-    const stored = storage.getSettings().transport?.s?.webrtc;
+    const stored = store.settings.get().transport?.s?.webrtc;
     const iceServers = [
       ...stored?.stun?.map(urls => ({ urls })) ?? [],
       ...stored?.turn ?? [],
@@ -180,8 +184,7 @@ export const createProvider = (
 
       log("session linked");
 
-      accounts = [...await walletRpc.call({ method: "eth_accounts" })];
-
+      const accounts = await getAccounts();
       const chainId = await walletRpc.call({ method: "eth_chainId" });
 
       setStatus(ProviderStatus.CONNECTED);
@@ -199,10 +202,10 @@ export const createProvider = (
       throw error_;
     }
   };
+
   const closeSession = async () => {
     await session.get()?.close();
     setSession(undefined);
-    accounts = [];
     setError(undefined);
     setStatus(ProviderStatus.STANDBY);
   };
@@ -222,29 +225,19 @@ export const createProvider = (
       if (openModal) {
         await openModal(oxProvider as OpenLVProvider);
 
-        await new Promise<void>((resolve) => {
-          const onConnect = () => {
-            cleanup();
-            resolve();
-          };
-          const onDisconnect = () => {
-            cleanup();
-            resolve();
-          };
-          const cleanup = () => {
-            oxProvider.off("connect", onConnect);
-            oxProvider.off("disconnect", onDisconnect);
-          };
+        const waiting = createScope();
 
-          oxProvider.on("connect", onConnect);
-          oxProvider.on("disconnect", onDisconnect);
+        await new Promise<void>((resolve) => {
+          waiting.listen(oxEmitter, "connect", () => resolve());
+          waiting.listen(oxEmitter, "disconnect", () => resolve());
         });
+        await waiting.close();
       }
       else {
         await start();
       }
 
-      return [...await walletRpc.call({ method: "eth_accounts" })];
+      return await getAccounts();
     }
 
     if (!session.get()) throw new Error(`Method ${request.method} not supported`);
@@ -256,6 +249,7 @@ export const createProvider = (
 
     return result as ExtractReturnType<RpcSchema, typeof request.method>;
   };
+
   const oxProvider = OxProvider.from<
     ProviderConfig,
     OxProvider.from.Value<ProviderConfig>
@@ -263,11 +257,9 @@ export const createProvider = (
     & OxProvider.Emitter<EventMap>
   >({
     ...oxEmitter,
-    storage,
+    storage: store,
     request,
-    getAccounts: async () => (
-      [...await walletRpc.call({ method: "eth_accounts" })]
-    ),
+    getAccounts,
     createSession: start,
     closeSession,
     status,

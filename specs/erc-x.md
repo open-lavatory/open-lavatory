@@ -180,6 +180,7 @@ The version 1 handshake sequence is:
 6. Both peers treat subsequent signaling data as peer public-key encrypted.
 
 Signaling infrastructure is lossy, so each handshake step MAY be re-sent until the next inbound message confirms progress; receivers MUST treat duplicate deliveries as no-ops. A joining peer that continues to receive `capabilities` after completing the handshake MUST answer each duplicate, since its own final message may have been lost.
+A peer that has started the handshake and has not reached the encrypted state after 30 seconds SHOULD fail the session with an error.
 
 After the handshake, signaling application payloads MUST be carried in `data` messages inside peer public-key encrypted frames.
 

@@ -3,6 +3,9 @@ export const XR_H_PREFIX = "h";
 export type SignalingPrefix = typeof XR_PREFIX | typeof XR_H_PREFIX;
 export type SignalingRecipient = "h" | "c";
 
+export const HANDSHAKE_TIMEOUT_MS = 30_000;
+export const HANDSHAKE_RESEND_INTERVAL_MS = 2000;
+
 export const composeFrame = (
   prefix: SignalingPrefix,
   recipient: SignalingRecipient,
