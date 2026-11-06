@@ -43,7 +43,7 @@ export const useSessionStart = () => {
 
   return {
     start: () => {
-      const currentSettings = provider.storage.getSettings();
+      const currentSettings = provider.storage.settings.get();
       const p = currentSettings?.signaling?.p;
       const s = p ? currentSettings?.signaling?.s?.[p] : undefined;
 

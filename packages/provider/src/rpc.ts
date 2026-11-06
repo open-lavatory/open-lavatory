@@ -44,7 +44,6 @@ const decode = (payload: unknown, requestIdentifier: number): unknown => {
   return parsed.data.result;
 };
 
-/** Send a 1193 request to the wallet as JSON-RPC and decode the correlated response. */
 export const createWalletRpcClient = (
   send: (payload: unknown) => Promise<unknown>,
 ): {

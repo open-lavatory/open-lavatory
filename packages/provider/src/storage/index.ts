@@ -1,4 +1,4 @@
-import { EventEmitter } from "eventemitter3";
+import { type Observable, observable } from "@openlv/core";
 
 import { DEFAULT_SETTINGS } from "./default.js";
 import { parseProviderStorage, type ProviderStorage } from "./version.js";
@@ -14,7 +14,6 @@ export type {
 } from "./version.js";
 
 export type ProviderStorageParameters = {
-  // Defaults to localStorage
   storage?: Storage;
 };
 
@@ -38,10 +37,7 @@ const getStorage = () => {
 };
 
 export type ProviderStorageR = {
-  emitter: EventEmitter<{
-    settings_change: (settings: ProviderStorage) => void;
-  }>;
-  getSettings: () => ProviderStorage;
+  settings: Observable<ProviderStorage>;
   setSettings: (update: ProviderStorage) => void;
 };
 
@@ -50,22 +46,15 @@ export const createProviderStorage = ({
 }: ProviderStorageParameters): ProviderStorageR => {
   const io = storage ?? getStorage() ?? createPassthrough();
   const initialSettings = io.getItem(DEFAULT_STORAGE_KEY);
-
-  let settings: ProviderStorage = initialSettings
-    ? parseProviderStorage(initialSettings)
-    : DEFAULT_SETTINGS;
-
-  const emitter = new EventEmitter<{
-    settings_change: (settings: ProviderStorage) => void;
-  }>();
+  const [settings, setSettings] = observable<ProviderStorage>(
+    initialSettings ? parseProviderStorage(initialSettings) : DEFAULT_SETTINGS,
+  );
 
   return {
-    emitter,
-    getSettings: () => settings,
+    settings,
     setSettings: (update: ProviderStorage) => {
-      settings = update;
       io.setItem(DEFAULT_STORAGE_KEY, JSON.stringify(update));
-      emitter.emit("settings_change", update);
+      setSettings(update);
     },
   };
 };

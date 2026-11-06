@@ -615,9 +615,6 @@ importers:
       '@openlv/transport':
         specifier: workspace:*
         version: link:../transport
-      eventemitter3:
-        specifier: ^5.0.1
-        version: 5.0.4
       ox:
         specifier: ^0.9.14
         version: 0.9.17(typescript@5.9.3)(zod@4.4.3)

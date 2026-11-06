@@ -9,6 +9,8 @@ import { createSignalingLayer, Status, type SignalingLayer } from "./index.js";
 import type { PeerCapabilities } from "./messages.js";
 import type { SignalingChannel } from "./protocol.js";
 
+const realSetTimeout = globalThis.setTimeout;
+
 /**
  * In-memory topic emulating a public relay: every publish is delivered to
  * all subscribers (including the sender, like MQTT echo). A `drop` predicate
@@ -16,12 +18,26 @@ import type { SignalingChannel } from "./protocol.js";
  */
 const neverDrop = () => false;
 
-const createTopic = () => {
+type Topic = {
+  setDrop: (function_: (payload: string, index: number) => boolean) => void;
+  setCopies: (copies: number) => void;
+  inject: (payload: string) => void;
+  channel: () => SignalingChannel;
+  // Every published payload, including the dropped ones
+  frames: string[];
+};
+
+const createTopic = (): Topic => {
   const subscribers: ((payload: string) => void)[] = [];
+  const frames: string[] = [];
   let drop: (payload: string, index: number) => boolean = neverDrop;
-  let published = 0;
+  let copies = 1;
 
   return {
+    frames,
+    setCopies(count: number) {
+      copies = count;
+    },
     setDrop(function_: (payload: string, index: number) => boolean) {
       drop = function_;
     },
@@ -34,13 +50,17 @@ const createTopic = () => {
         setup: () => {},
         teardown: () => {},
         publish: (payload: string) => {
-          const index = published++;
+          const index = frames.length;
+
+          frames.push(payload);
 
           if (drop(payload, index)) return;
 
           // Deliver asynchronously, as a real relay would.
           queueMicrotask(() => {
-            for (const subscriber of subscribers) subscriber(payload);
+            for (const subscriber of subscribers) {
+              for (let copy = 0; copy < copies; copy += 1) subscriber(payload);
+            }
           });
         },
         subscribe: (handler) => {
@@ -133,6 +153,31 @@ const waitForState = (layer: SignalingLayer, target: string) =>
     });
   });
 
+const bothEncrypted = (first: SignalingLayer, second: SignalingLayer) => Promise.all([
+  waitForState(first, Status.ENCRYPTED),
+  waitForState(second, Status.ENCRYPTED),
+]);
+
+// The crypto behind each send finishes in real time, outside the fake clock
+const advance = async (milliseconds: number) => {
+  await vi.advanceTimersByTimeAsync(milliseconds);
+  await new Promise(resolve => realSetTimeout(resolve, 50));
+};
+
+const recordHistory = (layer: SignalingLayer) => {
+  const statuses: string[] = [];
+  const peers: unknown[] = [];
+
+  layer.status.subscribe((value) => {
+    statuses.push(value);
+  });
+  layer.peer.subscribe((value) => {
+    peers.push(value);
+  });
+
+  return { statuses, peers };
+};
+
 describe("signaling handshake (in-memory relay)", () => {
   let host: SignalingLayer;
   let client: SignalingLayer;
@@ -208,8 +253,7 @@ describe("signaling handshake (in-memory relay)", () => {
     await encrypted;
   });
 
-  // Skipped until handshake resend/timeout logic is (re)implemented.
-  describe.skip("lossy relay", () => {
+  describe("timeout", () => {
     beforeEach(() => {
       vi.useFakeTimers();
     });
@@ -218,16 +262,145 @@ describe("signaling handshake (in-memory relay)", () => {
       vi.useRealTimers();
     });
 
-    it("recovers when handshake frames are dropped", async () => {
+    it("fails a joining peer whose host does not answer after 30 seconds", async () => {
       const topic = createTopic();
 
-      // Drop the first delivery of every frame; re-sends get through.
+      topic.setDrop(() => true);
+      ({ host, client } = await setupPair(topic));
+
+      await host.setup();
+      await client.setup();
+
+      await vi.advanceTimersByTimeAsync(29_999);
+      expect(client.status.get()).toBe(Status.HANDSHAKE);
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(client.status.get()).toBe(Status.ERROR);
+    });
+
+    it("fails a host 30 seconds after a flash when the joining peer goes quiet", async () => {
+      const topic = createTopic();
+
+      topic.setDrop(payload => !payload.startsWith("hh"));
+      ({ host, client } = await setupPair(topic));
+
+      await host.setup();
+      await client.setup();
+      await waitForState(host, Status.HANDSHAKE);
+
+      await vi.advanceTimersByTimeAsync(29_999);
+      expect(host.status.get()).toBe(Status.HANDSHAKE);
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(host.status.get()).toBe(Status.ERROR);
+    });
+
+    it("keeps a completed handshake encrypted past the limit", async () => {
+      const topic = createTopic();
+
+      ({ host, client } = await setupPair(topic));
+
+      await host.setup();
+
+      const encrypted = Promise.all([
+        waitForState(host, Status.ENCRYPTED),
+        waitForState(client, Status.ENCRYPTED),
+      ]);
+
+      await client.setup();
+      await encrypted;
+
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(host.status.get()).toBe(Status.ENCRYPTED);
+      expect(client.status.get()).toBe(Status.ENCRYPTED);
+    });
+  });
+
+  it("ignores duplicate deliveries of every frame", async () => {
+    const topic = createTopic();
+
+    topic.setCopies(2);
+    ({ host, client } = await setupPair(topic));
+
+    const hostHistory = recordHistory(host);
+    const clientHistory = recordHistory(client);
+
+    await host.setup();
+
+    const encrypted = bothEncrypted(host, client);
+
+    await client.setup();
+    await encrypted;
+
+    const path = ["standby", "connecting", "ready", "handshake", "handshake-partial", "encrypted"];
+
+    expect(hostHistory.statuses).toEqual(path);
+    expect(clientHistory.statuses).toEqual(path);
+    // The initial value and the one recorded peer
+    expect(hostHistory.peers).toHaveLength(2);
+    expect(clientHistory.peers).toHaveLength(2);
+  });
+
+  it("answers each duplicate capabilities of the host after the handshake", async () => {
+    const topic = createTopic();
+
+    ({ host, client } = await setupPair(topic));
+
+    await host.setup();
+
+    const encrypted = bothEncrypted(host, client);
+
+    await client.setup();
+    await encrypted;
+
+    const sent = topic.frames.length;
+    // "xc" is a peer-key frame for the joining peer: only the host's capabilities
+    const hostCapabilities = topic.frames.filter(frame => frame.startsWith("xc"));
+
+    for (const frame of [...hostCapabilities, ...hostCapabilities]) topic.inject(frame);
+
+    await vi.waitFor(() => expect(topic.frames).toHaveLength(sent + 2));
+
+    expect(topic.frames.slice(sent).every(frame => frame.startsWith("xh"))).toBe(true);
+    expect(host.status.get()).toBe(Status.ENCRYPTED);
+    expect(client.status.get()).toBe(Status.ENCRYPTED);
+  });
+
+  describe("re-send", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("sends a dropped flash again after 2 seconds", async () => {
+      const topic = createTopic();
+
+      topic.setDrop((_payload, index) => index === 0);
+      ({ host, client } = await setupPair(topic));
+
+      await host.setup();
+      await client.setup();
+
+      await advance(1999);
+      expect(host.status.get()).toBe(Status.READY);
+
+      await advance(1);
+      await bothEncrypted(host, client);
+    });
+
+    it("recovers when the first delivery of every frame is dropped", async () => {
+      const topic = createTopic();
       const seen = new Set<string>();
 
       topic.setDrop((payload) => {
-        if (seen.has(payload.slice(0, 2) + payload.length)) return false;
+        const key = payload.slice(0, 2) + payload.length;
 
-        seen.add(payload.slice(0, 2) + payload.length);
+        if (seen.has(key)) return false;
+
+        seen.add(key);
 
         return true;
       });
@@ -237,33 +410,91 @@ describe("signaling handshake (in-memory relay)", () => {
       await host.setup();
       await client.setup();
 
-      const encrypted = Promise.all([
-        waitForState(host, Status.ENCRYPTED),
-        waitForState(client, Status.ENCRYPTED),
-      ]);
+      const encrypted = bothEncrypted(host, client);
 
-      // Let several resend intervals elapse.
       for (let index = 0; index < 10; index += 1) {
-        await vi.advanceTimersByTimeAsync(2100);
+        await advance(2100);
       }
 
       await encrypted;
     });
 
-    it("errors out when the peer never appears", async () => {
+    it("stops re-sending once encrypted", async () => {
       const topic = createTopic();
-
-      topic.setDrop(() => true);
 
       ({ host, client } = await setupPair(topic));
 
+      await host.setup();
+
+      const encrypted = bothEncrypted(host, client);
+
+      await client.setup();
+      await encrypted;
+
+      const sent = topic.frames.length;
+
+      await advance(60_000);
+      expect(topic.frames).toHaveLength(sent);
+    });
+
+    it("re-sends every 2 seconds until the limit, then stops", async () => {
+      const topic = createTopic();
+
+      topic.setDrop(() => true);
+      ({ host, client } = await setupPair(topic));
+
+      await host.setup();
       await client.setup();
 
-      const errored = waitForState(client, Status.ERROR);
+      await advance(29_999);
+      // The first flash and one re-send every 2 seconds from 2 s to 28 s
+      expect(topic.frames).toHaveLength(15);
 
-      await vi.advanceTimersByTimeAsync(31_000);
-      await errored;
+      await advance(1);
       expect(client.status.get()).toBe(Status.ERROR);
+
+      await advance(60_000);
+      expect(topic.frames).toHaveLength(15);
+    });
+
+    it("stops re-sending on teardown", async () => {
+      const topic = createTopic();
+
+      topic.setDrop(() => true);
+      ({ host, client } = await setupPair(topic));
+
+      await host.setup();
+      await client.setup();
+      await advance(5000);
+      await client.teardown();
+
+      const sent = topic.frames.length;
+
+      await advance(20_000);
+      expect(topic.frames).toHaveLength(sent);
+    });
+
+    it("stops re-sending a step once the next one starts", async () => {
+      const topic = createTopic();
+
+      // The host's capabilities never arrive, so both peers stay in handshake-partial
+      topic.setDrop(payload => payload.startsWith("xc"));
+      ({ host, client } = await setupPair(topic));
+
+      await host.setup();
+      await client.setup();
+      await Promise.all([host, client].map(layer => waitForState(layer, Status.HANDSHAKE_PARTIAL)));
+
+      const sent = topic.frames.length;
+      const sentSince = (prefix: string) => topic.frames.slice(sent).filter(frame => frame.startsWith(prefix));
+
+      await advance(10_000);
+
+      // The flash and the host's pubkey stopped; the steps of handshake-partial still repeat
+      expect(sentSince("hh")).toEqual([]);
+      expect(sentSince("hc")).toEqual([]);
+      expect(sentSince("xh").length).toBeGreaterThan(1);
+      expect(sentSince("xc").length).toBeGreaterThan(1);
     });
   });
 });

@@ -6,6 +6,7 @@ import {
   createSignal,
   from,
   type JSX,
+  on,
   onCleanup,
   Show,
 } from "solid-js";
@@ -174,74 +175,24 @@ export const ModalRoot = (properties: { onClose: () => void; }) => {
     if (success) setCopied(true);
   };
 
-  let isInitialMount = true;
-  let initialMeasureTimeout: ReturnType<typeof setTimeout> | undefined;
-  let previousHeight: number | undefined;
-  let overflowTimeout: ReturnType<typeof setTimeout> | undefined;
   const [shouldHideOverflow, setShouldHideOverflow] = createSignal(false);
 
-  createEffect(() => {
-    displayedStatus();
-    displayedModalView();
-    const node = contentNode();
+  createEffect(on(contentNode, () => {
+    const timer = globalThis.setTimeout(() => measureHeight(undefined, true), 0);
 
-    if (!node) return;
+    onCleanup(() => globalThis.clearTimeout(timer));
+  }));
 
-    if (isInitialMount) {
-      if (initialMeasureTimeout) {
-        globalThis.clearTimeout(initialMeasureTimeout);
-      }
+  createEffect(on([displayedStatus, displayedModalView], () => measureHeight(), { defer: true }));
 
-      initialMeasureTimeout = globalThis.setTimeout(() => {
-        if (!contentNode()) {
-          return;
-        }
+  createEffect(on(height, (_current, previous) => {
+    if (!previous) return;
 
-        measureHeight(undefined, true);
-        isInitialMount = false;
-      }, 0);
-    }
-    else {
-      measureHeight();
-    }
+    setShouldHideOverflow(true);
+    const timer = globalThis.setTimeout(() => setShouldHideOverflow(false), 200);
 
-    onCleanup(() => {
-      if (initialMeasureTimeout) {
-        globalThis.clearTimeout(initialMeasureTimeout);
-      }
-    });
-  });
-
-  createEffect(() => {
-    const currentHeight = height();
-    const isHeightChanging
-      = previousHeight !== undefined
-        && currentHeight !== previousHeight
-        && currentHeight > 0
-        && previousHeight > 0
-        && Math.abs(currentHeight - previousHeight) > 0.5;
-
-    if (isHeightChanging) {
-      setShouldHideOverflow(true);
-
-      if (overflowTimeout) {
-        globalThis.clearTimeout(overflowTimeout);
-      }
-
-      overflowTimeout = globalThis.setTimeout(() => {
-        setShouldHideOverflow(false);
-        overflowTimeout = undefined;
-      }, 200);
-    }
-
-    previousHeight = currentHeight;
-
-    onCleanup(() => {
-      if (overflowTimeout) {
-        globalThis.clearTimeout(overflowTimeout);
-      }
-    });
-  });
+    onCleanup(() => globalThis.clearTimeout(timer));
+  }));
 
   const shouldShowBack = createMemo(
     () => !(modalView() === "start" && providerStatus() === ProviderStatus.STANDBY),

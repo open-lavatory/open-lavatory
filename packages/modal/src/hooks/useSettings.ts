@@ -11,12 +11,11 @@ import type { LanguageTag } from "../utils/i18n.jsx";
 
 export const useSettings = () => {
   const { provider } = useModalContext();
-  const [settings, setLocalSettings] = createSignal<ProviderStorage>(provider.storage.getSettings());
+  const [settings, setLocalSettings] = createSignal<ProviderStorage>(provider.storage.settings.get());
 
   // Several components hold their own useSettings(); without this a write
   // through one leaves the others showing the value it replaced.
-  provider.storage.emitter.on("settings_change", setLocalSettings);
-  onCleanup(() => provider.storage.emitter.off("settings_change", setLocalSettings));
+  onCleanup(provider.storage.settings.subscribe(setLocalSettings));
 
   const setSettings = (newSettings: ProviderStorage) => {
     provider.storage.setSettings(newSettings);

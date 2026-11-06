@@ -25,7 +25,7 @@ export class OpenLVModalElement
 
     this.shadow = this.attachShadow({ mode: "open" });
     const initialUserTheme
-      = parameters.provider.storage.getSettings()?.theme ?? "system";
+      = parameters.provider.storage.settings.get()?.theme ?? "system";
 
     void updateStyles(this.shadow, parameters.theme, initialUserTheme);
   }
@@ -45,19 +45,19 @@ export class OpenLVModalElement
   private setupThemeListener() {
     const update = () => {
       const userTheme
-        = this.parameters.provider.storage.getSettings()?.theme ?? "system";
+        = this.parameters.provider.storage.settings.get()?.theme ?? "system";
 
       void updateStyles(this.shadow, this.parameters.theme, userTheme);
     };
 
-    this.parameters.provider.storage.emitter.on("settings_change", update);
+    const unsubscribeSettings = this.parameters.provider.storage.settings.subscribe(update);
 
     const mediaQuery = globalThis.matchMedia("(prefers-color-scheme: dark)");
 
     mediaQuery.addEventListener("change", update);
 
     this.themeCleanup = () => {
-      this.parameters.provider.storage.emitter.off("settings_change", update);
+      unsubscribeSettings();
       mediaQuery.removeEventListener("change", update);
     };
   }
