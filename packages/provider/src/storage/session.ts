@@ -33,12 +33,17 @@ const byteArray = (value: unknown, size: number, label: string): Uint8Array<Arra
   if (
     !Array.isArray(value)
     || value.length !== size
-    || value.some(byte => !Number.isInteger(byte) || byte < 0 || byte > 255)
+    || value.some((byte: unknown) => (
+      typeof byte !== "number"
+      || !Number.isInteger(byte)
+      || byte < 0
+      || byte > 255
+    ))
   ) {
     throw new TypeError(`${label} must contain ${size} bytes`);
   }
 
-  return Uint8Array.from(value) as Uint8Array<ArrayBuffer>;
+  return Uint8Array.from(value);
 };
 
 const string = (value: unknown, label: string): string => {
@@ -52,13 +57,17 @@ const parseConnection = (value: unknown): SessionConnectionParameters => {
     "version", "sessionId", "h", "k", "p", "s", "keyPair", "peerKey", "selectedTransportId",
   ], "connection");
   if (connection.version !== 1) throw new TypeError("connection version must be 1");
-  if (!/^[A-Za-z0-9_-]{16}$/.test(string(connection.sessionId, "sessionId"))) {
+  const sessionId = string(connection.sessionId, "sessionId");
+  if (!/^[A-Za-z0-9_-]{16}$/.test(sessionId)) {
     throw new TypeError("sessionId is invalid");
   }
-  if (!/^[0-9a-f]{16}$/.test(string(connection.h, "h"))) throw new TypeError("h is invalid");
-  if (!/^[0-9a-f]{32}$/.test(string(connection.k, "k"))) throw new TypeError("k is invalid");
-  const protocol = string(connection.p, "p");
-  if (!SIGNALING_PROTOCOLS.includes(protocol as typeof SIGNALING_PROTOCOLS[number])) {
+  const h = string(connection.h, "h");
+  if (!/^[0-9a-f]{16}$/.test(h)) throw new TypeError("h is invalid");
+  const k = string(connection.k, "k");
+  if (!/^[0-9a-f]{32}$/.test(k)) throw new TypeError("k is invalid");
+  const protocolValue = string(connection.p, "p");
+  const protocol = SIGNALING_PROTOCOLS.find(value => value === protocolValue);
+  if (!protocol) {
     throw new TypeError("p is not a supported signaling protocol");
   }
   const server = string(connection.s, "s");
@@ -79,9 +88,9 @@ const parseConnection = (value: unknown): SessionConnectionParameters => {
 
   const result: SessionConnectionParameters = {
     version: 1,
-    sessionId: connection.sessionId as string,
-    h: connection.h as string,
-    k: connection.k as string,
+    sessionId,
+    h,
+    k,
     p: protocol,
     s: server,
     keyPair: restoredKeyPair,
@@ -155,6 +164,18 @@ export type SessionStorageBackend = {
   clear: () => void;
 };
 
+const serializeSession = (record: PersistedSession) => JSON.stringify({
+  ...record,
+  connection: {
+    ...record.connection,
+    keyPair: {
+      publicKey: Array.from(record.connection.keyPair.publicKey),
+      secretKey: Array.from(record.connection.keyPair.secretKey),
+    },
+    peerKey: Array.from(record.connection.peerKey),
+  },
+});
+
 export const createSessionStorage = (storage?: Storage): SessionStorageBackend => {
   let io = storage;
 
@@ -176,17 +197,7 @@ export const createSessionStorage = (storage?: Storage): SessionStorageBackend =
         try { return parsePersistedSession(raw); }
         catch { memory.delete(SESSION_STORAGE_KEY); return undefined; }
       },
-      set: record => memory.set(SESSION_STORAGE_KEY, JSON.stringify({
-        ...record,
-        connection: {
-          ...record.connection,
-          keyPair: {
-            publicKey: Array.from(record.connection.keyPair.publicKey),
-            secretKey: Array.from(record.connection.keyPair.secretKey),
-          },
-          peerKey: Array.from(record.connection.peerKey),
-        },
-      })),
+      set: record => memory.set(SESSION_STORAGE_KEY, serializeSession(record)),
       clear: () => memory.delete(SESSION_STORAGE_KEY),
     };
   }
@@ -209,17 +220,7 @@ export const createSessionStorage = (storage?: Storage): SessionStorageBackend =
         return undefined;
       }
     },
-    set: record => io.setItem(SESSION_STORAGE_KEY, JSON.stringify({
-      ...record,
-      connection: {
-        ...record.connection,
-        keyPair: {
-          publicKey: Array.from(record.connection.keyPair.publicKey),
-          secretKey: Array.from(record.connection.keyPair.secretKey),
-        },
-        peerKey: Array.from(record.connection.peerKey),
-      },
-    })),
+    set: record => io.setItem(SESSION_STORAGE_KEY, serializeSession(record)),
     clear: () => io.removeItem(SESSION_STORAGE_KEY),
   };
 };

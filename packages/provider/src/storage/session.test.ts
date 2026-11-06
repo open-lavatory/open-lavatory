@@ -28,11 +28,14 @@ const record = {
 const memoryStorage = () => {
   const values = new Map<string, string>();
   return {
+    get length() { return values.size; },
+    clear: () => values.clear(),
     getItem: (key: string) => values.get(key) ?? null,
     setItem: (key: string, value: string) => values.set(key, value),
     removeItem: (key: string) => values.delete(key),
+    key: (index: number) => [...values.keys()][index] ?? null,
     values,
-  } as unknown as Storage & { values: Map<string, string>; };
+  } satisfies Storage & { values: Map<string, string>; };
 };
 
 describe("persisted session records", () => {
@@ -80,7 +83,7 @@ describe("persisted session records", () => {
   test("persists and clears a valid record using the separate storage key", () => {
     const storage = memoryStorage();
     const backend = createSessionStorage(storage);
-    backend.set(record as never);
+    backend.set(parsePersistedSession(JSON.stringify(record)));
     expect(backend.get()?.sessionURI).toBe(record.sessionURI);
     backend.clear();
     expect(backend.get()).toBeUndefined();

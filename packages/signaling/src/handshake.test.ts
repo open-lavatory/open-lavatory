@@ -6,6 +6,7 @@ import {
 } from "@openlv/core/encryption";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { composeFrame, XR_PREFIX } from "./handshake.js";
 import { createSignalingLayer, Status, type SignalingLayer } from "./index.js";
 import type { PeerCapabilities } from "./messages.js";
 import type { SignalingChannel } from "./protocol.js";
@@ -42,6 +43,7 @@ const createTopic = (): Topic => {
     setDrop(function_: (payload: string, index: number) => boolean) {
       drop = function_;
     },
+    getPublishedCount: () => published,
     inject(payload: string) {
       for (const subscriber of subscribers) subscriber(payload);
     },
@@ -297,15 +299,6 @@ describe("signaling handshake (in-memory relay)", () => {
       host.markTransportConnected();
       client.markTransportConnected();
 
-      const stayedPeer = reloadedPeer === "host" ? client : host;
-      let resumeEvents = 0;
-
-      const setResumeHandler = stayedPeer.setResumeHandler;
-      expect(setResumeHandler).toBeDefined();
-      setResumeHandler?.(async () => {
-        resumeEvents++;
-      });
-
       const resumedPeer = await createSignalingLayer(topic.channel())({
         isHost: reloadedPeer === "host",
         h: pair.h,
@@ -326,14 +319,39 @@ describe("signaling handshake (in-memory relay)", () => {
         client = resumedPeer;
       }
 
+      const stayedPeer = reloadedPeer === "host" ? client : host;
       await resumedPeer.setup();
 
-      if (reloadedPeer === "host") {
-        void client.resume?.().catch(() => {});
-      }
+      const resumeAttempt = stayedPeer.resume?.();
+
+      await resumeAttempt;
 
       await waitForStateWithin(resumedPeer, Status.ENCRYPTED);
-      expect(resumeEvents).toBe(reloadedPeer === "client" ? 1 : 0);
+
+      stayedPeer.markTransportConnected();
+      resumedPeer.markTransportConnected();
+
+      const sender = resumedPeer.peer.get();
+
+      if (!sender) throw new Error("Resumed peer identity was not restored");
+
+      const lateCapabilities = await sender.cipher.encrypt(JSON.stringify({
+        type: "capabilities",
+        payload: CLIENT_CAPABILITIES,
+        timestamp: Date.now(),
+      }));
+      const publishedBeforeLateCapabilities = topic.getPublishedCount();
+
+      topic.inject(composeFrame(
+        XR_PREFIX,
+        reloadedPeer === "client" ? "h" : "c",
+        lateCapabilities,
+      ));
+      await new Promise(resolve => setTimeout(resolve, 10));
+      if (reloadedPeer === "host") {
+        expect(topic.getPublishedCount()).toBe(publishedBeforeLateCapabilities);
+      }
+      expect(stayedPeer.status.get()).toBe(Status.ENCRYPTED);
     },
   );
 

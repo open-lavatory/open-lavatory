@@ -138,6 +138,10 @@ export const createSession = async (
       throw new Error("Cannot resume without a selected transport");
     }
 
+    if (!transportLayers.some(layer => layer.transportId === selectedTransportId)) {
+      throw new Error("Cannot resume with an unsupported selected transport");
+    }
+
     const resumedPeerHash = isHost ? ownHash : await hashPublicKey(peerKey);
 
     if (resumedPeerHash !== hash) {
@@ -165,8 +169,12 @@ export const createSession = async (
   };
 
   status.subscribe((current) => {
-    if (current === SessionStatus.DISCONNECTED) {
-      messages.emit("ended", lastError.get() ?? "Session closed");
+    if (current === SessionStatus.RECOVERING || current === SessionStatus.DISCONNECTED) {
+      const fallback = current === SessionStatus.RECOVERING
+        ? "Transport interrupted"
+        : "Session closed";
+
+      messages.emit("ended", lastError.get() ?? fallback);
     }
   });
 
@@ -315,10 +323,7 @@ export const createSession = async (
     if (transportStatus === TransportStatus.ERROR) {
       setLastErrorIfUnset("Peer-to-peer transport failed");
 
-      if (
-        status.get() === SessionStatus.CONNECTED
-        || status.get() === SessionStatus.RECOVERING
-      ) {
+      if (status.get() === SessionStatus.CONNECTED) {
         recoverTransport();
       }
       else updateStatus(SessionStatus.DISCONNECTED);
@@ -377,23 +382,6 @@ export const createSession = async (
     await previous?.teardown();
   };
 
-  const onResume = async () => {
-    if (status.get() === SessionStatus.RECOVERING) return;
-
-    updateStatus(SessionStatus.RECOVERING);
-
-    try {
-      await clearCurrentTransport();
-      startTransport();
-    }
-    catch (error) {
-      log("failed to restart transport after resume", error);
-      setLastErrorIfUnset(error instanceof Error ? error.message : "Transport resume failed");
-      updateStatus(SessionStatus.DISCONNECTED);
-      throw error;
-    }
-  };
-
   async function recoverTransport() {
     if (status.get() === SessionStatus.RECOVERING) return;
 
@@ -402,9 +390,14 @@ export const createSession = async (
     try {
       await clearCurrentTransport();
 
+      if (status.get() !== SessionStatus.RECOVERING) return;
+
       if (!signal.resume) throw new Error("Signaling protocol cannot resume interrupted sessions");
 
       await signal.resume();
+
+      if (status.get() !== SessionStatus.RECOVERING) return;
+
       startTransport();
     }
     catch (error) {
@@ -413,8 +406,6 @@ export const createSession = async (
       updateStatus(SessionStatus.DISCONNECTED);
     }
   }
-
-  signal.setResumeHandler?.(onResume);
 
   const onSignalMessage = async (message: object) => {
     log("Session: received message from signaling", message);
@@ -518,7 +509,7 @@ export const createSession = async (
     getResumeParameters() {
       const peer = signal.peer.get();
 
-      if (!peer || !transport) {
+      if (status.get() !== SessionStatus.CONNECTED || !peer || !transport) {
         throw new Error("Session is not connected and cannot be resumed");
       }
 

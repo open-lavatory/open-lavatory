@@ -1,10 +1,72 @@
 import { decodeConnectionURL, encodeConnectionURL } from "@openlv/core";
 import { webrtc } from "@openlv/transport/webrtc";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
+
+vi.mock("./dynamic.js", async () => {
+  const { createSignalingLayer } = await import("@openlv/signaling");
+  const subscribers = new Set<(payload: string) => void>();
+
+  return {
+    loadTransport: vi.fn(),
+    loadSignaling: async () => () => {
+      let unsubscribe = () => {};
+
+      return createSignalingLayer({
+        type: "memory",
+        setup: () => {},
+        teardown: () => { unsubscribe(); },
+        subscribe: (handler) => {
+          subscribers.add(handler);
+          unsubscribe = () => { subscribers.delete(handler); };
+        },
+        publish: (payload) => {
+          queueMicrotask(() => {
+            for (const subscriber of subscribers) subscriber(payload);
+          });
+        },
+      });
+    },
+  };
+});
 
 import { connectSession, createSession, RequestFailedError, SessionStatus } from "./index.js";
 
 describe("Session", () => {
+  test.each(["host", "client"])("resumes after only the %s transport disappears", async (role) => {
+    const onMessage = async () => ({ resumed: true });
+    const host = await createSession(
+      { p: "ntfy", s: "memory" },
+      [webrtc({ iceServers: [] })],
+      onMessage,
+    );
+    const client = await connectSession(
+      encodeConnectionURL(host.getHandshakeParameters()),
+      onMessage,
+      [webrtc({ iceServers: [] })],
+    );
+    await Promise.all([host.connect(), client.connect()]);
+    await Promise.all([host, client].map(
+      session => session.status.until(state => state === SessionStatus.CONNECTED),
+    ));
+
+    const previous = role === "host" ? host : client;
+    const stayed = role === "host" ? client : host;
+    const saved = previous.getResumeParameters();
+
+    // Lose the channel before cleanup so the peer receives no session-close packet.
+    await previous._internal.transport?.teardown();
+    await previous.close();
+    await stayed.status.until(state => state === SessionStatus.RECOVERING);
+
+    const restored = await createSession(saved, [webrtc({ iceServers: [] })], onMessage);
+    await restored.connect();
+    await Promise.all([stayed, restored].map(
+      session => session.status.until(state => state === SessionStatus.CONNECTED),
+    ));
+    await expect(stayed.send({ method: "after reload" })).resolves.toEqual({ resumed: true });
+    await Promise.all([stayed.close(), restored.close()]);
+  });
+
   test("Should be able to create a session", async () => {
     const sessionA = await createSession(
       {
@@ -12,7 +74,7 @@ describe("Session", () => {
         p: "ntfy",
         s: "https://ntfy.sh/",
       },
-      [webrtc()],
+      [webrtc({ iceServers: [] })],
       async (message) => {
         console.log("sessionA received message", message);
 
@@ -50,7 +112,7 @@ describe("Session", () => {
 
         return { result: "success" };
       },
-      [webrtc()],
+      [webrtc({ iceServers: [] })],
     );
 
     console.log(sessionB.status.get());
@@ -83,12 +145,12 @@ describe("Session", () => {
 
     const resumedA = await createSession(
       resumeParametersA,
-      [webrtc()],
+      [webrtc({ iceServers: [] })],
       async () => ({ result: "resumed" }),
     );
     const resumedB = await createSession(
       resumeParametersB,
-      [webrtc()],
+      [webrtc({ iceServers: [] })],
       async () => ({ result: "resumed" }),
     );
 

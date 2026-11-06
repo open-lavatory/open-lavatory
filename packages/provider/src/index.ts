@@ -264,13 +264,16 @@ export const createProvider = (
         throw new Error(next.error.get() ?? "Session failed to connect");
       }
       const resumeParameters = next.getResumeParameters();
+      const persistedTransport = stored && (stored.stun?.length || stored.turn?.length)
+        ? stored
+        : configuredWebRTCSettings();
 
       try {
         sessionStorage.set({
           revision: 1,
           sessionURI: url,
           connection: resumeParameters,
-          transport: stored ?? configuredWebRTCSettings(),
+          transport: persistedTransport,
         });
       }
       catch (error_) {
@@ -403,6 +406,8 @@ export const createProvider = (
   if (store.settings.get().autoReconnect) {
     const saved = sessionStorage.get();
     if (saved) {
+      const operation = sessionOperation;
+
       // Mark restoration synchronously so connector authorization checks can
       // distinguish it from a provider with no saved session.
       setStatus(ProviderStatus.CREATING);
@@ -420,12 +425,13 @@ export const createProvider = (
 
         if (peerHash !== saved.connection.h) {
           sessionStorage.clear();
-          setStatus(ProviderStatus.STANDBY);
           throw new Error("Saved peer key does not match the session URI");
         }
+
+        if (operation === sessionOperation) setStatus(ProviderStatus.STANDBY);
       })().catch((error_) => {
         log("automatic session restore failed", error_);
-        if (status.get() === ProviderStatus.CREATING) {
+        if (operation === sessionOperation && status.get() === ProviderStatus.CREATING) {
           setStatus(ProviderStatus.STANDBY);
         }
       });
