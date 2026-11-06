@@ -54,6 +54,11 @@ export const openlv = ({
 
   return createConnector<OpenLVProvider>((wagmiConfig) => {
     const { chains } = wagmiConfig;
+    let isDisconnecting = false;
+
+    provider.on("disconnect", () => {
+      if (!isDisconnecting) wagmiConfig.emitter.emit("disconnect");
+    });
 
     const onAccountsChanged = (accounts: readonly string[]) => {
       wagmiConfig.emitter.emit("change", { accounts: accounts.map(account => getAddress(account)) });
@@ -115,7 +120,15 @@ export const openlv = ({
       connect,
       async disconnect() {
         log("disconnect");
-        await onDisconnect();
+        isDisconnecting = true;
+
+        try {
+          await onDisconnect();
+        }
+
+        finally {
+          isDisconnecting = false;
+        }
       },
       getAccounts,
       async setup() {
