@@ -187,6 +187,20 @@ const recordHistory = (layer: SignalingLayer) => {
   return { statuses, peers };
 };
 
+const waitForStateWithin = async (layer: SignalingLayer, target: string) => {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => reject(new Error(`Timed out waiting for ${target}`)), 500);
+  });
+
+  try {
+    await Promise.race([waitForState(layer, target), timeoutPromise]);
+  }
+  finally {
+    clearTimeout(timeout);
+  }
+};
+
 describe("signaling handshake (in-memory relay)", () => {
   let host: SignalingLayer;
   let client: SignalingLayer;
@@ -263,6 +277,65 @@ describe("signaling handshake (in-memory relay)", () => {
     await client.send({ resumed: true });
     expect(await received).toEqual({ resumed: true });
   });
+
+  it.each(["host", "client"] as const)(
+    "resumes when only the %s peer reloads",
+    async (reloadedPeer) => {
+      const topic = createTopic();
+      const pair = await setupPair(topic);
+
+      host = pair.host;
+      client = pair.client;
+
+      await host.setup();
+      const initialHandshake = Promise.all([
+        waitForState(host, Status.ENCRYPTED),
+        waitForState(client, Status.ENCRYPTED),
+      ]);
+      await client.setup();
+      await initialHandshake;
+      host.markTransportConnected();
+      client.markTransportConnected();
+
+      const stayedPeer = reloadedPeer === "host" ? client : host;
+      let resumeEvents = 0;
+
+      const setResumeHandler = stayedPeer.setResumeHandler;
+      expect(setResumeHandler).toBeDefined();
+      setResumeHandler?.(async () => {
+        resumeEvents++;
+      });
+
+      const resumedPeer = await createSignalingLayer(topic.channel())({
+        isHost: reloadedPeer === "host",
+        h: pair.h,
+        keyPair: reloadedPeer === "host" ? pair.hostKeys : pair.clientKeys,
+        peerKey: reloadedPeer === "host" ? pair.clientKeys.publicKey : pair.hostKeys.publicKey,
+        resume: true,
+        capabilities: reloadedPeer === "host"
+          ? pair.hostCapabilities
+          : CLIENT_CAPABILITIES,
+      });
+
+      if (reloadedPeer === "host") {
+        await host.teardown();
+        host = resumedPeer;
+      }
+      else {
+        await client.teardown();
+        client = resumedPeer;
+      }
+
+      await resumedPeer.setup();
+
+      if (reloadedPeer === "host") {
+        void client.resume?.().catch(() => {});
+      }
+
+      await waitForStateWithin(resumedPeer, Status.ENCRYPTED);
+      expect(resumeEvents).toBe(reloadedPeer === "client" ? 1 : 0);
+    },
+  );
 
   it("fails a resume attempt when the peer does not return", async () => {
     const hostKeys = generateKeyPair();

@@ -34,7 +34,7 @@ export const Connecting = () => {
         <Match when={status() === SessionStatus.READY}>
           <HandshakeOpen />
         </Match>
-        <Match when={status() === SessionStatus.LINKING}>
+        <Match when={status() === SessionStatus.LINKING || status() === SessionStatus.RECOVERING}>
           <div class="flex flex-col items-center gap-4 p-6">
             <LoadingSpinner />
             <div class="text-center">

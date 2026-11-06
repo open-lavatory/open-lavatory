@@ -100,6 +100,7 @@ export const createProvider = (
   const [error, setError] = observable<string | undefined>(undefined);
 
   const oxEmitter = OxProvider.createEmitter<EventMap>();
+  let sessionOperation = 0;
   let unsubscribeSessionStatus: (() => void) | undefined;
   const sessionStorage = createSessionStorage(parameters.sessionStorage);
   const walletRpc = createWalletRpcClient(async (payload) => {
@@ -169,33 +170,42 @@ export const createProvider = (
     parameters?: SessionLinkParameters,
     resumeTransport?: PersistedSession["transport"],
   ) => {
+    const operation = ++sessionOperation;
+
     setError(undefined);
     setStatus(ProviderStatus.CREATING);
-    const linkParameters = parameters ?? defaultLinkParameters();
-
-    if (!linkParameters) {
-      throw new Error("No link parameters provided and no signaling defaults configured");
-    }
-
-    // Stored user settings win over constructor config; both fall back to the
-    // transport's built-in defaults, so an empty list must stay undefined
-    // rather than become an empty iceServers array.
-    const stored = resumeTransport ?? store.settings.get().transport?.s?.webrtc;
-    const iceServers = [
-      ...stored?.stun?.map(urls => ({ urls })) ?? [],
-      ...stored?.turn ?? [],
-    ];
-    const transportOptions = iceServers.length > 0
-      ? { iceServers }
-      : config?.transport?.s?.webrtc;
 
     try {
+      const linkParameters = parameters ?? defaultLinkParameters();
+
+      if (!linkParameters) {
+        throw new Error("No link parameters provided and no signaling defaults configured");
+      }
+
+      // Stored user settings win over constructor config; both fall back to the
+      // transport's built-in defaults, so an empty list must stay undefined
+      // rather than become an empty iceServers array.
+      const stored = resumeTransport ?? store.settings.get().transport?.s?.webrtc;
+      const iceServers = [
+        ...stored?.stun?.map(urls => ({ urls })) ?? [],
+        ...stored?.turn ?? [],
+      ];
+      const transportOptions = iceServers.length > 0
+        ? { iceServers }
+        : config?.transport?.s?.webrtc;
+
       const next = await createSession(
         linkParameters,
         [webrtc(transportOptions)],
         onMessage,
         { info: config?.info },
       );
+
+      if (operation !== sessionOperation) {
+        await next.close();
+
+        return next;
+      }
 
       setSession(next);
       setStatus(ProviderStatus.CONNECTING);
@@ -280,6 +290,10 @@ export const createProvider = (
       return next;
     }
     catch (error_) {
+      if (operation !== sessionOperation) throw error_;
+
+      // Surface the failure to UI consumers (e.g. the modal) instead of
+      // leaving the provider stuck in "connecting".
       setError(
         session.get()?.error.get()
         ?? (error_ instanceof Error ? error_.message : "Connection failed"),
@@ -304,6 +318,8 @@ export const createProvider = (
     return await start(saved.connection, saved.transport);
   };
   const closeSession = async () => {
+    sessionOperation++;
+
     const current = session.get();
     unsubscribeSessionStatus?.();
     unsubscribeSessionStatus = undefined;
@@ -387,6 +403,10 @@ export const createProvider = (
   if (store.settings.get().autoReconnect) {
     const saved = sessionStorage.get();
     if (saved) {
+      // Mark restoration synchronously so connector authorization checks can
+      // distinguish it from a provider with no saved session.
+      setStatus(ProviderStatus.CREATING);
+
       void (async () => {
         const localHash = await hashPublicKey(saved.connection.keyPair.publicKey);
 
@@ -400,10 +420,14 @@ export const createProvider = (
 
         if (peerHash !== saved.connection.h) {
           sessionStorage.clear();
+          setStatus(ProviderStatus.STANDBY);
           throw new Error("Saved peer key does not match the session URI");
         }
       })().catch((error_) => {
         log("automatic session restore failed", error_);
+        if (status.get() === ProviderStatus.CREATING) {
+          setStatus(ProviderStatus.STANDBY);
+        }
       });
     }
   }

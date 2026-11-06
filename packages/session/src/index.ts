@@ -52,6 +52,7 @@ export const SessionStatus = {
   READY: "ready",
   LINKING: "linking",
   CONNECTED: "connected",
+  RECOVERING: "recovering",
   DISCONNECTED: "disconnected",
 } as const;
 export type SessionStatus = (typeof SessionStatus)[keyof typeof SessionStatus];
@@ -313,7 +314,14 @@ export const createSession = async (
 
     if (transportStatus === TransportStatus.ERROR) {
       setLastErrorIfUnset("Peer-to-peer transport failed");
-      updateStatus(SessionStatus.DISCONNECTED);
+
+      if (
+        status.get() === SessionStatus.CONNECTED
+        || status.get() === SessionStatus.RECOVERING
+      ) {
+        recoverTransport();
+      }
+      else updateStatus(SessionStatus.DISCONNECTED);
     }
   };
 
@@ -358,6 +366,56 @@ export const createSession = async (
     });
   };
 
+  const clearCurrentTransport = async () => {
+    clearLinkDeadline();
+    unsubscribeTransportStatus?.();
+    unsubscribeTransportStatus = undefined;
+    transport?.emitter.off("error", onTransportError);
+    const previous = transport;
+
+    transport = undefined;
+    await previous?.teardown();
+  };
+
+  const onResume = async () => {
+    if (status.get() === SessionStatus.RECOVERING) return;
+
+    updateStatus(SessionStatus.RECOVERING);
+
+    try {
+      await clearCurrentTransport();
+      startTransport();
+    }
+    catch (error) {
+      log("failed to restart transport after resume", error);
+      setLastErrorIfUnset(error instanceof Error ? error.message : "Transport resume failed");
+      updateStatus(SessionStatus.DISCONNECTED);
+      throw error;
+    }
+  };
+
+  async function recoverTransport() {
+    if (status.get() === SessionStatus.RECOVERING) return;
+
+    updateStatus(SessionStatus.RECOVERING);
+
+    try {
+      await clearCurrentTransport();
+
+      if (!signal.resume) throw new Error("Signaling protocol cannot resume interrupted sessions");
+
+      await signal.resume();
+      startTransport();
+    }
+    catch (error) {
+      log("failed to resume signaling after transport failure", error);
+      setLastErrorIfUnset(error instanceof Error ? error.message : "Session resume failed");
+      updateStatus(SessionStatus.DISCONNECTED);
+    }
+  }
+
+  signal.setResumeHandler?.(onResume);
+
   const onSignalMessage = async (message: object) => {
     log("Session: received message from signaling", message);
     if (status.get() === SessionStatus.CONNECTED) {
@@ -393,7 +451,9 @@ export const createSession = async (
     log("signal state change", signalStatus);
 
     if (signalStatus === SignalStatus.READY) {
-      updateStatus(SessionStatus.READY);
+      if (status.get() !== SessionStatus.RECOVERING) {
+        updateStatus(SessionStatus.READY);
+      }
     }
 
     if (
@@ -404,7 +464,9 @@ export const createSession = async (
         ] as SignalStatus[]
       ).includes(signalStatus)
     ) {
-      updateStatus(SessionStatus.LINKING);
+      if (status.get() !== SessionStatus.RECOVERING) {
+        updateStatus(SessionStatus.LINKING);
+      }
     }
 
     if (signalStatus === SignalStatus.ENCRYPTED) {

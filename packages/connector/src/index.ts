@@ -60,17 +60,19 @@ export const openlv = ({
     ) => {
       log("connect");
 
-      const modal = await getTriggerModal();
+      if (provider.status.get() !== ProviderStatus.CONNECTED) {
+        const modal = await getTriggerModal();
 
-      const modalDismissed = new Promise<void>((resolve) => {
-        modal?.({ theme, provider, onClose: () => resolve() });
-      });
+        const modalDismissed = new Promise<void>((resolve) => {
+          modal?.({ theme, provider, onClose: () => resolve() });
+        });
 
-      const connectionCompleted = provider.status.until(
-        providerStatus => providerStatus === ProviderStatus.CONNECTED,
-      );
+        const connectionCompleted = provider.status.until(
+          providerStatus => providerStatus === ProviderStatus.CONNECTED,
+        );
 
-      await Promise.race([modalDismissed, connectionCompleted]);
+        await Promise.race([modalDismissed, connectionCompleted]);
+      }
 
       if (
         !provider.session.get()
@@ -114,6 +116,11 @@ export const openlv = ({
        */
       async isAuthorized() {
         log("isAuthorized");
+
+        await provider.status.until(
+          providerStatus => providerStatus !== ProviderStatus.CREATING
+            && providerStatus !== ProviderStatus.CONNECTING,
+        );
 
         const accounts = await getAccounts();
 
