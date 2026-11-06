@@ -23,6 +23,7 @@ const neverDrop = () => false;
 type Topic = {
   setDrop: (function_: (payload: string, index: number) => boolean) => void;
   setCopies: (copies: number) => void;
+  getPublishedCount: () => number;
   inject: (payload: string) => void;
   channel: () => SignalingChannel;
   // Every published payload, including the dropped ones
@@ -43,7 +44,7 @@ const createTopic = (): Topic => {
     setDrop(function_: (payload: string, index: number) => boolean) {
       drop = function_;
     },
-    getPublishedCount: () => published,
+    getPublishedCount: () => frames.length,
     inject(payload: string) {
       for (const subscriber of subscribers) subscriber(payload);
     },

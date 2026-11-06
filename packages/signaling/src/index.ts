@@ -250,7 +250,7 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
       if (status.get() !== Status.ENCRYPTED) setStatus(Status.ENCRYPTED);
 
       if (isHost || shouldAcknowledgeResumedClient) {
-        await send(XR_PREFIX, capabilitiesMessage());
+        await publish(XR_PREFIX, capabilitiesMessage());
       }
 
       return;

@@ -193,8 +193,13 @@ export const createSession = async (
   });
 
   const scope = createScope();
+  let unsubscribeTransportStatus: (() => void) | undefined;
 
   scope.add(signal.teardown);
+  scope.add(() => {
+    unsubscribeTransportStatus?.();
+    unsubscribeTransportStatus = undefined;
+  });
 
   signal.peer.subscribe((peer) => {
     const role = isHost ? "host" : "client";
@@ -315,7 +320,6 @@ export const createSession = async (
 
     if (transportStatus === TransportStatus.CONNECTED) {
       signal.markTransportConnected();
-      clearLinkDeadline();
       setLastError(undefined);
       updateStatus(SessionStatus.CONNECTED);
     }
@@ -355,7 +359,7 @@ export const createSession = async (
 
       transport = createTransport(layer, peer.cipher);
       scope.add(transport.teardown);
-      scope.add(transport.status.subscribe(onTransportStateChange));
+      unsubscribeTransportStatus = transport.status.subscribe(onTransportStateChange);
       scope.listen(transport.emitter, "error", onTransportError);
       linking.timeout(TRANSPORT_LINK_TIMEOUT_MS, () => {
         log("transport failed to connect in time");
@@ -372,7 +376,6 @@ export const createSession = async (
   };
 
   const clearCurrentTransport = async () => {
-    clearLinkDeadline();
     unsubscribeTransportStatus?.();
     unsubscribeTransportStatus = undefined;
     transport?.emitter.off("error", onTransportError);

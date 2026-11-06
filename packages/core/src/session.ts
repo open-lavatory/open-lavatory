@@ -40,14 +40,6 @@ export type SessionCreationParameters = Pick<
   "p" | "s"
 >;
 
-/**
- * The parameters that describe a session these can be used to restart a session
- */
-export type SessionConnectionParameters = SessionHandshakeParameters & {
-  keyPair: KeyPair;
-  peerKey: PublicKey;
-};
-
 export type SessionLinkParameters
   = | SessionConnectionParameters
     | SessionHandshakeParameters
