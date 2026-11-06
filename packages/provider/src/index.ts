@@ -111,7 +111,13 @@ export const createProvider = (
     return await current.send(payload);
   });
 
-  const getAccounts = async () => [...await walletRpc.call({ method: "eth_accounts" })];
+  const getAccounts = async () => {
+    const current = session.get();
+
+    if (!current || current.status.get() !== SessionStatus.CONNECTED) return [];
+
+    return [...await walletRpc.call({ method: "eth_accounts" })];
+  };
 
   // For debug purposes
   status.subscribe(current => log("status", current));
@@ -175,6 +181,8 @@ export const createProvider = (
     setError(undefined);
     setStatus(ProviderStatus.CREATING);
 
+    let createdSession: Session | undefined;
+
     try {
       const linkParameters = parameters ?? defaultLinkParameters();
 
@@ -200,6 +208,7 @@ export const createProvider = (
         onMessage,
         { info: config?.info },
       );
+      createdSession = next;
 
       if (operation !== sessionOperation) {
         await next.close();
@@ -295,10 +304,25 @@ export const createProvider = (
     catch (error_) {
       if (operation !== sessionOperation) throw error_;
 
+      if (createdSession && session.get() === createdSession) {
+        unsubscribeSessionStatus?.();
+        unsubscribeSessionStatus = undefined;
+        setSession(undefined);
+      }
+
+      if (createdSession) {
+        try {
+          await createdSession.close();
+        }
+        catch (closeError) {
+          log("could not close failed session", closeError);
+        }
+      }
+
       // Surface the failure to UI consumers (e.g. the modal) instead of
       // leaving the provider stuck in "connecting".
       setError(
-        session.get()?.error.get()
+        createdSession?.error.get()
         ?? (error_ instanceof Error ? error_.message : "Connection failed"),
       );
       setStatus(ProviderStatus.ERROR);
@@ -306,6 +330,7 @@ export const createProvider = (
     }
   };
   const restoreSession = async () => {
+    const operation = sessionOperation;
     const saved = sessionStorage.get();
 
     if (!saved) throw new Error("No valid saved session to restore");
@@ -316,6 +341,10 @@ export const createProvider = (
     if (localHash !== saved.connection.h && peerHash !== saved.connection.h) {
       sessionStorage.clear();
       throw new Error("Saved peer key does not match the session URI");
+    }
+
+    if (operation !== sessionOperation) {
+      throw new Error("Session restoration was cancelled");
     }
 
     return await start(saved.connection, saved.transport);
@@ -335,7 +364,14 @@ export const createProvider = (
     setSession(undefined);
     setError(undefined);
     setStatus(ProviderStatus.STANDBY);
-    await current?.close();
+    if (current) {
+      try {
+        await current.close();
+      }
+      catch (closeError) {
+        log("could not close session cleanly", closeError);
+      }
+    }
 
     if (current) {
       oxEmitter.emit(
@@ -414,21 +450,16 @@ export const createProvider = (
 
       void (async () => {
         const localHash = await hashPublicKey(saved.connection.keyPair.publicKey);
-
-        if (localHash === saved.connection.h) {
-          await restoreSession();
-
-          return;
-        }
-
         const peerHash = await hashPublicKey(saved.connection.peerKey);
 
-        if (peerHash !== saved.connection.h) {
+        if (localHash !== saved.connection.h && peerHash !== saved.connection.h) {
           sessionStorage.clear();
           throw new Error("Saved peer key does not match the session URI");
         }
 
-        if (operation === sessionOperation) setStatus(ProviderStatus.STANDBY);
+        if (operation !== sessionOperation) return;
+
+        await restoreSession();
       })().catch((error_) => {
         log("automatic session restore failed", error_);
         if (operation === sessionOperation && status.get() === ProviderStatus.CREATING) {
