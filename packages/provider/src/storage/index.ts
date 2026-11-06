@@ -5,6 +5,13 @@ import { parseProviderStorage, type ProviderStorage } from "./version.js";
 
 const DEFAULT_STORAGE_KEY = "@openlv/connector/settings";
 
+export {
+  createSessionStorage,
+  parsePersistedSession,
+  SESSION_STORAGE_KEY,
+  type PersistedSession,
+  type SessionStorageBackend,
+} from "./session.js";
 export type {
   ProviderStorage,
   SignalingProtocol,
@@ -15,6 +22,8 @@ export type {
 
 export type ProviderStorageParameters = {
   storage?: Storage;
+  // Defaults to sessionStorage
+  sessionStorage?: Storage;
 };
 
 const createPassthrough = () => {

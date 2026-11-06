@@ -30,4 +30,24 @@ describe("createSession input validation", () => {
       }),
     ).rejects.toThrow(/identity/);
   });
+
+  it("rejects an invalid restored key pair instead of falling back", async () => {
+    await expect(createSession(
+      {
+        version: 1,
+        sessionId: "mytestsession111",
+        h: "0".repeat(32),
+        k: "0".repeat(32),
+        ...linkParameters,
+        keyPair: {
+          publicKey: new Uint8Array(32),
+          secretKey: new Uint8Array(32),
+        },
+        peerKey: new Uint8Array(32),
+        selectedTransportId: "wrtc",
+      },
+      [webrtc()],
+      onMessage,
+    )).rejects.toThrow("Cannot resume with invalid local key pair or peer key");
+  });
 });

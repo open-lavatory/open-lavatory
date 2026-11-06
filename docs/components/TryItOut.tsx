@@ -3,7 +3,12 @@
 /* eslint-disable no-restricted-syntax */
 import { openlv } from "@openlv/connector";
 import { encodeConnectionURL } from "@openlv/core";
-import { connectSession, type Session, SessionStatus } from "@openlv/session";
+import {
+  connectSession,
+  createSession,
+  type Session,
+  SessionStatus,
+} from "@openlv/session";
 import { webrtc } from "@openlv/transport/webrtc";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import classNames from "classnames";
@@ -36,6 +41,11 @@ import {
   TryItSessionProvider,
   useTryItSession,
 } from "./TryItOutSession.js";
+import {
+  clearWalletSession,
+  loadWalletSession,
+  saveWalletSession,
+} from "./WalletSession.js";
 
 const queryClient = new QueryClient();
 
@@ -139,9 +149,27 @@ const WalletUrlConnect = () => {
   const [url, setUrl] = useState("");
   const [connecting, setConnecting] = useState(false);
   const [active, setActive] = useState(false);
+  const [shouldResume, setShouldResume] = useState(false);
   const session = useTryItSession();
   const walletSessionReference = useRef<Session | undefined>(undefined);
   const detachReference = useRef<(() => void) | undefined>(undefined);
+  const connectButtonReference = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    const saved = loadWalletSession();
+
+    if (saved) {
+      setUrl(encodeConnectionURL(saved));
+      setShouldResume(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!url || !shouldResume || !walletClient || connections.length === 0) return;
+
+    setShouldResume(false);
+    connectButtonReference.current?.click();
+  }, [connections.length, shouldResume, url, walletClient]);
 
   if (!walletClient) return null;
 
@@ -150,6 +178,7 @@ const WalletUrlConnect = () => {
     detachReference.current = undefined;
     await walletSessionReference.current?.close();
     walletSessionReference.current = undefined;
+    clearWalletSession();
     setActive(false);
     session.resetSession();
   };
@@ -160,16 +189,21 @@ const WalletUrlConnect = () => {
         <input
           type="text"
           value={url}
-          onChange={e => setUrl(e.target.value)}
+          onChange={event => setUrl(event.target.value)}
           placeholder="openlv://..."
           disabled={connecting}
           className={`${buttonClass} block w-full grow border px-3 py-1 placeholder:text-neutral-500`}
         />
         <button
+          ref={connectButtonReference}
           type="button"
           disabled={connecting || !url.trim()}
           onClick={async () => {
             setConnecting(true);
+            const saved = loadWalletSession();
+            const isResumingSavedSession = saved !== undefined
+              && url.trim() === encodeConnectionURL(saved);
+
             await endSession();
             session.setPhase("establishing");
             session.setPeer(peerInfoFromConnectionUrl("wallet", url));
@@ -183,25 +217,48 @@ const WalletUrlConnect = () => {
                 = walletConnector?.icon && walletConnector.icon.length <= 8192
                   ? walletConnector.icon
                   : undefined;
-              const s = await connectSession(
-                url,
-                shimWalletOnMessage("wallet", message => client.request(message as never), session),
-                [webrtc()],
-                walletConnector
-                  ? {
-                      info: {
-                        identity: `sh.openlv.docs.${walletConnector.id}`,
-                        name: walletConnector.name,
-                        ...(walletIcon && { icon: walletIcon }),
-                      },
-                    }
-                  : undefined,
+              const onMessage = shimWalletOnMessage(
+                "wallet",
+                message => client.request(message as never),
+                session,
               );
+              const options = walletConnector
+                ? {
+                    info: {
+                      identity: `sh.openlv.docs.${walletConnector.id}`,
+                      name: walletConnector.name,
+                      ...(walletIcon && { icon: walletIcon }),
+                    },
+                  }
+                : undefined;
+              const s = isResumingSavedSession && saved
+                ? await createSession(saved, [webrtc()], onMessage, options)
+                : await connectSession(url, onMessage, [webrtc()], options);
 
               walletSessionReference.current = s;
-              detachReference.current = attachTryItSession(s, "wallet", session, {
+              const detachTryIt = attachTryItSession(s, "wallet", session, {
                 logRequests: false,
               });
+              let wasConnected = false;
+              const stopStatusWatch = s.status.subscribe((state) => {
+                if (state === SessionStatus.CONNECTED) wasConnected = true;
+
+                if (wasConnected && state === SessionStatus.DISCONNECTED) {
+                  clearWalletSession();
+                  walletSessionReference.current = undefined;
+                  stopStatusWatch();
+                  detachTryIt();
+                  detachReference.current = undefined;
+                  setActive(false);
+                  session.resetSession();
+                }
+              });
+
+              detachReference.current = () => {
+                stopStatusWatch();
+                detachTryIt();
+              };
+
               setActive(true);
               await s.connect();
 
@@ -215,8 +272,14 @@ const WalletUrlConnect = () => {
               if (settled !== SessionStatus.CONNECTED) {
                 throw new Error(s.error.get() ?? "Session failed to connect");
               }
+
+              saveWalletSession(s.getResumeParameters());
             }
             catch (error) {
+              detachReference.current?.();
+              detachReference.current = undefined;
+              await walletSessionReference.current?.close();
+              walletSessionReference.current = undefined;
               session.setPhase("error");
               session.appendEntry({
                 role: "wallet",

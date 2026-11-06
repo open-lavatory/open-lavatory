@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { createPeerCipher, generateKeyPair } from "./asymmetric.js";
+import { createPeerCipher, generateKeyPair, isValidKeyPair } from "./asymmetric.js";
 import { fromBase64, toBase64 } from "./base64.js";
 
 describe("Peer encryption", () => {
@@ -9,6 +9,15 @@ describe("Peer encryption", () => {
 
     expect(keyPair.publicKey).toHaveLength(32);
     expect(keyPair.secretKey).toHaveLength(32);
+  });
+
+  test("validates restored key pairs", () => {
+    const keyPair = generateKeyPair();
+
+    expect(isValidKeyPair(keyPair)).toBe(true);
+    expect(isValidKeyPair({ ...keyPair, publicKey: generateKeyPair().publicKey })).toBe(false);
+    expect(isValidKeyPair({ publicKey: new Uint8Array(32), secretKey: new Uint8Array(32) })).toBe(false);
+    expect(isValidKeyPair(keyPair, new Uint8Array(32))).toBe(false);
   });
 
   test("should encrypt and decrypt a message", async () => {

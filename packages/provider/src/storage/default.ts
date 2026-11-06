@@ -10,7 +10,7 @@ export const DEFAULT_SETTINGS: ProviderStorage = {
       gun: "wss://try.axe.eco/gun",
     },
   },
-  autoReconnect: false,
+  autoReconnect: true,
   retainHistory: false,
   language: undefined,
   transport: {

@@ -48,8 +48,12 @@ export type SignalEventMap = {
 export type SignalingHooks = {
   isHost: boolean;
   h: string;
-  handshakeCipher: Cipher;
+  handshakeCipher?: Cipher;
   keyPair: KeyPair;
+  // Existing peer identity used to resume a saved connection.
+  resume?: boolean;
+  peerKey?: PublicKey;
+  // Our capabilities, advertised to the peer during the handshake.
   capabilities: PeerCapabilities;
 };
 
@@ -64,6 +68,8 @@ export type SignalingContext = {
   send: (message: object) => Promise<void>;
   setup: () => Promise<void>;
   teardown: () => Promise<void>;
+  markTransportConnected: () => void;
+  resume?: () => Promise<void>;
 
   status: Observable<Status>;
   peer: Observable<Peer | undefined>;
@@ -73,6 +79,8 @@ export type SignalingLayer = EventEmitter<SignalEventMap> & SignalingContext;
 export type SignalingLayerFunction = (
   hooks: SignalingHooks,
 ) => Promise<SignalingLayer>;
+
+type TransportPhase = "initial" | "active" | "resuming";
 
 export type CreateSignalingLayerFunction = (
   base: SignalingChannel,
@@ -90,14 +98,39 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
     handshakeCipher,
     keyPair,
     isHost,
+    resume = false,
+    peerKey,
   } = hooks;
 
   const [status, setStatus] = observable<Status>(Status.STANDBY);
-  const [peer, setPeer] = observable<Peer | undefined>(undefined);
+  const [peer, setPeer] = observable<Peer | undefined>(
+    resume && peerKey
+      ? { peerKey, cipher: await createPeerCipher(keyPair, peerKey) }
+      : undefined,
+  );
   const [peerCapabilities, setPeerCapabilities] = observable<PeerCapabilities | undefined>(undefined);
 
   const emitter = new EventEmitter<SignalEventMap>();
   const scope = createScope();
+  let resumeTimer: ReturnType<typeof setInterval> | undefined;
+  let resumeDeadline: ReturnType<typeof setTimeout> | undefined;
+  let transportPhase: TransportPhase = resume ? "resuming" : "initial";
+  let finishResumeAttempt: ((error?: Error) => void) | undefined;
+
+  const clearResumeTimers = () => {
+    clearInterval(resumeTimer);
+    clearTimeout(resumeDeadline);
+    resumeTimer = undefined;
+    resumeDeadline = undefined;
+  };
+  scope.add(clearResumeTimers);
+
+  scope.add(() => {
+    const finishResume = finishResumeAttempt;
+
+    finishResumeAttempt = undefined;
+    finishResume?.(new Error("Session closed during resume"));
+  });
 
   scope.add(channel.teardown);
 
@@ -186,6 +219,43 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
   };
 
   const handleEncryptedFrame = async (message: SignalMessage) => {
+    if (
+      message.type === "capabilities"
+      && transportPhase === "active"
+    ) {
+      log("discarding late capabilities after transport connected");
+      return;
+    }
+
+    if (
+      message.type === "capabilities"
+      && (
+        resume
+        || finishResumeAttempt !== undefined
+        || transportPhase === "resuming"
+      )
+    ) {
+      await setPeerCapabilities(message.payload);
+
+      const shouldAcknowledgeResumedClient
+        = resume && !isHost && resumeTimer !== undefined;
+      const finishResume = finishResumeAttempt;
+
+      finishResumeAttempt = undefined;
+
+      finishResume?.();
+
+      clearResumeTimers();
+
+      if (status.get() !== Status.ENCRYPTED) setStatus(Status.ENCRYPTED);
+
+      if (isHost || shouldAcknowledgeResumedClient) {
+        await publish(XR_PREFIX, capabilitiesMessage());
+      }
+
+      return;
+    }
+
     await match({ msg: message, status: status.get(), isHost })
       .with(
         { msg: { type: "capabilities" }, status: Status.HANDSHAKE_PARTIAL },
@@ -211,6 +281,8 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
   };
 
   const onReceive = async (frame: string) => {
+    if (status.get() === Status.ERROR) return;
+
     try {
       const parsed = parseFrame(frame);
 
@@ -219,6 +291,8 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
       const { prefix, ciphertext } = parsed;
 
       if (prefix === XR_H_PREFIX) {
+        if (resume || !handshakeCipher) return;
+
         const message = parseSignalMessage(await handshakeCipher.decrypt(ciphertext));
 
         if (message) await handleHandshakeFrame(message);
@@ -240,11 +314,42 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
   };
 
   const setup = async () => {
+    if (resume && !peerKey) throw new Error("Cannot resume signaling without a peer key");
+
     setStatus(Status.CONNECTING);
     await channel.setup();
     await channel.subscribe(onReceive);
 
     setStatus(Status.READY);
+
+    if (resume) {
+      // Fail both roles if the matching peer never returns. Without this,
+      // provider restoration waits forever before transport setup begins.
+      resumeDeadline = setTimeout(() => {
+        clearResumeTimers();
+        setStatus(Status.ERROR);
+        const finishResume = finishResumeAttempt;
+        finishResumeAttempt = undefined;
+        finishResume?.(new Error("Timed out resuming session"));
+        void scope.close()
+          .catch(error => log("failed to tear down timed-out resume signaling", error));
+      }, 45_000);
+
+      if (!isHost) {
+        resumeTimer = setInterval(() => {
+          void publish(XR_PREFIX, capabilitiesMessage())
+            .catch(error => log("failed to re-advertise resume capabilities", error));
+        }, 2000);
+        try {
+          await publish(XR_PREFIX, capabilitiesMessage());
+        }
+        catch (error) {
+          log("initial resume capabilities publish failed; retrying", error);
+        }
+      }
+
+      return;
+    }
 
     if (!isHost) {
       handshake.timeout(HANDSHAKE_TIMEOUT_MS, () => setStatus(Status.ERROR));
@@ -257,6 +362,42 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
     setup,
     teardown: () => scope.close(),
     send: (message: object) => publish(XR_PREFIX, { type: "data", payload: message, timestamp: Date.now() }),
+    markTransportConnected() {
+      transportPhase = "active";
+    },
+    async resume() {
+      clearResumeTimers();
+      transportPhase = "resuming";
+
+      return new Promise<void>((resolve, reject) => {
+        finishResumeAttempt = (error) => {
+          if (error) reject(error);
+          else resolve();
+        };
+        resumeDeadline = setTimeout(() => {
+          clearResumeTimers();
+          setStatus(Status.ERROR);
+
+          const finishResume = finishResumeAttempt;
+
+          finishResumeAttempt = undefined;
+          finishResume?.(new Error("Timed out resuming session"));
+          void scope.close()
+            .catch(error => log("failed to tear down interrupted signaling", error));
+        }, 45_000);
+        resumeTimer = setInterval(() => {
+          void publish(XR_PREFIX, capabilitiesMessage())
+            .catch(error => log("failed to advertise interrupted session", error));
+        }, 2000);
+        void publish(XR_PREFIX, capabilitiesMessage()).catch((error: unknown) => {
+          clearResumeTimers();
+          finishResumeAttempt?.(
+            error instanceof Error ? error : new Error("Failed to advertise session resume"),
+          );
+          finishResumeAttempt = undefined;
+        });
+      });
+    },
     status,
     peer,
     peerCapabilities,
