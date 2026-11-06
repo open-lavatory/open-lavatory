@@ -70,7 +70,6 @@ export type SignalingContext = {
   teardown: () => Promise<void>;
   markTransportConnected: () => void;
   resume?: () => Promise<void>;
-  setResumeHandler?: (handler: () => Promise<void>) => void;
 
   status: Observable<Status>;
   peer: Observable<Peer | undefined>;
@@ -81,7 +80,7 @@ export type SignalingLayerFunction = (
   hooks: SignalingHooks,
 ) => Promise<SignalingLayer>;
 
-const noResumeHandler = async () => {};
+type TransportPhase = "initial" | "active" | "resuming";
 
 export type CreateSignalingLayerFunction = (
   base: SignalingChannel,
@@ -115,10 +114,8 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
   const scope = createScope();
   let resumeTimer: ReturnType<typeof setInterval> | undefined;
   let resumeDeadline: ReturnType<typeof setTimeout> | undefined;
-  let isTransportConnected = false;
+  let transportPhase: TransportPhase = resume ? "resuming" : "initial";
   let finishResumeAttempt: ((error?: Error) => void) | undefined;
-  let resumeHandler: () => Promise<void> = noResumeHandler;
-  let pendingPeerResume: Promise<void> | undefined;
 
   const clearResumeTimers = () => {
     clearInterval(resumeTimer);
@@ -224,17 +221,24 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
   const handleEncryptedFrame = async (message: SignalMessage) => {
     if (
       message.type === "capabilities"
+      && transportPhase === "active"
+    ) {
+      log("discarding late capabilities after transport connected");
+      return;
+    }
+
+    if (
+      message.type === "capabilities"
       && (
         resume
         || finishResumeAttempt !== undefined
-        || isTransportConnected
-        || pendingPeerResume !== undefined
+        || transportPhase === "resuming"
       )
     ) {
-      const shouldRestartTransport = !resume && isTransportConnected;
-
       await setPeerCapabilities(message.payload);
 
+      const shouldAcknowledgeResumedClient
+        = resume && !isHost && resumeTimer !== undefined;
       const finishResume = finishResumeAttempt;
 
       finishResumeAttempt = undefined;
@@ -245,23 +249,9 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
 
       if (status.get() !== Status.ENCRYPTED) setStatus(Status.ENCRYPTED);
 
-      if (shouldRestartTransport) {
-        isTransportConnected = false;
-        pendingPeerResume = resumeHandler();
+      if (isHost || shouldAcknowledgeResumedClient) {
+        await send(XR_PREFIX, capabilitiesMessage());
       }
-
-      const peerResume = pendingPeerResume;
-
-      if (peerResume) {
-        try {
-          await peerResume;
-        }
-        finally {
-          if (pendingPeerResume === peerResume) pendingPeerResume = undefined;
-        }
-      }
-
-      if (isHost) await publish(XR_PREFIX, capabilitiesMessage());
 
       return;
     }
@@ -373,11 +363,11 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
     teardown: () => scope.close(),
     send: (message: object) => publish(XR_PREFIX, { type: "data", payload: message, timestamp: Date.now() }),
     markTransportConnected() {
-      isTransportConnected = true;
+      transportPhase = "active";
     },
     async resume() {
       clearResumeTimers();
-      isTransportConnected = false;
+      transportPhase = "resuming";
 
       return new Promise<void>((resolve, reject) => {
         finishResumeAttempt = (error) => {
@@ -407,9 +397,6 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
           finishResumeAttempt = undefined;
         });
       });
-    },
-    setResumeHandler(handler: () => Promise<void>) {
-      resumeHandler = handler;
     },
     status,
     peer,

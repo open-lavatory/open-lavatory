@@ -53,31 +53,33 @@ export const generateKeyPair = (): KeyPair => {
  * public key is a distinct, valid X25519 point.
  */
 export const isValidKeyPair = (value: unknown, peerValue?: unknown): value is KeyPair => {
-  if (!value || typeof value !== "object") return false;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  if (!("publicKey" in value) || !("secretKey" in value)) return false;
 
-  const pair = value as Partial<KeyPair>;
+  const publicKey = value.publicKey;
+  const secretKey = value.secretKey;
 
-  if (!(pair.publicKey instanceof Uint8Array)
-    || pair.publicKey.length !== PUBLIC_KEY_BYTES
-    || !(pair.secretKey instanceof Uint8Array)
-    || pair.secretKey.length !== PUBLIC_KEY_BYTES) {
+  if (!(publicKey instanceof Uint8Array)
+    || publicKey.length !== PUBLIC_KEY_BYTES
+    || !(secretKey instanceof Uint8Array)
+    || secretKey.length !== PUBLIC_KEY_BYTES) {
     return false;
   }
 
   if (peerValue !== undefined
     && (!(peerValue instanceof Uint8Array)
       || peerValue.length !== PUBLIC_KEY_BYTES
-      || equalBytes(pair.publicKey, peerValue))) {
+      || equalBytes(publicKey, peerValue))) {
     return false;
   }
 
   try {
-    const derivedPublicKey = x25519.getPublicKey(pair.secretKey);
+    const derivedPublicKey = x25519.getPublicKey(secretKey);
 
-    if (!derivedPublicKey.every((byte, index) => byte === pair.publicKey?.[index])) return false;
+    if (!derivedPublicKey.every((byte, index) => byte === publicKey[index])) return false;
 
     if (peerValue instanceof Uint8Array) {
-      const sharedSecret = x25519.getSharedSecret(pair.secretKey, peerValue);
+      const sharedSecret = x25519.getSharedSecret(secretKey, peerValue);
 
       if (sharedSecret.every(byte => byte === 0)) return false;
     }
