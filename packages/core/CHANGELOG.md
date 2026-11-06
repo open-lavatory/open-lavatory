@@ -1,5 +1,16 @@
 # @openlv/core
 
+## 0.3.0
+
+### Minor Changes
+
+- 8b8eab7: Rework peer-key frames to use AES-256-GCM, derived by HKDF-SHA256 from the X25519 shared secret of the two session keys.
+  `PublicKey` and `KeyPair` are plain bytes & encryption stages moved to `Cipher` (`createHandshakeCipher`, `createPeerCipher`).
+  `EncryptionKey`, `DecryptionKey`, `initEncryptionKeys` and `SymmetricKey` are removed.
+  `SessionConnectionParameters` holds a `KeyPair` and the peer `PublicKey`.
+- 52bc497: Compute the URI `h` parameter from the 32 raw X25519 public-key bytes, instead of from the UTF-8 bytes of the key's base64 text.
+- fb99a7d: Added `createScope` and reworked state management internal wiring
+
 ## 0.2.0
 
 ### Minor Changes

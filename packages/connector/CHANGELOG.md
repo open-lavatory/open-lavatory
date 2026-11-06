@@ -1,5 +1,17 @@
 # @openlv/connector
 
+## 0.2.1
+
+### Patch Changes
+
+- Updated dependencies [8b8eab7]
+- Updated dependencies [52bc497]
+- Updated dependencies [fb99a7d]
+- Updated dependencies [9530ad8]
+  - @openlv/core@0.3.0
+  - @openlv/provider@0.3.0
+  - @openlv/modal@0.2.1
+
 ## 0.2.0
 
 ### Minor Changes
