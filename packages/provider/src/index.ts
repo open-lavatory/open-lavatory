@@ -288,6 +288,9 @@ export const createProvider = (
       if (settled !== SessionStatus.CONNECTED) {
         throw new Error(next.error.get() ?? "Session failed to connect");
       }
+
+      if (operation !== sessionOperation) return next;
+
       const resumeParameters = next.getResumeParameters();
       const persistedTransport = stored && (stored.stun?.length || stored.turn?.length)
         ? stored
@@ -309,7 +312,12 @@ export const createProvider = (
       log("session linked");
 
       const accounts = await getAccounts();
+
+      if (operation !== sessionOperation) return next;
+
       const chainId = await walletRpc.call({ method: "eth_chainId" });
+
+      if (operation !== sessionOperation) return next;
 
       setStatus(ProviderStatus.CONNECTED);
       oxEmitter.emit("connect", { chainId });

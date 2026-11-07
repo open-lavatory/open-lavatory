@@ -14,7 +14,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import classNames from "classnames";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { match } from "ts-pattern";
-import { type Address, type EIP1193Provider } from "viem";
+import { type Address } from "viem";
 import {
   type Connector,
   createConfig,
@@ -79,6 +79,9 @@ const trimAddress = (address: Address | undefined | null) => {
 
 const buttonClass
   = "!bg-[var(--vocs-color_codeTitleBackground)] hover:!bg-[var(--vocs-color_codeBlockBackground)] rounded-lg vocs:border-primary px-4 py-1 disabled:opacity-50";
+
+const isWalletProvider = (value: unknown): value is { request: (message: unknown) => Promise<unknown>; } =>
+  typeof value === "object" && value !== null && "request" in value && typeof value.request === "function";
 
 const AccountSelect = ({
   account,
@@ -236,16 +239,14 @@ const WalletUrlConnect = () => {
     return saved ? encodeConnectionURL(saved) : "";
   });
   const [connectionState, setConnectionState] = useState<"idle" | "connecting" | "active">("idle");
-  const connecting = connectionState === "connecting";
-  const active = connectionState === "active";
+  const isConnecting = connectionState === "connecting";
+  const isActive = connectionState === "active";
   const session = useTryItSession();
   const walletSessionReference = useRef<Session | undefined>(undefined);
   const detachReference = useRef<(() => void) | undefined>(undefined);
   const resumeUrl = useRef(url);
 
-  if (!walletClient) return null;
-
-  const endSession = async () => {
+  const endSession = useCallback(async () => {
     detachReference.current?.();
     detachReference.current = undefined;
     await walletSessionReference.current?.close();
@@ -253,7 +254,7 @@ const WalletUrlConnect = () => {
     clearWalletSession();
     setConnectionState("idle");
     session.resetSession();
-  };
+  }, [session]);
 
   const connect = useCallback(async () => {
     setConnectionState("connecting");
@@ -264,18 +265,19 @@ const WalletUrlConnect = () => {
     await endSession();
     setConnectionState("connecting");
     session.setPhase("establishing");
-    session.setPeer(peerInfoFromConnectionUrl("wallet", url));
-
     try {
+      session.setPeer(peerInfoFromConnectionUrl("wallet", url));
       const walletConnector = connections[0]?.connector;
-      const client = (await walletConnector?.getProvider()) as EIP1193Provider;
+      const client = await walletConnector?.getProvider();
+
+      if (!isWalletProvider(client)) throw new Error("Wallet provider unavailable");
       const walletIcon
         = walletConnector?.icon && walletConnector.icon.length <= 8192
           ? walletConnector.icon
           : undefined;
       const onMessage = shimWalletOnMessage(
         "wallet",
-        message => client.request(message as never),
+        message => client.request(message),
         session,
       );
       const options = walletConnector
@@ -310,7 +312,6 @@ const WalletUrlConnect = () => {
         stopStatusWatch();
         detachTryIt();
       };
-      setConnectionState("active");
       await s.connect();
       const settled = await s.status.until(
         status => status === SessionStatus.CONNECTED || status === SessionStatus.DISCONNECTED,
@@ -318,6 +319,7 @@ const WalletUrlConnect = () => {
       if (settled !== SessionStatus.CONNECTED) {
         throw new Error(s.error.get() ?? "Session failed to connect");
       }
+      setConnectionState("active");
       saveWalletSession(s.getResumeParameters());
     }
     catch (error) {
@@ -335,13 +337,15 @@ const WalletUrlConnect = () => {
         payload: error instanceof Error ? { message: error.message } : error,
       });
     }
-  }, [connections, session, url]);
+  }, [connections, endSession, session, url]);
 
   useEffect(() => {
     if (!resumeUrl.current || !walletClient || connections.length === 0) return;
     resumeUrl.current = "";
     void connect();
   }, [connect, connections.length, walletClient]);
+
+  if (!walletClient) return null;
 
   return (
     <div className="flex flex-col gap-2 border-t vocs:border-primary pt-3">
@@ -351,18 +355,18 @@ const WalletUrlConnect = () => {
           value={url}
           onChange={event => setUrl(event.target.value)}
           placeholder="openlv://..."
-          disabled={connecting}
+          disabled={isConnecting}
           className={`${buttonClass} block w-full grow border px-3 py-1 placeholder:text-neutral-500`}
         />
         <button
           type="button"
-          disabled={connecting || !url.trim()}
+          disabled={isConnecting || !url.trim()}
           onClick={() => void connect()}
           className={buttonClass}
         >
-          {connecting ? "..." : "Connect"}
+          {isConnecting ? "..." : "Connect"}
         </button>
-        {active && (
+        {isActive && (
           <button type="button" onClick={() => endSession()} className={buttonClass}>
             End
           </button>

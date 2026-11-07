@@ -310,11 +310,6 @@ export const createSession = async (
   // connect promptly; if it cannot (e.g. no ICE candidates on a restricted
   // network) fail loudly instead of sitting in "linking" forever.
   const TRANSPORT_LINK_TIMEOUT_MS = 45_000;
-  // From transport start until the session connects or ends
-  const linking = scope.child();
-
-  linking.closeWhen(status, value => value === SessionStatus.CONNECTED || value === SessionStatus.DISCONNECTED);
-
   const onTransportStateChange = (transportStatus: TransportStatus) => {
     log("transport state change", transportStatus);
 
@@ -361,6 +356,9 @@ export const createSession = async (
       scope.add(transport.teardown);
       unsubscribeTransportStatus = transport.status.subscribe(onTransportStateChange);
       scope.listen(transport.emitter, "error", onTransportError);
+      const linking = scope.child();
+
+      linking.closeWhen(status, value => value === SessionStatus.CONNECTED || value === SessionStatus.DISCONNECTED);
       linking.timeout(TRANSPORT_LINK_TIMEOUT_MS, () => {
         log("transport failed to connect in time");
         setLastErrorIfUnset("Timed out establishing the peer-to-peer connection");
