@@ -37,7 +37,7 @@ const providersByType: readonly [
         mqtt,
         {
           topic: "mytesttopic1111",
-          url: "ws://test.mosquitto.org:8080/mqtt",
+          url: "wss://test.mosquitto.org:8081/mqtt",
         },
       ],
       [

@@ -18,7 +18,7 @@ const SANDBOX_URL = "http://localhost:5199/";
 const relays = [
   { p: "mqtt", s: "wss://mqtt-dashboard.com:8884/mqtt" },
   { p: "mqtt", s: "ws://broker.emqx.io:8083/mqtt" },
-  { p: "mqtt", s: "ws://test.mosquitto.org:8080/mqtt" },
+  { p: "mqtt", s: "wss://test.mosquitto.org:8081/mqtt" },
   { p: "mqtt", s: "wss://broker.itdata.nu/mqtt" },
   { p: "ntfy", s: "https://ntfy.sh/" },
   { p: "ntfy", s: "https://ntfy.envs.net/" },
