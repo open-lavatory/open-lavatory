@@ -11,7 +11,6 @@ import {
   SessionStatus,
 } from "@openlv/session";
 import type { PeerInfo } from "@openlv/signaling";
-import { hashPublicKey } from "@openlv/core/encryption";
 import type { TransportProtocol } from "@openlv/transport";
 import { webrtc, type WebRTCConfig } from "@openlv/transport/webrtc";
 import { Provider as OxProvider } from "ox";
@@ -352,14 +351,6 @@ export const createProvider = (
 
     if (!saved) throw new Error("No valid saved session to restore");
 
-    const localHash = await hashPublicKey(saved.connection.keyPair.publicKey);
-    const peerHash = await hashPublicKey(saved.connection.peerKey);
-
-    if (localHash !== saved.connection.h && peerHash !== saved.connection.h) {
-      sessionStorage.clear();
-      throw new Error("Saved peer key does not match the session URI");
-    }
-
     if (operation !== sessionOperation) {
       throw new Error("Session restoration was cancelled");
     }
@@ -466,14 +457,6 @@ export const createProvider = (
       setStatus(ProviderStatus.CREATING);
 
       void (async () => {
-        const localHash = await hashPublicKey(saved.connection.keyPair.publicKey);
-        const peerHash = await hashPublicKey(saved.connection.peerKey);
-
-        if (localHash !== saved.connection.h && peerHash !== saved.connection.h) {
-          sessionStorage.clear();
-          throw new Error("Saved peer key does not match the session URI");
-        }
-
         if (operation !== sessionOperation) return;
 
         await restoreSession();
