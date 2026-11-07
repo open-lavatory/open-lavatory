@@ -11,7 +11,7 @@ const LoadingSpinner = () => (
   </div>
 );
 
-export const Connecting = () => {
+export const Connecting = (properties: { onCopy: () => void; }) => {
   const { status } = useSession();
   const { t } = useTranslation();
 
@@ -32,7 +32,7 @@ export const Connecting = () => {
           </div>
         </Match>
         <Match when={status() === SessionStatus.READY}>
-          <HandshakeOpen />
+          <HandshakeOpen onCopy={properties.onCopy} />
         </Match>
         <Match when={status() === SessionStatus.LINKING}>
           <div class="flex flex-col items-center gap-4 p-6">

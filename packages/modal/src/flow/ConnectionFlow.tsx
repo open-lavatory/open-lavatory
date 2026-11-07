@@ -10,7 +10,7 @@ import { ErrorScreen } from "./ErrorScreen.jsx";
 
 interface ConnectionFlowProperties {
   onClose: () => void;
-  onCopy: (uri: string) => void;
+  onCopy: () => void;
 }
 
 const LoadingSpinner = () => (
@@ -52,7 +52,7 @@ export const ConnectionFlow = (properties: ConnectionFlowProperties) => {
           </div>
         </Match>
         <Match when={providerStatus() === ProviderStatus.CONNECTING}>
-          <Connecting />
+          <Connecting onCopy={properties.onCopy} />
         </Match>
         <Match when={providerStatus() === ProviderStatus.CONNECTED}>
           <div class="flex flex-col items-center gap-4 p-6">
