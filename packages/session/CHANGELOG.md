@@ -1,5 +1,28 @@
 # @openlv/session
 
+## 0.3.0
+
+### Minor Changes
+
+- 8b8eab7: Rework peer-key frames to use AES-256-GCM, derived by HKDF-SHA256 from the X25519 shared secret of the two session keys.
+  `PublicKey` and `KeyPair` are plain bytes & encryption stages moved to `Cipher` (`createHandshakeCipher`, `createPeerCipher`).
+  `EncryptionKey`, `DecryptionKey`, `initEncryptionKeys` and `SymmetricKey` are removed.
+  `SessionConnectionParameters` holds a `KeyPair` and the peer `PublicKey`.
+- 9530ad8: Breaking: a wallet's request handler returns a full JSON-RPC 2.0 response. The dApp rejects a bare result.
+
+  New session message `failed`. The receiver sends it when its handler throws. It carries no detail.
+
+### Patch Changes
+
+- fb99a7d: Added `createScope` and reworked state management internal wiring
+- Updated dependencies [8b8eab7]
+- Updated dependencies [52bc497]
+- Updated dependencies [fb99a7d]
+- Updated dependencies [9530ad8]
+  - @openlv/core@0.3.0
+  - @openlv/signaling@0.3.0
+  - @openlv/transport@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes
