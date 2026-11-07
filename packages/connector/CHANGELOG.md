@@ -1,5 +1,12 @@
 # @openlv/connector
 
+## 0.2.2
+
+### Patch Changes
+
+- @openlv/modal@0.2.2
+- @openlv/provider@0.3.1
+
 ## 0.2.1
 
 ### Patch Changes

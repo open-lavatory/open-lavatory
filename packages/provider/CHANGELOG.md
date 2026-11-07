@@ -1,5 +1,13 @@
 # @openlv/provider
 
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies [f38c367]
+  - @openlv/signaling@0.3.1
+  - @openlv/session@0.3.1
+
 ## 0.3.0
 
 ### Minor Changes

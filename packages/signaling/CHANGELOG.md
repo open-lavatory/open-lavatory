@@ -1,5 +1,11 @@
 # @openlv/signaling
 
+## 0.3.1
+
+### Patch Changes
+
+- f38c367: Fixed MQTT unreachable rejection handling ordering
+
 ## 0.3.0
 
 ### Minor Changes
