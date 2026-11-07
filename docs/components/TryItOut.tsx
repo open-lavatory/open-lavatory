@@ -12,7 +12,7 @@ import {
 import { webrtc } from "@openlv/transport/webrtc";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import classNames from "classnames";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { match } from "ts-pattern";
 import { type Address, type EIP1193Provider } from "viem";
 import {
@@ -231,30 +231,17 @@ const PersonalSignCard = () => {
 const WalletUrlConnect = () => {
   const walletClient = useClient();
   const connections = useConnections();
-  const [url, setUrl] = useState("");
-  const [connecting, setConnecting] = useState(false);
-  const [active, setActive] = useState(false);
-  const [shouldResume, setShouldResume] = useState(false);
+  const [url, setUrl] = useState(() => {
+    const saved = loadWalletSession();
+    return saved ? encodeConnectionURL(saved) : "";
+  });
+  const [connectionState, setConnectionState] = useState<"idle" | "connecting" | "active">("idle");
+  const connecting = connectionState === "connecting";
+  const active = connectionState === "active";
   const session = useTryItSession();
   const walletSessionReference = useRef<Session | undefined>(undefined);
   const detachReference = useRef<(() => void) | undefined>(undefined);
-  const connectButtonReference = useRef<HTMLButtonElement | null>(null);
-
-  useEffect(() => {
-    const saved = loadWalletSession();
-
-    if (saved) {
-      setUrl(encodeConnectionURL(saved));
-      setShouldResume(true);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!url || !shouldResume || !walletClient || connections.length === 0) return;
-
-    setShouldResume(false);
-    connectButtonReference.current?.click();
-  }, [connections.length, shouldResume, url, walletClient]);
+  const resumeUrl = useRef(url);
 
   if (!walletClient) return null;
 
@@ -264,9 +251,97 @@ const WalletUrlConnect = () => {
     await walletSessionReference.current?.close();
     walletSessionReference.current = undefined;
     clearWalletSession();
-    setActive(false);
+    setConnectionState("idle");
     session.resetSession();
   };
+
+  const connect = useCallback(async () => {
+    setConnectionState("connecting");
+    const saved = loadWalletSession();
+    const isResumingSavedSession = saved !== undefined
+      && url.trim() === encodeConnectionURL(saved);
+
+    await endSession();
+    setConnectionState("connecting");
+    session.setPhase("establishing");
+    session.setPeer(peerInfoFromConnectionUrl("wallet", url));
+
+    try {
+      const walletConnector = connections[0]?.connector;
+      const client = (await walletConnector?.getProvider()) as EIP1193Provider;
+      const walletIcon
+        = walletConnector?.icon && walletConnector.icon.length <= 8192
+          ? walletConnector.icon
+          : undefined;
+      const onMessage = shimWalletOnMessage(
+        "wallet",
+        message => client.request(message as never),
+        session,
+      );
+      const options = walletConnector
+        ? {
+            info: {
+              identity: `sh.openlv.docs.${walletConnector.id}`,
+              name: walletConnector.name,
+              ...(walletIcon && { icon: walletIcon }),
+            },
+          }
+        : undefined;
+      const s = isResumingSavedSession && saved
+        ? await createSession(saved, [webrtc()], onMessage, options)
+        : await connectSession(url, onMessage, [webrtc()], options);
+
+      walletSessionReference.current = s;
+      const detachTryIt = attachTryItSession(s, "wallet", session, { logRequests: false });
+      let wasConnected = false;
+      const stopStatusWatch = s.status.subscribe((state) => {
+        if (state === SessionStatus.CONNECTED) wasConnected = true;
+        if (wasConnected && state === SessionStatus.DISCONNECTED) {
+          clearWalletSession();
+          walletSessionReference.current = undefined;
+          stopStatusWatch();
+          detachTryIt();
+          detachReference.current = undefined;
+          setConnectionState("idle");
+          session.resetSession();
+        }
+      });
+      detachReference.current = () => {
+        stopStatusWatch();
+        detachTryIt();
+      };
+      setConnectionState("active");
+      await s.connect();
+      const settled = await s.status.until(
+        status => status === SessionStatus.CONNECTED || status === SessionStatus.DISCONNECTED,
+      );
+      if (settled !== SessionStatus.CONNECTED) {
+        throw new Error(s.error.get() ?? "Session failed to connect");
+      }
+      saveWalletSession(s.getResumeParameters());
+    }
+    catch (error) {
+      detachReference.current?.();
+      detachReference.current = undefined;
+      await walletSessionReference.current?.close();
+      walletSessionReference.current = undefined;
+      setConnectionState("idle");
+      session.setPhase("error");
+      session.appendEntry({
+        role: "wallet",
+        direction: "in",
+        kind: "info",
+        summary: "Connection failed",
+        payload: error instanceof Error ? { message: error.message } : error,
+      });
+    }
+  }, [connections, session, url]);
+
+  useEffect(() => {
+    if (!resumeUrl.current || !walletClient || connections.length === 0) return;
+    resumeUrl.current = "";
+    void connect();
+  }, [connect, connections.length, walletClient]);
 
   return (
     <div className="flex flex-col gap-2 border-t vocs:border-primary pt-3">
@@ -280,104 +355,9 @@ const WalletUrlConnect = () => {
           className={`${buttonClass} block w-full grow border px-3 py-1 placeholder:text-neutral-500`}
         />
         <button
-          ref={connectButtonReference}
           type="button"
           disabled={connecting || !url.trim()}
-          onClick={async () => {
-            setConnecting(true);
-            const saved = loadWalletSession();
-            const isResumingSavedSession = saved !== undefined
-              && url.trim() === encodeConnectionURL(saved);
-
-            await endSession();
-            session.setPhase("establishing");
-            session.setPeer(peerInfoFromConnectionUrl("wallet", url));
-
-            try {
-              const walletConnector = connections[0]?.connector;
-              const client = (await walletConnector?.getProvider()) as EIP1193Provider;
-              // EIP-6963 icons are data URIs of arbitrary size; anything over
-              // the 8 KB wire limit would make connectSession throw.
-              const walletIcon
-                = walletConnector?.icon && walletConnector.icon.length <= 8192
-                  ? walletConnector.icon
-                  : undefined;
-              const onMessage = shimWalletOnMessage(
-                "wallet",
-                message => client.request(message as never),
-                session,
-              );
-              const options = walletConnector
-                ? {
-                    info: {
-                      identity: `sh.openlv.docs.${walletConnector.id}`,
-                      name: walletConnector.name,
-                      ...(walletIcon && { icon: walletIcon }),
-                    },
-                  }
-                : undefined;
-              const s = isResumingSavedSession && saved
-                ? await createSession(saved, [webrtc()], onMessage, options)
-                : await connectSession(url, onMessage, [webrtc()], options);
-
-              walletSessionReference.current = s;
-              const detachTryIt = attachTryItSession(s, "wallet", session, {
-                logRequests: false,
-              });
-              let wasConnected = false;
-              const stopStatusWatch = s.status.subscribe((state) => {
-                if (state === SessionStatus.CONNECTED) wasConnected = true;
-
-                if (wasConnected && state === SessionStatus.DISCONNECTED) {
-                  clearWalletSession();
-                  walletSessionReference.current = undefined;
-                  stopStatusWatch();
-                  detachTryIt();
-                  detachReference.current = undefined;
-                  setActive(false);
-                  session.resetSession();
-                }
-              });
-
-              detachReference.current = () => {
-                stopStatusWatch();
-                detachTryIt();
-              };
-
-              setActive(true);
-              await s.connect();
-
-              // The panel's phase follows the session's own status from here,
-              // through the subscription attachTryItSession opened above.
-              const settled = await s.status.until(
-                status => status === SessionStatus.CONNECTED
-                  || status === SessionStatus.DISCONNECTED,
-              );
-
-              if (settled !== SessionStatus.CONNECTED) {
-                throw new Error(s.error.get() ?? "Session failed to connect");
-              }
-
-              saveWalletSession(s.getResumeParameters());
-            }
-            catch (error) {
-              detachReference.current?.();
-              detachReference.current = undefined;
-              await walletSessionReference.current?.close();
-              walletSessionReference.current = undefined;
-              session.setPhase("error");
-              session.appendEntry({
-                role: "wallet",
-                direction: "in",
-                kind: "info",
-                summary: "Connection failed",
-                payload: error instanceof Error ? { message: error.message } : error,
-              });
-            }
-            finally {
-              setConnecting(false);
-            }
-          }}
+          onClick={() => void connect()}
           className={buttonClass}
         >
           {connecting ? "..." : "Connect"}
