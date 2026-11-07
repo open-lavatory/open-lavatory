@@ -22,6 +22,11 @@ export type SessionHandshakeParameters = {
   s: string;
 };
 
+export type SessionCreationParameters = Pick<
+  SessionHandshakeParameters,
+"p" | "s"
+>;
+
 /**
  * The parameters that describe a session
  * these can be used to restart a session
@@ -34,11 +39,6 @@ export type SessionConnectionParameters = SessionHandshakeParameters & {
   // Transport selected during the previous connection.
   selectedTransportId: string;
 };
-
-export type SessionCreationParameters = Pick<
-  SessionHandshakeParameters,
-  "p" | "s"
->;
 
 export type SessionLinkParameters
   = | SessionConnectionParameters

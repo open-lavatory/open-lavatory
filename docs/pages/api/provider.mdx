@@ -42,14 +42,12 @@ const chainId = await provider.request({ method: 'eth_chainId' })
 ## Provider helpers
 
 - `createSession(parameters?)`
-- `restoreSession()`: resumes the previously saved session, if one exists
+- `restoreSession()`
 - `closeSession()`
 - `getAccounts()`
 - `status`
 - `error`
 - `session`
-
-`restoreSession()` restores an existing session from validated local session state. It does not create a new pairing: if saved state is missing or invalid, restoration fails and malformed state is discarded. The saved peer identity and key material are retained; resume does not repeat the invitation handshake.
 
 ## Provider states
 
