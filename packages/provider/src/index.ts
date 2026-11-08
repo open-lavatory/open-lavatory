@@ -14,9 +14,9 @@ import type { PeerInfo } from "@openlv/signaling";
 import type { TransportProtocol } from "@openlv/transport";
 import { webrtc, type WebRTCConfig } from "@openlv/transport/webrtc";
 import { Provider as OxProvider } from "ox";
+import type { Address } from "ox/Address";
 import type { EventMap } from "ox/Provider";
 import type { ExtractReturnType } from "ox/RpcSchema";
-import type { Address, Prettify } from "viem";
 
 import {
   createWalletRpcClient,
@@ -44,12 +44,10 @@ export type OpenLVProviderConfig = {
   };
 };
 
-export type OpenLVProviderParameters = Prettify<
-  {
-    config?: OpenLVProviderConfig;
-    openModal?: (provider: OpenLVProvider) => Promise<void>;
-  } & Pick<ProviderStorageParameters, "storage">
->;
+export type OpenLVProviderParameters = {
+  config?: OpenLVProviderConfig;
+  openModal?: (provider: OpenLVProvider) => Promise<void>;
+} & Pick<ProviderStorageParameters, "storage">;
 
 export const ProviderStatus = {
   STANDBY: "standby",
