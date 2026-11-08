@@ -44,10 +44,10 @@
     "test": "vitest"
   },
   "dependencies": {
-    "@openlv/core": "workspace:*",
-    "@openlv/session": "workspace:*",
-    "@openlv/signaling": "workspace:*",
-    "@openlv/transport": "workspace:*",
+    "@openlv/core": "workspace:^",
+    "@openlv/session": "workspace:^",
+    "@openlv/signaling": "workspace:^",
+    "@openlv/transport": "workspace:^",
     "ox": "^0.9.14",
     "zod": "^4.4.3"
   },

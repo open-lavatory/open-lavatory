@@ -51,7 +51,7 @@
     "typecheck": "tsc -p tsconfig.type-tests.json"
   },
   "dependencies": {
-    "@openlv/session": "workspace:*",
+    "@openlv/session": "workspace:^",
     "base-64": "^1.0.0",
     "fast-text-encoding": "^1.0.6",
     "react-native-get-random-values": "^2.0.0",
@@ -62,7 +62,7 @@
   },
   "peerDependencies": {
     "react": ">=18",
-    "react-native": ">=0.70"
+    "react-native": ">=0.81"
   },
   "devDependencies": {
     "@types/react": "19.1.4",

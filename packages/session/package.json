@@ -38,11 +38,10 @@
     "test": "vitest"
   },
   "dependencies": {
-    "@openlv/core": "workspace:*",
-    "@openlv/signaling": "workspace:*",
-    "@openlv/transport": "workspace:*",
+    "@openlv/core": "workspace:^",
+    "@openlv/signaling": "workspace:^",
+    "@openlv/transport": "workspace:^",
     "eventemitter3": "^5.0.1",
-    "globals": "^16.2.0",
     "ts-pattern": "^5"
   },
   "devDependencies": {

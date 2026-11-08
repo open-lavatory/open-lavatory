@@ -44,9 +44,8 @@
     "test:install": "playwright install --with-deps"
   },
   "dependencies": {
-    "@openlv/core": "workspace:*",
+    "@openlv/core": "workspace:^",
     "eventemitter3": "^5.0.1",
-    "globals": "^16.2.0",
     "ts-pattern": "^5"
   },
   "devDependencies": {

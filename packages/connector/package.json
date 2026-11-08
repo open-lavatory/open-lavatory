@@ -38,10 +38,9 @@
     "dev": "tsc --watch"
   },
   "dependencies": {
-    "@openlv/core": "workspace:*",
-    "@openlv/modal": "workspace:*",
-    "@openlv/provider": "workspace:*",
-    "eventemitter3": "^5.0.1"
+    "@openlv/core": "workspace:^",
+    "@openlv/modal": "workspace:^",
+    "@openlv/provider": "workspace:^"
   },
   "devDependencies": {
     "@wagmi/core": "3",
