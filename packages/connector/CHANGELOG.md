@@ -1,5 +1,14 @@
 # @openlv/connector
 
+## 0.2.4
+
+### Patch Changes
+
+- 6f7198c: Emit chain and account changes to wagmi
+- Updated dependencies [e5ac711]
+  - @openlv/modal@0.2.4
+  - @openlv/provider@0.3.3
+
 ## 0.2.3
 
 ### Patch Changes

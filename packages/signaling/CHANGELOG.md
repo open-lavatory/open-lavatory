@@ -1,5 +1,13 @@
 # @openlv/signaling
 
+## 0.4.0
+
+### Minor Changes
+
+- e5ac711: Introduce support for nostr as signaling protocol.
+  Deprecate support for `gun` as signaling protocol.
+  Settings and links that name gun fail with `Unsupported signaling protocol: gun`.
+
 ## 0.3.2
 
 ### Patch Changes
