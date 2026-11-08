@@ -1,5 +1,11 @@
 # @openlv/core
 
+## 0.3.1
+
+### Patch Changes
+
+- e3a5aa2: Fixed scope cleanups registering new work while the scope closes
+
 ## 0.3.0
 
 ### Minor Changes

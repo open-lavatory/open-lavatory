@@ -1,5 +1,17 @@
 # @openlv/modal
 
+## 0.2.3
+
+### Patch Changes
+
+- b4770c9: Fixed the "URL copied" toast so it shows when the connection URL is copied
+- 0fe5cec: Moved solid-js to dev dependencies.
+- 402a7ef: Removed bundled modal dependencies and unused runtime dependencies.
+- Updated dependencies [402a7ef]
+- Updated dependencies [f277485]
+- Updated dependencies [9176306]
+  - @openlv/provider@0.3.2
+
 ## 0.2.2
 
 ### Patch Changes

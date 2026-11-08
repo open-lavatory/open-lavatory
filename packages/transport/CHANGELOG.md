@@ -1,5 +1,13 @@
 # @openlv/transport
 
+## 0.3.1
+
+### Patch Changes
+
+- 402a7ef: Removed bundled modal dependencies and unused runtime dependencies.
+- Updated dependencies [e3a5aa2]
+  - @openlv/core@0.3.1
+
 ## 0.3.0
 
 ### Minor Changes

@@ -1,5 +1,20 @@
 # @openlv/provider
 
+## 0.3.2
+
+### Patch Changes
+
+- 402a7ef: Removed bundled modal dependencies and unused runtime dependencies.
+- f277485: Use the Ox minor version required by current Viem 2 releases.
+- 9176306: Cleanup undeclared Viem imports from provider and signaling declarations.
+- Updated dependencies [402a7ef]
+- Updated dependencies [9176306]
+- Updated dependencies [e3a5aa2]
+  - @openlv/session@0.3.2
+  - @openlv/signaling@0.3.2
+  - @openlv/transport@0.3.1
+  - @openlv/core@0.3.1
+
 ## 0.3.1
 
 ### Patch Changes

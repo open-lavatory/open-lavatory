@@ -1,5 +1,13 @@
 # @openlv/react-native
 
+## 0.1.3
+
+### Patch Changes
+
+- 402a7ef: Removed bundled modal dependencies and unused runtime dependencies.
+- Updated dependencies [402a7ef]
+  - @openlv/session@0.3.2
+
 ## 0.1.2
 
 ### Patch Changes
