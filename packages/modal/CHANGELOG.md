@@ -1,5 +1,15 @@
 # @openlv/modal
 
+## 0.2.4
+
+### Patch Changes
+
+- e5ac711: Introduce support for nostr as signaling protocol.
+  Deprecate support for `gun` as signaling protocol.
+  Settings and links that name gun fail with `Unsupported signaling protocol: gun`.
+- Updated dependencies [e5ac711]
+  - @openlv/provider@0.3.3
+
 ## 0.2.3
 
 ### Patch Changes
