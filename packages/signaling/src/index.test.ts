@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { Status } from "./index.js";
 import { mqtt } from "./mqtt/index.js";
+import { nostr } from "./nostr/index.js";
 import { ntfy } from "./ntfy/index.js";
 import type { SignalingProtocol, SignalingProtocolOptions } from "./protocol.js";
 import { log } from "./utils/log.js";
@@ -65,17 +66,21 @@ const providersByType: readonly [
       ],
     ],
   ],
-  // gundb is deprecated and its public relays are too lossy to assert on.
-  // [
-  //   "gundb",
-  //   [
-  //     [
-  //       "try.axe.eco",
-  //       gundb,
-  //       { topic: "mytesttopic1111", url: "wss://try.axe.eco/gun" },
-  //     ],
-  //   ],
-  // ],
+  [
+    "nostr",
+    [
+      [
+        "relay.nostr.net",
+        nostr,
+        { topic: crypto.randomUUID().slice(0, 16), url: "wss://relay.nostr.net/" },
+      ],
+      [
+        "relay.primal.net",
+        nostr,
+        { topic: crypto.randomUUID().slice(0, 16), url: "wss://relay.primal.net/" },
+      ],
+    ],
+  ],
 ] as const;
 
 const testSignalingLayer = async (

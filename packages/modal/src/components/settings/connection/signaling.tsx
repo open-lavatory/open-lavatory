@@ -8,7 +8,7 @@ import { MenuItem } from "../../../ui/menu/MenuItem.js";
 import { Select } from "../../../ui/Select.js";
 import { useTranslation } from "../../../utils/i18n.js";
 
-const AVAILABLE_PROTOCOLS = ["mqtt", "ntfy", "gun"];
+const AVAILABLE_PROTOCOLS = ["mqtt", "ntfy", "nostr"];
 
 export const SignalingSettings = () => {
   const { t } = useTranslation();

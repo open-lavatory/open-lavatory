@@ -130,4 +130,18 @@ describe("Storage Migrations", () => {
       s: { mqtt: "wss://test.mosquitto.org:8081/mqtt" },
     });
   });
+
+  test("parseProviderStorage loads a saved protocol it does not support", () => {
+    const saved = JSON.stringify({
+      version: 3,
+      autoReconnect: false,
+      retainHistory: false,
+      signaling: { p: "gun", s: { mqtt: "wss://test.mosquitto.org:8081/mqtt", gun: "wss://try.axe.eco/gun" } },
+    });
+
+    expect(parseProviderStorage(saved).signaling).toEqual({
+      p: "gun",
+      s: { mqtt: "wss://test.mosquitto.org:8081/mqtt" },
+    });
+  });
 });

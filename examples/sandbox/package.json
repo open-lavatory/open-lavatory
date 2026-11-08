@@ -39,7 +39,6 @@
     "wagmi": "^3.6.16"
   },
   "devDependencies": {
-    "gun": "0.2020.1241",
     "typescript": "^5.9.3",
     "vite": "^7",
     "websocket-mqtt": "0.0.7"

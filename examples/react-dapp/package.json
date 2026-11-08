@@ -38,7 +38,6 @@
   },
   "devDependencies": {
     "@types/react-dom": "^19.1.6",
-    "gun": "0.2020.1241",
     "typescript": "^5.9.3",
     "vite": "^7",
     "websocket-mqtt": "0.0.7"

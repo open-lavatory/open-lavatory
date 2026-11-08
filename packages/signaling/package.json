@@ -36,10 +36,10 @@
       "import": "./dist/mqtt/index.js",
       "default": "./dist/mqtt/index.js"
     },
-    "./gundb": {
-      "types": "./dist/gundb/index.d.ts",
-      "import": "./dist/gundb/index.js",
-      "default": "./dist/gundb/index.js"
+    "./nostr": {
+      "types": "./dist/nostr/index.d.ts",
+      "import": "./dist/nostr/index.js",
+      "default": "./dist/nostr/index.js"
     }
   },
   "main": "./dist/index.js",
@@ -53,9 +53,9 @@
     "test": "vitest"
   },
   "dependencies": {
+    "@noble/curves": "^1.9.7",
     "@openlv/core": "workspace:^",
     "eventemitter3": "^5",
-    "gun": "^0.2020.1241",
     "websocket-mqtt": "0.0.7",
     "ts-pattern": "^5"
   },

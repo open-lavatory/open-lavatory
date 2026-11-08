@@ -22,6 +22,7 @@ const relays = [
   { p: "mqtt", s: "wss://broker.itdata.nu/mqtt" },
   { p: "ntfy", s: "https://ntfy.sh/" },
   { p: "ntfy", s: "https://ntfy.envs.net/" },
+  { p: "nostr", s: "wss://relay.nostr.net/" },
 ] as const;
 
 type Capture = {

@@ -23,6 +23,7 @@ import {
   jsonRpcRequest,
   type RpcSchema,
 } from "./rpc.js";
+import { DEFAULT_SETTINGS } from "./storage/default.js";
 import {
   createProviderStorage,
   type ProviderStorageParameters,
@@ -127,11 +128,11 @@ export const createProvider = (
   };
 
   const defaultLinkParameters = (): SessionLinkParameters | undefined => {
-    const signaling = store.settings.get().signaling ?? config?.signaling;
+    const signaling: { p?: string; s?: Partial<Record<string, string>>; } | undefined
+      = store.settings.get().signaling ?? config?.signaling;
     const p = signaling?.p;
-    const s = p ? signaling?.s?.[p] : undefined;
 
-    return p && s ? { p, s } : undefined;
+    return p ? { p, s: signaling?.s?.[p] ?? DEFAULT_SETTINGS.signaling?.s[p] ?? "" } : undefined;
   };
 
   const start = async (parameters?: SessionLinkParameters) => {

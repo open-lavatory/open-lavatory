@@ -1,0 +1,66 @@
+# Nostr
+
+[Nostr](https://github.com/nostr-protocol/nips) relays forward signed events between clients over WebSocket.
+Many independent operators run public relays, and anyone can run their own.
+
+```typescript
+import { nostr } from '@openlv/signaling/nostr';
+
+const session = await createSession({
+    p: 'nostr',
+    s: 'wss://relay.nostr.net/'
+}, nostr);
+```
+
+## URL Format
+
+```yaml
+wss://relay.nostr.net/
+```
+
+## Events
+
+Each peer signs its frames with a random secp256k1 key that lives only for the session.
+A frame is a [NIP-01](https://github.com/nostr-protocol/nips/blob/master/01.md) event of kind `21337`, in the ephemeral range, so relays forward it and are not expected to store it.
+The session ID goes in an `x` tag, and the frame goes in `content` unchanged.
+Peers subscribe with `{"kinds": [21337], "#x": [sessionId]}`.
+
+Relays check `created_at`, so a device clock that is more than a minute off can make a relay reject the frames.
+
+## Hosted Infrastructure (relay.nostr.net)
+
+`wss://relay.nostr.net/` is a public relay that accepts events from any key.
+A relay that requires [NIP-42](https://github.com/nostr-protocol/nips/blob/master/42.md) authentication, payment, or a known key does not work for openlv.
+
+## Self-Hosted
+
+Any relay that accepts ephemeral events from unknown keys works.
+
+[nostr-rs-relay](https://github.com/scsibug/nostr-rs-relay) runs with this `config.toml`:
+
+```toml
+[info]
+relay_url = "wss://relay.example.com/"
+
+[database]
+data_directory = "/var/lib/nostr-rs-relay"
+
+[network]
+address = "0.0.0.0"
+port = 8080
+```
+
+It is also available as the `scsibug/nostr-rs-relay` Docker image and as `nostr-rs-relay` in nixpkgs.
+
+[strfry](https://github.com/hoytech/strfry) runs with this `strfry.conf`:
+
+```
+db = "/var/lib/strfry/"
+
+relay {
+  bind = "0.0.0.0"
+  port = 7777
+}
+```
+
+Put either behind a TLS proxy so peers can reach it over `wss://`.

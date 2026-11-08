@@ -10,9 +10,9 @@ type Page =
   | { path: '/api/intro'; render: 'static' }
   | { path: '/api/provider'; render: 'static' }
   | { path: '/api/session'; render: 'static' }
-  | { path: '/api/signaling/gun'; render: 'static' }
   | { path: '/api/signaling'; render: 'static' }
   | { path: '/api/signaling/mqtt'; render: 'static' }
+  | { path: '/api/signaling/nostr'; render: 'static' }
   | { path: '/api/signaling/ntfy'; render: 'static' }
   | { path: '/api/transport'; render: 'static' }
   | { path: '/api/transport/webrtc'; render: 'static' }

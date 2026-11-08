@@ -1,11 +1,11 @@
-export const SIGNALING_PROTOCOLS = ["mqtt", "ntfy", "gun"] as const;
+export const SIGNALING_PROTOCOLS = ["mqtt", "ntfy", "nostr"] as const;
 export type SignalingProtocol = (typeof SIGNALING_PROTOCOLS)[number];
 
 export type SignalingSettingsV0 = { p: string; s: string; };
 
 export type SignalingSettingsV1 = {
-  p: SignalingProtocol;
-  s: Partial<Record<SignalingProtocol, string>>;
+  p: string;
+  s: Partial<Record<string, string>>;
 };
 
 export type SignalingSettings = SignalingSettingsV1;
@@ -90,11 +90,6 @@ const asBool = (v: unknown, label: string): boolean =>
 const asString = (v: unknown, label: string): string =>
   (typeof v === "string" ? v : fail(`${label} must be a string`));
 
-const asProtocol = (v: unknown): SignalingProtocol =>
-  (typeof v === "string" && SIGNALING_PROTOCOLS.includes(v as SignalingProtocol)
-    ? (v as SignalingProtocol)
-    : fail(`protocol must be one of: ${SIGNALING_PROTOCOLS.join(", ")}`));
-
 const asTheme = (v: unknown): UserThemePreference =>
   (v === "light" || v === "dark" || v === "system"
     ? v
@@ -122,7 +117,7 @@ const readSignalingV0 = (v: unknown): SignalingSettingsV0 => {
 const readSignalingV1 = (v: unknown): SignalingSettingsV1 => {
   const o = asObject(v, "signaling");
   const servers = asObject(o.s, "signaling.s");
-  const s: Partial<Record<SignalingProtocol, string>> = {};
+  const s: Partial<Record<string, string>> = {};
 
   for (const protocol of SIGNALING_PROTOCOLS) {
     if (protocol in servers) {
@@ -130,7 +125,7 @@ const readSignalingV1 = (v: unknown): SignalingSettingsV1 => {
     }
   }
 
-  return { p: asProtocol(o.p), s };
+  return { p: asString(o.p, "signaling.p"), s };
 };
 
 const readTurn = (v: unknown): TurnServer => {
@@ -205,11 +200,10 @@ const readV3 = (v: unknown): ProviderStorageV3 => {
   };
 };
 
-const toSignalingV1 = (session: SignalingSettingsV0): SignalingSettingsV1 => {
-  const p = asProtocol(session.p);
-
-  return { p, s: { [p]: session.s } };
-};
+const toSignalingV1 = (session: SignalingSettingsV0): SignalingSettingsV1 => ({
+  p: session.p,
+  s: { [session.p]: session.s },
+});
 
 export const convertProviderStorageV0ToV1 = (
   settings: ProviderStorageV0,

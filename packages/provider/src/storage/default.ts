@@ -7,7 +7,7 @@ export const DEFAULT_SETTINGS: ProviderStorage = {
     s: {
       mqtt: "wss://test.mosquitto.org:8081/mqtt",
       ntfy: "https://ntfy.sh",
-      gun: "wss://try.axe.eco/gun",
+      nostr: "wss://relay.nostr.net/",
     },
   },
   autoReconnect: false,

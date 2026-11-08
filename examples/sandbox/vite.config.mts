@@ -6,6 +6,6 @@ import tsconfigPaths from "vite-tsconfig-paths";
 export default defineConfig({
   plugins: [tsconfigPaths(), react()],
   optimizeDeps: {
-    include: ["websocket-mqtt", "gun"],
+    include: ["websocket-mqtt"],
   },
 });

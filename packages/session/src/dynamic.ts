@@ -11,13 +11,13 @@ export const loadSignaling = async (protocol: string) => match(protocol)
 
     return module_.ntfy;
   })
-  .with("gun", async () => {
-    const module_ = await import("@openlv/signaling/gundb");
+  .with("nostr", async () => {
+    const module_ = await import("@openlv/signaling/nostr");
 
-    return module_.gundb;
+    return module_.nostr;
   })
   .otherwise(() => {
-    throw new Error(`Unknown signaling protocol: ${protocol}`);
+    throw new Error(`Unsupported signaling protocol: ${protocol}`);
   });
 
 export const loadTransport = async (protocol: string) => match(protocol)

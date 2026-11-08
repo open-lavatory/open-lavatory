@@ -42,19 +42,6 @@ export const useSessionStart = () => {
   const { provider } = useModalContext();
 
   return {
-    start: () => {
-      const currentSettings = provider.storage.settings.get();
-      const p = currentSettings?.signaling?.p;
-      const s = p ? currentSettings?.signaling?.s?.[p] : undefined;
-
-      if (!p || !s) {
-        throw new Error("Invalid protocol or server");
-      }
-
-      return provider.createSession({
-        p,
-        s,
-      });
-    },
+    start: () => provider.createSession(),
   };
 };
