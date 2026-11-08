@@ -45,7 +45,6 @@ const runLogged = async (run: () => void | Promise<void>, failure: string) => {
 };
 
 export const createScope = (): Scope => {
-  // Newest first, the order `close` runs them in
   const cleanups: Cleanup[] = [];
   let closing: Promise<void> | undefined;
 
@@ -66,11 +65,16 @@ export const createScope = (): Scope => {
   };
 
   const close = () => {
-    closing ??= (async () => {
-      const pending = [...cleanups];
+    if (closing) return closing;
 
-      cleanups.length = 0;
-      const results = await Promise.allSettled(pending.map(async cleanup => cleanup()));
+    const pending = [...cleanups];
+
+    cleanups.length = 0;
+    closing = Promise.resolve();
+    const runs = pending.map(async cleanup => cleanup());
+
+    closing = (async () => {
+      const results = await Promise.allSettled(runs);
       const errors = results.flatMap(result => (result.status === "rejected" ? [result.reason] : []));
 
       if (errors.length > 0) throw new AggregateError(errors, "Failed to close scope");
@@ -112,7 +116,6 @@ export const createScope = (): Scope => {
       const child = createScope();
 
       add(child.close);
-      // A child that closes on its own leaves its parent
       child.add(() => remove(child.close));
 
       return child;
