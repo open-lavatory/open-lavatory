@@ -1,5 +1,21 @@
 # @openlv/connector
 
+## 0.2.3
+
+### Patch Changes
+
+- 402a7ef: Removed bundled modal dependencies and unused runtime dependencies.
+- 3e4ac65: Adjusted wagmi compatability to Wagmi Core v2 and v3 for connector.
+- Updated dependencies [b4770c9]
+- Updated dependencies [0fe5cec]
+- Updated dependencies [402a7ef]
+- Updated dependencies [f277485]
+- Updated dependencies [9176306]
+- Updated dependencies [e3a5aa2]
+  - @openlv/modal@0.2.3
+  - @openlv/provider@0.3.2
+  - @openlv/core@0.3.1
+
 ## 0.2.2
 
 ### Patch Changes

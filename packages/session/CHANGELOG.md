@@ -1,5 +1,17 @@
 # @openlv/session
 
+## 0.3.2
+
+### Patch Changes
+
+- 402a7ef: Removed bundled modal dependencies and unused runtime dependencies.
+- Updated dependencies [402a7ef]
+- Updated dependencies [9176306]
+- Updated dependencies [e3a5aa2]
+  - @openlv/signaling@0.3.2
+  - @openlv/transport@0.3.1
+  - @openlv/core@0.3.1
+
 ## 0.3.1
 
 ### Patch Changes
