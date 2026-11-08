@@ -15,6 +15,7 @@ import {
   createConfig,
   http,
   useChainId,
+  useChains,
   useClient,
   useConnect,
   useConnection,
@@ -22,6 +23,7 @@ import {
   useConnectors,
   useDisconnect,
   useSignMessage,
+  useSwitchChain,
   useVerifyMessage,
   WagmiProvider,
 } from "wagmi";
@@ -68,16 +70,92 @@ const trimAddress = (address: Address | undefined | null) => {
 const buttonClass
   = "!bg-[var(--vocs-color_codeTitleBackground)] hover:!bg-[var(--vocs-color_codeBlockBackground)] rounded-lg vocs:border-primary px-4 py-1 disabled:opacity-50";
 
-const PersonalSign = () => {
+const AccountSelect = ({
+  account,
+  onChange,
+}: {
+  account: Address | undefined;
+  onChange: (account: Address | undefined) => void;
+}) => {
+  const { addresses } = useConnection();
+
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <p className="text-sm text-(--vocs-color_textSecondary)">
+        <code className="text-xs">eth_accounts</code>
+      </p>
+      <select
+        value={account}
+        onChange={event => onChange(addresses?.find(address => address === event.target.value))}
+        className={buttonClass}
+      >
+        {addresses?.map(address => (
+          <option key={address} value={address}>
+            {trimAddress(address)}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+};
+
+const ChainSelect = () => {
+  const chains = useChains();
+  const switchChain = useSwitchChain();
+  const { chainId, connector } = useConnection();
+  const { phase } = useTryItSession();
+  const isReady = connector?.type !== "openLv" || phase === "connected";
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm text-(--vocs-color_textSecondary)">
+          <code className="text-xs">wallet_switchEthereumChain</code>
+        </p>
+        <select
+          value={chainId}
+          disabled={!isReady || switchChain.isPending}
+          onChange={(event) => {
+            const chain = chains.find(chain => String(chain.id) === event.target.value);
+
+            if (chain) switchChain.mutate({ chainId: chain.id });
+          }}
+          className={buttonClass}
+        >
+          {chains.every(chain => chain.id !== chainId) && (
+            <option value={chainId}>{`Chain ${chainId}`}</option>
+          )}
+          {chains.map(chain => (
+            <option key={chain.id} value={chain.id}>
+              {chain.name}
+            </option>
+          ))}
+        </select>
+      </div>
+      {switchChain.isPending && (
+        <p className="text-sm text-[var(--vocs-color_textSecondary)]">
+          Waiting for wallet...
+        </p>
+      )}
+      {switchChain.error && (
+        <p className="text-sm text-[var(--vocs-color_textSecondary)]">
+          Cancelled or failed
+        </p>
+      )}
+    </div>
+  );
+};
+
+const PersonalSign = ({ account }: { account: Address | undefined; }) => {
   const signMessage = useSignMessage();
-  const { address, connector } = useConnection();
+  const { connector } = useConnection();
   const { data: signature, error, isPending, reset } = signMessage;
   const chainId = useChainId();
   const { phase } = useTryItSession();
   const isReady = connector?.type !== "openLv" || phase === "connected";
 
   const { data: valid, isLoading: verifying } = useVerifyMessage({
-    address,
+    address: account,
     message: "Hello, world!",
     signature,
     chainId,
@@ -94,7 +172,7 @@ const PersonalSign = () => {
           disabled={!isReady || isPending}
           onClick={() => {
             reset();
-            signMessage.mutate({ message: "Hello, world!" });
+            signMessage.mutate({ account, message: "Hello, world!" });
           }}
           className={buttonClass}
         >
@@ -121,14 +199,21 @@ const PersonalSign = () => {
 };
 
 const PersonalSignCard = () => {
-  const { isConnected } = useConnection();
+  const { address, addresses, isConnected } = useConnection();
+  const [picked, setPicked] = useState<Address>();
 
   if (!isConnected) return null;
+
+  const account = picked && addresses?.includes(picked) ? picked : address;
 
   return (
     <section className="rounded-lg border vocs:border-primary bg-[var(--vocs-color_codeBlockBackground)] px-4 py-3">
       <h3 className="mb-2 text-sm font-medium">Playground</h3>
-      <PersonalSign />
+      <div className="flex flex-col gap-3">
+        <AccountSelect account={account} onChange={setPicked} />
+        <ChainSelect />
+        <PersonalSign account={account} />
+      </div>
     </section>
   );
 };
