@@ -10,6 +10,8 @@ export default defineConfig({
     dts({
       outDir: "dist",
       entryRoot: "src",
+      rollupTypes: true,
+      bundledPackages: ["solid-js", "csstype"],
     }),
   ],
   build: {

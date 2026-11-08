@@ -539,9 +539,6 @@ importers:
       '@openlv/provider':
         specifier: workspace:^
         version: link:../provider
-      solid-js:
-        specifier: ^1.9.9
-        version: 1.9.14
     devDependencies:
       '@openlv/core':
         specifier: workspace:^
@@ -564,6 +561,9 @@ importers:
       qr:
         specifier: ^0.6.0
         version: 0.6.0
+      solid-js:
+        specifier: ^1.9.9
+        version: 1.9.14
       tailwind-variants:
         specifier: ^3.1.1
         version: 3.2.2(tailwind-merge@3.5.0)(tailwindcss@4.3.3)
