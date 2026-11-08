@@ -48,7 +48,7 @@
     "@openlv/session": "workspace:^",
     "@openlv/signaling": "workspace:^",
     "@openlv/transport": "workspace:^",
-    "ox": "^0.9.14",
+    "ox": "^0.14.59",
     "zod": "^4.4.3"
   },
   "devDependencies": {
