@@ -6,7 +6,7 @@ import {
   ProviderStatus,
 } from "@openlv/provider";
 import { createConnector, type CreateConnectorFn } from "@wagmi/core";
-import { type Prettify, UserRejectedRequestError } from "viem";
+import { getAddress, type Prettify, UserRejectedRequestError } from "viem";
 
 import { openlvDetails } from "./config.js";
 import { log } from "./log.js";
@@ -54,6 +54,14 @@ export const openlv = ({
 
   return createConnector<OpenLVProvider>((wagmiConfig) => {
     const { chains } = wagmiConfig;
+
+    const onAccountsChanged = (accounts: readonly string[]) => {
+      wagmiConfig.emitter.emit("change", { accounts: accounts.map(account => getAddress(account)) });
+    };
+
+    const onChainChanged = (chainId: string) => {
+      wagmiConfig.emitter.emit("change", { chainId: Number(chainId) });
+    };
 
     const connect = async (
       { withCapabilities = false },
@@ -108,6 +116,10 @@ export const openlv = ({
         await onDisconnect();
       },
       getAccounts,
+      async setup() {
+        provider.on("accountsChanged", onAccountsChanged);
+        provider.on("chainChanged", onChainChanged);
+      },
       /**
        * Note on isAuthorized, upon page load `getProvider` is called, followed by `isAuthorized` if the result is true, the `connect` function is called.
        * This can be used for auto-reconnection / persistence if a connection exists.
@@ -134,6 +146,8 @@ export const openlv = ({
           params: [{ chainId: chainIdHex }],
         });
 
+        wagmiConfig.emitter.emit("change", { chainId });
+
         return chain;
       },
       getChainId: async () => {
@@ -142,8 +156,8 @@ export const openlv = ({
         return Number.parseInt(chainIdHex as string, 16);
       },
       getProvider: async () => provider,
-      onAccountsChanged: () => log("onAccountsChanged"),
-      onChainChanged: () => log("onChainChanged"),
+      onAccountsChanged,
+      onChainChanged,
       onDisconnect,
     };
   });
