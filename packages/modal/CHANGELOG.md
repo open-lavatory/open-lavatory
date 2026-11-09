@@ -1,5 +1,16 @@
 # @openlv/modal
 
+## 0.2.5
+
+### Patch Changes
+
+- af85adb: Removed the Close button from the connection failed screen
+- acce1dd: Updated bundled qr to 0.7 and lucide-solid to 1.x.
+- Updated dependencies [0a91078]
+- Updated dependencies [acce1dd]
+- Updated dependencies [57dd8c8]
+  - @openlv/provider@0.3.5
+
 ## 0.2.4
 
 ### Patch Changes

@@ -1,5 +1,13 @@
 # @openlv/provider
 
+## 0.3.5
+
+### Patch Changes
+
+- 0a91078: Switched JSON-RPC response validation to zod/mini.
+- acce1dd: Raised zod to ^4.6.6 for GHSA-mrhx-c7xc-m3w5.
+- 57dd8c8: Emit wallet account and chain changes as EIP-1193 events
+
 ## 0.3.4
 
 ### Patch Changes
