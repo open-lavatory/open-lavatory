@@ -1,7 +1,7 @@
 import { RequestFailedError } from "@openlv/session";
 import { Provider, RpcResponse } from "ox";
 import type * as RpcSchema_ox from "ox/RpcSchema";
-import { z } from "zod";
+import * as z from "zod/mini";
 
 export type RpcSchema = RpcSchema_ox.Eth | RpcSchema_ox.Wallet;
 
@@ -13,25 +13,28 @@ const jsonRpcIdentifier = z.union([z.number(), z.string(), z.null()]);
 
 export const jsonRpcRequest = z.looseObject({ ["id"]: jsonRpcIdentifier });
 
-const chainId = z.templateLiteral(["0x", z.string().regex(/^[\dA-Fa-f]+$/)]);
-const accounts = z.array(z.templateLiteral(["0x", z.string().regex(/^[\dA-Fa-f]{40}$/)]));
-const notification = z.object({ jsonrpc: z.literal("2.0"), ["id"]: z.never().optional() });
+const chainId = z.templateLiteral(["0x", z.string().check(z.regex(/^[\dA-Fa-f]+$/))]);
+const address = z.templateLiteral(["0x", z.string().check(z.regex(/^[\dA-Fa-f]{40}$/))]);
+const accounts = z.array(address);
+const notification = z.object({ jsonrpc: z.literal("2.0"), ["id"]: z.optional(z.never()) });
 
 export const walletNotification = z.discriminatedUnion("method", [
-  notification.extend({ method: z.literal("accountsChanged"), params: z.tuple([accounts]) }),
-  notification.extend({ method: z.literal("chainChanged"), params: z.tuple([chainId]) }),
+  z.extend(notification, { method: z.literal("accountsChanged"), params: z.tuple([accounts]) }),
+  z.extend(notification, { method: z.literal("chainChanged"), params: z.tuple([chainId]) }),
 ]);
+
+const jsonRpcError = z.looseObject({
+  code: z.int(),
+  message: z.string(),
+  data: z.optional(z.unknown()),
+});
 
 const jsonRpcResponse = z.looseObject({
   jsonrpc: z.literal("2.0"),
   ["id"]: jsonRpcIdentifier,
-  result: z.unknown().optional(),
-  error: z.looseObject({
-    code: z.number().int(),
-    message: z.string(),
-    data: z.unknown().optional(),
-  }).optional(),
-}).refine(response => "result" in response !== "error" in response);
+  result: z.optional(z.unknown()),
+  error: z.optional(jsonRpcError),
+}).check(z.refine(response => "result" in response !== "error" in response));
 
 const encode = (request: object, requestIdentifier: number) => ({
   ...request,
