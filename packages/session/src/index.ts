@@ -52,7 +52,6 @@ export const SessionStatus = {
   READY: "ready",
   LINKING: "linking",
   CONNECTED: "connected",
-  RECOVERING: "recovering",
   DISCONNECTED: "disconnected",
 } as const;
 export type SessionStatus = (typeof SessionStatus)[keyof typeof SessionStatus];
@@ -168,13 +167,18 @@ export const createSession = async (
     setStatus(newStatus);
   };
 
+  let hasBeenConnected = false;
   status.subscribe((current) => {
-    if (current === SessionStatus.RECOVERING || current === SessionStatus.DISCONNECTED) {
-      const fallback = current === SessionStatus.RECOVERING
-        ? "Transport interrupted"
-        : "Session closed";
+    if (current === SessionStatus.CONNECTED) {
+      hasBeenConnected = true;
+      return;
+    }
 
-      messages.emit("ended", lastError.get() ?? fallback);
+    if (current === SessionStatus.DISCONNECTED) {
+      messages.emit("ended", lastError.get() ?? "Session closed");
+    }
+    else if (current === SessionStatus.LINKING && hasBeenConnected) {
+      messages.emit("ended", lastError.get() ?? "Transport interrupted");
     }
   });
 
@@ -384,20 +388,20 @@ export const createSession = async (
   };
 
   async function recoverTransport() {
-    if (status.get() === SessionStatus.RECOVERING) return;
+    if (status.get() === SessionStatus.LINKING) return;
 
-    updateStatus(SessionStatus.RECOVERING);
+    updateStatus(SessionStatus.LINKING);
 
     try {
       await clearCurrentTransport();
 
-      if (status.get() !== SessionStatus.RECOVERING) return;
+      if (status.get() !== SessionStatus.LINKING) return;
 
       if (!signal.resume) throw new Error("Signaling protocol cannot resume interrupted sessions");
 
       await signal.resume();
 
-      if (status.get() !== SessionStatus.RECOVERING) return;
+      if (status.get() !== SessionStatus.LINKING) return;
 
       startTransport();
     }
@@ -443,7 +447,7 @@ export const createSession = async (
     log("signal state change", signalStatus);
 
     if (signalStatus === SignalStatus.READY) {
-      if (status.get() !== SessionStatus.RECOVERING) {
+      if (status.get() !== SessionStatus.LINKING) {
         updateStatus(SessionStatus.READY);
       }
     }
@@ -456,7 +460,7 @@ export const createSession = async (
         ] as SignalStatus[]
       ).includes(signalStatus)
     ) {
-      if (status.get() !== SessionStatus.RECOVERING) {
+      if (status.get() !== SessionStatus.LINKING) {
         updateStatus(SessionStatus.LINKING);
       }
     }

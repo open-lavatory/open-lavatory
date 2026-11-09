@@ -56,7 +56,7 @@ describe("Session", () => {
     // Lose the channel before cleanup so the peer receives no session-close packet.
     await previous._internal.transport?.teardown();
     await previous.close();
-    await stayed.status.until(state => state === SessionStatus.RECOVERING);
+    await stayed.status.until(state => state === SessionStatus.LINKING);
 
     const restored = await createSession(saved, [webrtc({ iceServers: [] })], onMessage);
     await restored.connect();

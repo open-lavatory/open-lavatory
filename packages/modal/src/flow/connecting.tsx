@@ -34,7 +34,7 @@ export const Connecting = (properties: { onCopy: () => void; }) => {
         <Match when={status() === SessionStatus.READY}>
           <HandshakeOpen onCopy={properties.onCopy} />
         </Match>
-        <Match when={status() === SessionStatus.LINKING || status() === SessionStatus.RECOVERING}>
+        <Match when={status() === SessionStatus.LINKING}>
           <div class="flex flex-col items-center gap-4 p-6">
             <LoadingSpinner />
             <div class="text-center">
