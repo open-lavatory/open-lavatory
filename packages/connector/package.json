@@ -46,7 +46,7 @@
     "@wagmi/core": "3",
     "globals": "^16.2.0",
     "typescript": "^5.9.3",
-    "vitest": "^4"
+    "vitest": "^5"
   },
   "peerDependencies": {
     "@wagmi/core": "^2.22.1 || ^3.0.0",

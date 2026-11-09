@@ -9,7 +9,7 @@ inputs:
   pnpm-version:
     description: 'pnpm version to use'
     required: false
-    default: '10.10.0'
+    default: '10.34.7'
   build-packages:
     description: 'Whether to build packages'
     required: false

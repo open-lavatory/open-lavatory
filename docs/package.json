@@ -36,7 +36,7 @@
     "classnames": "^2.5.1",
     "mermaid": "^11.16.0",
     "typescript": "^5.9.3",
-    "vite": "^8.1.5",
+    "vite": "~8.1.6",
     "websocket-mqtt": "0.0.7"
   }
 }

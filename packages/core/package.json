@@ -56,7 +56,7 @@
   },
   "devDependencies": {
     "typescript": "^5",
-    "vitest": "^4"
+    "vitest": "^5"
   },
   "packageManager": "pnpm@10.10.0",
   "publishConfig": {

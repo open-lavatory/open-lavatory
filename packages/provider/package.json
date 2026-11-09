@@ -49,12 +49,12 @@
     "@openlv/signaling": "workspace:^",
     "@openlv/transport": "workspace:^",
     "ox": "^0.14.59",
-    "zod": "^4.4.3"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "globals": "^16.2.0",
     "typescript": "^5",
-    "vitest": "^4.0.3"
+    "vitest": "^5.1.0"
   },
   "packageManager": "pnpm@10.10.0",
   "publishConfig": {

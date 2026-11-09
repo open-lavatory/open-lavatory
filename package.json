@@ -21,7 +21,7 @@
     "viem": "^2.44.1",
     "wagmi": "^3.6.16"
   },
-  "packageManager": "pnpm@10.10.0",
+  "packageManager": "pnpm@10.34.7",
   "pnpm": {
     "overrides": {
       "@types/react": "19.1.4",
