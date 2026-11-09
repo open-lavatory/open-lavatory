@@ -3,9 +3,10 @@ import * as z from "zod/mini";
 
 const WALLET_SESSION_STORAGE_KEY = "@openlv/docs/wallet-session";
 
-const bytes = z.array(z.number().check(z.int(), z.minimum(0), z.maximum(255)))
-  .check(z.length(32))
-  .pipe(z.transform(value => Uint8Array.from(value)));
+const bytes = z.pipe(
+  z.array(z.number().check(z.int(), z.minimum(0), z.maximum(255))).check(z.length(32)),
+  z.transform((value: number[]) => Uint8Array.from(value)),
+);
 const walletSessionSchema = z.object({
   version: z.literal(1),
   sessionId: z.string(),

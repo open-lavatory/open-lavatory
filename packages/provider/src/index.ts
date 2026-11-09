@@ -48,12 +48,10 @@ export type OpenLVProviderConfig = {
   };
 };
 
-export type OpenLVProviderParameters = Prettify<
-  {
-    config?: OpenLVProviderConfig;
-    openModal?: (provider: OpenLVProvider) => Promise<void>;
-  } & Pick<ProviderStorageParameters, "storage" | "sessionStorage">
->;
+export type OpenLVProviderParameters = {
+  config?: OpenLVProviderConfig;
+  openModal?: (provider: OpenLVProvider) => Promise<void>;
+} & Pick<ProviderStorageParameters, "storage" | "sessionStorage">;
 
 export const ProviderStatus = {
   STANDBY: "standby",

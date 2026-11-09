@@ -14,9 +14,10 @@ export type PersistedSession = {
   transport: WebRTCSettings;
 };
 
-const bytes = z.array(z.number().check(z.int(), z.minimum(0), z.maximum(255)))
-  .check(z.length(32))
-  .pipe(z.transform(value => Uint8Array.from(value)));
+const bytes = z.pipe(
+  z.array(z.number().check(z.int(), z.minimum(0), z.maximum(255))).check(z.length(32)),
+  z.transform((value: number[]) => Uint8Array.from(value)),
+);
 const keyPairSchema = z.strictObject({
   publicKey: bytes,
   secretKey: bytes,
@@ -32,13 +33,7 @@ const connectionSchema = z.strictObject({
   peerKey: bytes,
   selectedTransportId: z.literal("wrtc"),
 })
-  .pipe(z.transform((connection) => {
-    if (!isValidKeyPair(connection.keyPair, connection.peerKey)) {
-      throw new TypeError("saved key pair and peer key are inconsistent");
-    }
-
-    return connection satisfies SessionConnectionParameters;
-  }));
+  .check(z.refine(connection => isValidKeyPair(connection.keyPair, connection.peerKey)));
 const transportSchema = z.strictObject({
   stun: z.optional(z.array(z.string())),
   turn: z.optional(z.array(z.strictObject({
