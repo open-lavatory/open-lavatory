@@ -1,5 +1,11 @@
 # @openlv/provider
 
+## 0.3.4
+
+### Patch Changes
+
+- 94d6ffa: Add the nostr server to settings saved before nostr
+
 ## 0.3.3
 
 ### Patch Changes
