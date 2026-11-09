@@ -62,4 +62,5 @@ const chainId = await provider.request({ method: 'eth_chainId' })
 Provider emits state/session events including:
 
 - `connect`
-- `accountsChanged`
+- `accountsChanged`, also when the wallet sends an `accountsChanged` notification
+- `chainChanged`, when the wallet sends a `chainChanged` notification

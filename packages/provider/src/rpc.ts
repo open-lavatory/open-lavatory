@@ -13,6 +13,15 @@ const jsonRpcIdentifier = z.union([z.number(), z.string(), z.null()]);
 
 export const jsonRpcRequest = z.looseObject({ ["id"]: jsonRpcIdentifier });
 
+const chainId = z.templateLiteral(["0x", z.string().regex(/^[\dA-Fa-f]+$/)]);
+const accounts = z.array(z.templateLiteral(["0x", z.string().regex(/^[\dA-Fa-f]{40}$/)]));
+const notification = z.object({ jsonrpc: z.literal("2.0"), ["id"]: z.never().optional() });
+
+export const walletNotification = z.discriminatedUnion("method", [
+  notification.extend({ method: z.literal("accountsChanged"), params: z.tuple([accounts]) }),
+  notification.extend({ method: z.literal("chainChanged"), params: z.tuple([chainId]) }),
+]);
+
 const jsonRpcResponse = z.looseObject({
   jsonrpc: z.literal("2.0"),
   ["id"]: jsonRpcIdentifier,

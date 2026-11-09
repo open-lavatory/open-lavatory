@@ -22,6 +22,7 @@ import {
   createWalletRpcClient,
   jsonRpcRequest,
   type RpcSchema,
+  walletNotification,
 } from "./rpc.js";
 import { DEFAULT_SETTINGS } from "./storage/default.js";
 import {
@@ -114,6 +115,21 @@ export const createProvider = (
 
     // Emit on the session emitter so observers (e.g. modal) can react.
     session.get()?.emitter.emit("request", message);
+
+    const notification = walletNotification.safeParse(message).data;
+
+    switch (notification?.method) {
+      case "accountsChanged": {
+        oxEmitter.emit("accountsChanged", notification.params[0]);
+
+        return null;
+      }
+      case "chainChanged": {
+        oxEmitter.emit("chainChanged", notification.params[0]);
+
+        return null;
+      }
+    }
 
     const requestIdentifier = jsonRpcRequest.safeParse(message).data?.["id"] ?? null;
 

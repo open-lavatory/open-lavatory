@@ -34,6 +34,13 @@ await session.connect();
 
 If `onMessage` throws, the session sends the peer `failed`. It carries no detail.
 
+A wallet tells the dApp that its accounts or chain changed with a JSON-RPC notification named after the EIP-1193 event:
+
+```typescript
+await session.send({ jsonrpc: "2.0", method: "accountsChanged", params: [["0x1234567890abcdef1234567890abcdef12345678"]] });
+await session.send({ jsonrpc: "2.0", method: "chainChanged", params: ["0xaa36a7"] });
+```
+
 ## Identifying yourself to the peer
 
 Both sides can pass an optional `info` object; it is carried in the [`capabilities` handshake packet](/api/handshake#capabilities) and shown in the other peer's UI:
