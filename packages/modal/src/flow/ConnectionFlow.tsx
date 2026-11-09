@@ -91,7 +91,7 @@ export const ConnectionFlow = (properties: ConnectionFlowProperties) => {
           </div>
         </Match>
         <Match when={providerStatus() === ProviderStatus.ERROR}>
-          <ErrorScreen onClose={properties.onClose} />
+          <ErrorScreen />
         </Match>
       </Switch>
     </div>
