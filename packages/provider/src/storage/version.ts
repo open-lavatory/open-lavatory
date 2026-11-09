@@ -125,6 +125,8 @@ const readSignalingV1 = (v: unknown): SignalingSettingsV1 => {
     }
   }
 
+  s.nostr ||= "wss://relay.nostr.net/";
+
   return { p: asString(o.p, "signaling.p"), s };
 };
 
@@ -266,9 +268,9 @@ export const parseProviderStorage = (raw: string): ProviderStorage => {
   const data = parsed;
 
   if ("session" in data && !("signaling" in data)) {
-    return migrateStorageToLatest(
-      convertProviderStorageV0ToV1(readV0({ ...data, version: 0 })),
-    );
+    const legacy = convertProviderStorageV0ToV1(readV0({ ...data, version: 0 }));
+
+    return migrateStorageToLatest(readV1(legacy));
   }
 
   switch (data.version) {

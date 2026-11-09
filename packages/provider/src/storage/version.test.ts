@@ -127,7 +127,7 @@ describe("Storage Migrations", () => {
     expect(result.version).toBe(3);
     expect(result.signaling).toEqual({
       p: "mqtt",
-      s: { mqtt: "wss://test.mosquitto.org:8081/mqtt" },
+      s: { mqtt: "wss://test.mosquitto.org:8081/mqtt", nostr: "wss://relay.nostr.net/" },
     });
   });
 
@@ -141,7 +141,7 @@ describe("Storage Migrations", () => {
 
     expect(parseProviderStorage(saved).signaling).toEqual({
       p: "gun",
-      s: { mqtt: "wss://test.mosquitto.org:8081/mqtt" },
+      s: { mqtt: "wss://test.mosquitto.org:8081/mqtt", nostr: "wss://relay.nostr.net/" },
     });
   });
 });
