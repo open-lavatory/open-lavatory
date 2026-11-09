@@ -112,18 +112,37 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
 
   const emitter = new EventEmitter<SignalEventMap>();
   const scope = createScope();
-  let resumeTimer: ReturnType<typeof setInterval> | undefined;
-  let resumeDeadline: ReturnType<typeof setTimeout> | undefined;
+  let resumeScope: ReturnType<typeof createScope> | undefined;
   let transportPhase: TransportPhase = resume ? "resuming" : "initial";
   let finishResumeAttempt: ((error?: Error) => void) | undefined;
 
   const clearResumeTimers = () => {
-    clearInterval(resumeTimer);
-    clearTimeout(resumeDeadline);
-    resumeTimer = undefined;
-    resumeDeadline = undefined;
+    const current = resumeScope;
+
+    resumeScope = undefined;
+    if (current) void current.close();
   };
   scope.add(clearResumeTimers);
+
+  const startResumeTimers = (
+    onTimeout: () => void,
+    onRetryError: string,
+    advertise = true,
+  ) => {
+    clearResumeTimers();
+
+    const current = scope.child();
+    resumeScope = current;
+    current.timeout(45_000, onTimeout);
+
+    if (advertise) {
+      const timer = setInterval(() => {
+        void publish(XR_PREFIX, capabilitiesMessage())
+          .catch(error => log(onRetryError, error));
+      }, 2000);
+      current.add(() => clearInterval(timer));
+    }
+  };
 
   scope.add(() => {
     const finishResume = finishResumeAttempt;
@@ -238,7 +257,7 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
       await setPeerCapabilities(message.payload);
 
       const shouldAcknowledgeResumedClient
-        = resume && !isHost && resumeTimer !== undefined;
+        = resume && !isHost && resumeScope !== undefined;
       const finishResume = finishResumeAttempt;
 
       finishResumeAttempt = undefined;
@@ -325,7 +344,7 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
     if (resume) {
       // Fail both roles if the matching peer never returns. Without this,
       // provider restoration waits forever before transport setup begins.
-      resumeDeadline = setTimeout(() => {
+      startResumeTimers(() => {
         clearResumeTimers();
         setStatus(Status.ERROR);
         const finishResume = finishResumeAttempt;
@@ -333,13 +352,9 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
         finishResume?.(new Error("Timed out resuming session"));
         void scope.close()
           .catch(error => log("failed to tear down timed-out resume signaling", error));
-      }, 45_000);
+      }, "failed to re-advertise resume capabilities", !isHost);
 
       if (!isHost) {
-        resumeTimer = setInterval(() => {
-          void publish(XR_PREFIX, capabilitiesMessage())
-            .catch(error => log("failed to re-advertise resume capabilities", error));
-        }, 2000);
         try {
           await publish(XR_PREFIX, capabilitiesMessage());
         }
@@ -374,7 +389,7 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
           if (error) reject(error);
           else resolve();
         };
-        resumeDeadline = setTimeout(() => {
+        startResumeTimers(() => {
           clearResumeTimers();
           setStatus(Status.ERROR);
 
@@ -384,11 +399,7 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
           finishResume?.(new Error("Timed out resuming session"));
           void scope.close()
             .catch(error => log("failed to tear down interrupted signaling", error));
-        }, 45_000);
-        resumeTimer = setInterval(() => {
-          void publish(XR_PREFIX, capabilitiesMessage())
-            .catch(error => log("failed to advertise interrupted session", error));
-        }, 2000);
+        }, "failed to advertise interrupted session");
         void publish(XR_PREFIX, capabilitiesMessage()).catch((error: unknown) => {
           clearResumeTimers();
           finishResumeAttempt?.(
