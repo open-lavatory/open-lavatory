@@ -22,8 +22,6 @@ export type {
 
 export type ProviderStorageParameters = {
   storage?: Storage;
-  // Defaults to sessionStorage
-  sessionStorage?: Storage;
 };
 
 const createPassthrough = () => {

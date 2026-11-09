@@ -91,7 +91,7 @@ export const createSessionStorage = (storage?: Storage): SessionStorageBackend =
 
   if (!io && typeof globalThis.window !== "undefined") {
     try {
-      io = globalThis.sessionStorage;
+      io = globalThis.localStorage;
     }
     catch {
       // Storage access is commonly disabled in privacy-restricted contexts.

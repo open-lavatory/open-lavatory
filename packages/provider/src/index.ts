@@ -51,7 +51,7 @@ export type OpenLVProviderConfig = {
 export type OpenLVProviderParameters = {
   config?: OpenLVProviderConfig;
   openModal?: (provider: OpenLVProvider) => Promise<void>;
-} & Pick<ProviderStorageParameters, "storage" | "sessionStorage">;
+} & Pick<ProviderStorageParameters, "storage">;
 
 export const ProviderStatus = {
   STANDBY: "standby",
@@ -101,7 +101,7 @@ export const createProvider = (
   const oxEmitter = OxProvider.createEmitter<EventMap>();
   let sessionOperation = 0;
   let unsubscribeSessionStatus: (() => void) | undefined;
-  const sessionStorage = createSessionStorage(parameters.sessionStorage);
+  const sessionStorage = createSessionStorage(storage);
   const walletRpc = createWalletRpcClient(async (payload) => {
     const current = session.get();
 

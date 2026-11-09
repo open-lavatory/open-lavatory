@@ -25,7 +25,7 @@ const walletSessionSchema = z.object({
 export const loadWalletSession = (): SessionConnectionParameters | undefined => {
   try {
     const parsed = walletSessionSchema.safeParse(JSON.parse(
-      globalThis.sessionStorage.getItem(WALLET_SESSION_STORAGE_KEY) ?? "null",
+      globalThis.localStorage.getItem(WALLET_SESSION_STORAGE_KEY) ?? "null",
     ));
 
     return parsed.success ? parsed.data : undefined;
@@ -37,7 +37,7 @@ export const loadWalletSession = (): SessionConnectionParameters | undefined => 
 
 export const saveWalletSession = (parameters: SessionConnectionParameters) => {
   try {
-    globalThis.sessionStorage.setItem(WALLET_SESSION_STORAGE_KEY, JSON.stringify({
+    globalThis.localStorage.setItem(WALLET_SESSION_STORAGE_KEY, JSON.stringify({
       ...parameters,
       keyPair: {
         publicKey: Array.from(parameters.keyPair.publicKey),
@@ -53,7 +53,7 @@ export const saveWalletSession = (parameters: SessionConnectionParameters) => {
 
 export const clearWalletSession = () => {
   try {
-    globalThis.sessionStorage.removeItem(WALLET_SESSION_STORAGE_KEY);
+    globalThis.localStorage.removeItem(WALLET_SESSION_STORAGE_KEY);
   }
   catch {
     // Storage may be unavailable in privacy-restricted contexts.
