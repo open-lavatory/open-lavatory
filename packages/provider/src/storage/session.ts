@@ -1,6 +1,6 @@
 import { decodeConnectionURL, type SessionConnectionParameters } from "@openlv/core";
 import { isValidKeyPair } from "@openlv/core/encryption";
-import { z } from "zod";
+import * as z from "zod/mini";
 
 import { SIGNALING_PROTOCOLS } from "./version.js";
 import type { WebRTCSettings } from "./version.js";
@@ -14,46 +14,45 @@ export type PersistedSession = {
   transport: WebRTCSettings;
 };
 
-const bytes = z.array(z.number().int().min(0).max(255))
-  .length(32)
-  .transform(value => Uint8Array.from(value));
-const keyPairSchema = z.object({
+const bytes = z.array(z.number().check(z.int(), z.minimum(0), z.maximum(255)))
+  .check(z.length(32))
+  .pipe(z.transform(value => Uint8Array.from(value)));
+const keyPairSchema = z.strictObject({
   publicKey: bytes,
   secretKey: bytes,
-}).strict();
-const connectionSchema = z.object({
+});
+const connectionSchema = z.strictObject({
   version: z.literal(1),
-  sessionId: z.string().regex(/^[A-Za-z0-9_-]{16}$/),
-  h: z.string().regex(/^[0-9a-f]{16}$/),
-  k: z.string().regex(/^[0-9a-f]{32}$/),
+  sessionId: z.string().check(z.regex(/^[A-Za-z0-9_-]{16}$/)),
+  h: z.string().check(z.regex(/^[0-9a-f]{16}$/)),
+  k: z.string().check(z.regex(/^[0-9a-f]{32}$/)),
   p: z.enum(SIGNALING_PROTOCOLS),
-  s: z.string().min(1),
+  s: z.string().check(z.minLength(1)),
   keyPair: keyPairSchema,
   peerKey: bytes,
   selectedTransportId: z.literal("wrtc"),
 })
-  .strict()
-  .transform((connection) => {
-  if (!isValidKeyPair(connection.keyPair, connection.peerKey)) {
-    throw new TypeError("saved key pair and peer key are inconsistent");
-  }
+  .pipe(z.transform((connection) => {
+    if (!isValidKeyPair(connection.keyPair, connection.peerKey)) {
+      throw new TypeError("saved key pair and peer key are inconsistent");
+    }
 
-  return connection satisfies SessionConnectionParameters;
-});
-const transportSchema = z.object({
-  stun: z.array(z.string()).optional(),
-  turn: z.array(z.object({
+    return connection satisfies SessionConnectionParameters;
+  }));
+const transportSchema = z.strictObject({
+  stun: z.optional(z.array(z.string())),
+  turn: z.optional(z.array(z.strictObject({
     urls: z.string(),
-    username: z.string().optional(),
-    credential: z.string().optional(),
-  }).strict()).optional(),
-}).strict();
-const recordSchema = z.object({
+    username: z.optional(z.string()),
+    credential: z.optional(z.string()),
+  }))),
+});
+const recordSchema = z.strictObject({
   revision: z.literal(1),
   sessionURI: z.string(),
   connection: connectionSchema,
   transport: transportSchema,
-}).strict();
+});
 
 export const parsePersistedSession = (raw: string): PersistedSession => {
   const record = recordSchema.parse(JSON.parse(raw));
