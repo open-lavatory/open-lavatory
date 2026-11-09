@@ -354,6 +354,10 @@ export const createProvider = (
     }
   };
   const restoreSession = async () => {
+    if (session.get()) {
+      throw new Error("Cannot restore a session while a session is already active");
+    }
+
     const operation = sessionOperation;
     const saved = sessionStorage.get();
 
