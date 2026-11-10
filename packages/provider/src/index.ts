@@ -99,7 +99,8 @@ export const createProvider = (
   const [error, setError] = observable<string | undefined>(undefined);
 
   const oxEmitter = OxProvider.createEmitter<EventMap>();
-  let sessionOperation = 0;
+  let sessionGeneration = 0;
+  const isCurrentSessionGeneration = (generation: number) => generation === sessionGeneration;
   let unsubscribeSessionStatus: (() => void) | undefined;
   const sessionStorage = createSessionStorage(storage);
   const walletRpc = createWalletRpcClient(async (payload) => {
@@ -190,7 +191,7 @@ export const createProvider = (
     parameters?: SessionLinkParameters,
     resumeTransport?: PersistedSession["transport"],
   ) => {
-    const operation = ++sessionOperation;
+    const generation = ++sessionGeneration;
 
     setError(undefined);
     setStatus(ProviderStatus.CREATING);
@@ -224,7 +225,7 @@ export const createProvider = (
       );
       createdSession = next;
 
-      if (operation !== sessionOperation) {
+      if (!isCurrentSessionGeneration(generation)) {
         await next.close();
 
         return next;
@@ -287,7 +288,7 @@ export const createProvider = (
         throw new Error(next.error.get() ?? "Session failed to connect");
       }
 
-      if (operation !== sessionOperation) return next;
+      if (!isCurrentSessionGeneration(generation)) return next;
 
       const resumeParameters = next.getResumeParameters();
       const persistedTransport = stored && (stored.stun?.length || stored.turn?.length)
@@ -311,11 +312,11 @@ export const createProvider = (
 
       const accounts = await getAccounts();
 
-      if (operation !== sessionOperation) return next;
+      if (!isCurrentSessionGeneration(generation)) return next;
 
       const chainId = await walletRpc.call({ method: "eth_chainId" });
 
-      if (operation !== sessionOperation) return next;
+      if (!isCurrentSessionGeneration(generation)) return next;
 
       setStatus(ProviderStatus.CONNECTED);
       oxEmitter.emit("connect", { chainId });
@@ -324,7 +325,7 @@ export const createProvider = (
       return next;
     }
     catch (error_) {
-      if (operation !== sessionOperation) throw error_;
+      if (!isCurrentSessionGeneration(generation)) throw error_;
 
       if (createdSession && session.get() === createdSession) {
         unsubscribeSessionStatus?.();
@@ -356,19 +357,19 @@ export const createProvider = (
       throw new Error("Cannot restore a session while a session is already active");
     }
 
-    const operation = sessionOperation;
+    const generation = sessionGeneration;
     const saved = sessionStorage.get();
 
     if (!saved) throw new Error("No valid saved session to restore");
 
-    if (operation !== sessionOperation) {
+    if (!isCurrentSessionGeneration(generation)) {
       throw new Error("Session restoration was cancelled");
     }
 
     return await start(saved.connection, saved.transport);
   };
   const closeSession = async () => {
-    sessionOperation++;
+    sessionGeneration++;
 
     const current = session.get();
     unsubscribeSessionStatus?.();
@@ -460,19 +461,19 @@ export const createProvider = (
   if (store.settings.get().autoReconnect) {
     const saved = sessionStorage.get();
     if (saved) {
-      const operation = sessionOperation;
+      const generation = sessionGeneration;
 
       // Mark restoration synchronously so connector authorization checks can
       // distinguish it from a provider with no saved session.
       setStatus(ProviderStatus.CREATING);
 
       void (async () => {
-        if (operation !== sessionOperation) return;
+        if (!isCurrentSessionGeneration(generation)) return;
 
         await restoreSession();
       })().catch((error_) => {
         log("automatic session restore failed", error_);
-        if (operation === sessionOperation && status.get() === ProviderStatus.CREATING) {
+        if (isCurrentSessionGeneration(generation) && status.get() === ProviderStatus.CREATING) {
           setStatus(ProviderStatus.STANDBY);
         }
       });

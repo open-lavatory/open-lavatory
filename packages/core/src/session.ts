@@ -24,7 +24,7 @@ export type SessionHandshakeParameters = {
 
 export type SessionCreationParameters = Pick<
   SessionHandshakeParameters,
-"p" | "s"
+  "p" | "s"
 >;
 
 /**
