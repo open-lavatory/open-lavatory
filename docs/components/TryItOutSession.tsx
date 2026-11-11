@@ -3,6 +3,8 @@
 import { createScope, encodeConnectionURL, type Observable } from "@openlv/core";
 import { type Session, SessionStatus } from "@openlv/session";
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import type { EIP1193Events } from "viem";
+import * as z from "zod/mini";
 
 type TryItRole = "dapp" | "wallet";
 type LogEntry = {
@@ -80,35 +82,46 @@ export const observeSession = (session: Session, role: TryItRole, append: Append
   return scope.close;
 };
 
-export const logDappRequests = (send: Session["send"], append: AppendEntry): Session["send"] =>
-  async (request, ackTimeout, responseTimeout) => {
-    const method = requestMethod(request);
+export const logSessionSend = (send: Session["send"], role: TryItRole, append: AppendEntry): Session["send"] =>
+  async (message, ackTimeout, responseTimeout) => {
+    const method = requestMethod(message);
 
-    logRpc(append, "dapp", "out", request, method);
+    logRpc(append, role, "out", message, method);
 
     try {
-      const response = await send(request, ackTimeout, responseTimeout);
+      const response = await send(message, ackTimeout, responseTimeout);
 
-      logRpc(append, "dapp", "in", response, method);
+      logRpc(append, role, "in", response, method);
 
       return response;
     }
     catch (error) {
-      logRpc(append, "dapp", "in", error instanceof Error ? { message: error.message } : error, method, true);
+      logRpc(append, role, "in", error instanceof Error ? { message: error.message } : error, method, true);
       throw error;
     }
   };
 
-const standardProviderErrors: Partial<Record<number, string>> = {
-  4001: "User Rejected Request",
-  4100: "Unauthorized",
-  4200: "Unsupported Method",
-  4900: "Disconnected",
-  4901: "Chain Disconnected",
+type WalletProvider = EIP1193Events & {
+  request: (message: unknown) => Promise<unknown>;
 };
 
+const walletProvider = z.object({
+  request: z.function(),
+  on: z.function(),
+  removeListener: z.function(),
+});
+
+export const isWalletProvider = (value: unknown): value is WalletProvider =>
+  walletProvider.safeParse(value).success;
+
+export const providerError = z.object({
+  code: z.number(),
+  message: z.string(),
+  data: z.optional(z.unknown()),
+});
+
 export const forwardWalletRequest = (
-  request: (message: unknown) => Promise<unknown>,
+  request: WalletProvider["request"],
   append: AppendEntry,
 ) => async (message: unknown) => {
   const method = requestMethod(message);
@@ -130,12 +143,11 @@ export const forwardWalletRequest = (
   catch (error) {
     logRpc(append, "wallet", "out", error instanceof Error ? { message: error.message } : error, method, true);
 
-    const code = typeof error === "object" && error !== null && "code" in error ? error.code : undefined;
-    const standardMessage = typeof code === "number" ? standardProviderErrors[code] : undefined;
+    const failure = providerError.safeParse(error).data;
 
-    if (typeof code !== "number" || !standardMessage) throw error;
+    if (!failure) throw error;
 
-    return { jsonrpc: "2.0", ["id"]: identifier, error: { code, message: standardMessage } };
+    return { jsonrpc: "2.0", ["id"]: identifier, error: failure };
   }
 };
 

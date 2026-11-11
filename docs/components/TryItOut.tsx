@@ -2,20 +2,20 @@
 
 /* eslint-disable no-restricted-syntax */
 import { openlv } from "@openlv/connector";
-import { createScope, encodeConnectionURL, type SessionConnectionParameters } from "@openlv/core";
+import { createScope, encodeConnectionURL, type Scope, type SessionConnectionParameters } from "@openlv/core";
 import { connectSession, createSession, type Session, SessionStatus } from "@openlv/session";
 import { webrtc } from "@openlv/transport/webrtc";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import classNames from "classnames";
 import { useEffect, useState } from "react";
-import type { Address } from "viem";
+import type { Address, EIP1193EventMap } from "viem";
 import {
-  type Connector, createConfig, http, useChainId, useChains, useConnect, useConnection,
+  type Connector, createConfig, http, useChainId, useChains, useConnect, useConnection, useConnectionEffect,
   useConnectors, useDisconnect, useSignMessage, useSwitchChain, useVerifyMessage, WagmiProvider,
 } from "wagmi";
 import { holesky, mainnet, sepolia } from "wagmi/chains";
 
-import { type AppendEntry, forwardWalletRequest, logDappRequests, observeSession, SessionPanel, useSessionValue, useWireLog } from "./TryItOutSession.js";
+import { type AppendEntry, forwardWalletRequest, isWalletProvider, logSessionSend, observeSession, providerError, SessionPanel, useSessionValue, useWireLog } from "./TryItOutSession.js";
 import { clearWalletSession, loadWalletSession, saveWalletSession } from "./WalletSession.js";
 
 const config = createConfig({
@@ -259,7 +259,7 @@ const Dapp = () => {
 
         const send = current.send;
 
-        current.send = logDappRequests(send, append);
+        current.send = logSessionSend(send, "dapp", append);
         observation.add(() => {
           current.send = send;
         });
@@ -284,15 +284,11 @@ const Dapp = () => {
   );
 };
 
-const isWalletProvider = (
-  value: unknown,
-): value is { request: (message: unknown) => Promise<unknown>; } =>
-  typeof value === "object" && value !== null && "request" in value && typeof value.request === "function";
-
 const createWalletSession = async (
   connector: Connector,
   connection: string | SessionConnectionParameters,
   append: AppendEntry,
+  scope: Scope,
 ) => {
   const provider = await connector.getProvider();
 
@@ -304,13 +300,34 @@ const createWalletSession = async (
   };
   const onMessage = forwardWalletRequest(request => provider.request(request), append);
 
-  return typeof connection === "string"
-    ? connectSession(connection, onMessage, [webrtc()], options)
-    : createSession(connection, [webrtc()], onMessage, options);
+  const session = typeof connection === "string"
+    ? await connectSession(connection, onMessage, [webrtc()], options)
+    : await createSession(connection, [webrtc()], onMessage, options);
+
+  session.send = logSessionSend(session.send, "wallet", append);
+  scope.add(() => session.close());
+
+  const forward = (event: keyof EIP1193EventMap, encode = (value: unknown): unknown => value) => {
+    const listener = (value: unknown) => {
+      if (session.status.get() !== SessionStatus.CONNECTED) return;
+
+      void session.send({ jsonrpc: "2.0", method: event, params: [encode(value)] }).catch(console.error);
+    };
+
+    provider.on(event, listener);
+    scope.add(() => provider.removeListener(event, listener));
+  };
+
+  forward("accountsChanged");
+  forward("chainChanged");
+  forward("connect");
+  forward("disconnect", error => providerError.safeParse(error).data ?? error);
+  forward("message");
+
+  return session;
 };
 
-const Wallet = () => {
-  const { connector } = useConnection();
+const Wallet = ({ connector }: { connector: Connector; }) => {
   const [connectionRequest, setConnectionRequest] = useState<string | SessionConnectionParameters | undefined>(loadWalletSession);
   const [url, setUrl] = useState(() => (typeof connectionRequest === "object" ? encodeConnectionURL(connectionRequest) : ""));
   const [session, setSession] = useState<Session>();
@@ -327,9 +344,7 @@ const Wallet = () => {
     clear();
     setSession(undefined);
 
-    void createWalletSession(connector, connectionRequest, append).then((current) => {
-      scope.add(() => current.close());
-
+    void createWalletSession(connector, connectionRequest, append, scope).then((current) => {
       if (isCancelled) return;
 
       setSession(current);
@@ -409,8 +424,12 @@ const Wallet = () => {
 
 const Demo = () => {
   const { address, connector, isConnected } = useConnection();
+  const [source, setSource] = useState(connector);
   const disconnect = useDisconnect();
-  const isWallet = connector !== undefined && connector.type !== "openLv";
+  const isWallet = source !== undefined && source.type !== "openLv";
+
+  // Keep the selected provider while its RPC connection is temporarily down.
+  useConnectionEffect({ onConnect: connection => setSource(connection.connector) });
 
   return (
     <div className="rounded-lg border vocs:border-primary">
@@ -433,6 +452,7 @@ const Demo = () => {
                 onClick={() => {
                   if (isWallet) clearWalletSession();
 
+                  setSource(undefined);
                   disconnect.mutate();
                 }}
               >
@@ -441,7 +461,7 @@ const Demo = () => {
             </div>
           )
         : <Connectors />}
-      <div className="p-4">{isWallet ? <Wallet /> : <Dapp />}</div>
+      <div className="p-4">{isWallet ? <Wallet connector={source} /> : <Dapp />}</div>
     </div>
   );
 };
