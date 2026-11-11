@@ -130,17 +130,11 @@ export const createProvider = (
 
     const notification = walletNotification.safeParse(message).data;
 
-    switch (notification?.method) {
-      case "accountsChanged": {
-        oxEmitter.emit("accountsChanged", notification.params[0]);
+    if (notification) {
+      if (notification.method === "disconnect") oxEmitter.emit("disconnect", OxProvider.parseError(notification.params[0]));
+      else oxEmitter.emit(notification.method, ...notification.params);
 
-        return null;
-      }
-      case "chainChanged": {
-        oxEmitter.emit("chainChanged", notification.params[0]);
-
-        return null;
-      }
+      return null;
     }
 
     const requestIdentifier = jsonRpcRequest.safeParse(message).data?.["id"] ?? null;

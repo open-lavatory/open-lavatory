@@ -18,16 +18,21 @@ const address = z.templateLiteral(["0x", z.string().check(z.regex(/^[\dA-Fa-f]{4
 const accounts = z.array(address);
 const notification = z.object({ jsonrpc: z.literal("2.0"), ["id"]: z.optional(z.never()) });
 
-export const walletNotification = z.discriminatedUnion("method", [
-  z.extend(notification, { method: z.literal("accountsChanged"), params: z.tuple([accounts]) }),
-  z.extend(notification, { method: z.literal("chainChanged"), params: z.tuple([chainId]) }),
-]);
-
 const jsonRpcError = z.looseObject({
   code: z.int(),
   message: z.string(),
   data: z.optional(z.unknown()),
 });
+const providerConnect = z.looseObject({ chainId });
+const providerMessage = z.looseObject({ type: z.string(), data: z.unknown() });
+
+export const walletNotification = z.discriminatedUnion("method", [
+  z.extend(notification, { method: z.literal("accountsChanged"), params: z.tuple([accounts]) }),
+  z.extend(notification, { method: z.literal("chainChanged"), params: z.tuple([chainId]) }),
+  z.extend(notification, { method: z.literal("connect"), params: z.tuple([providerConnect]) }),
+  z.extend(notification, { method: z.literal("disconnect"), params: z.tuple([jsonRpcError]) }),
+  z.extend(notification, { method: z.literal("message"), params: z.tuple([providerMessage]) }),
+]);
 
 const jsonRpcResponse = z.looseObject({
   jsonrpc: z.literal("2.0"),
