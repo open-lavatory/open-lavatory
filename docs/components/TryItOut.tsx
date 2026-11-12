@@ -232,10 +232,14 @@ const Connectors = () => {
   );
 };
 
-const Dapp = () => {
+const Dapp = ({ onReadyChange }: { onReadyChange: (isReady: boolean) => void; }) => {
   const [session, setSession] = useState<Session>();
   const { entries, append, clear } = useWireLog();
   const status = useSessionValue(session?.status, SessionStatus.CREATED);
+
+  useEffect(() => {
+    onReadyChange(status === SessionStatus.CONNECTED);
+  }, [onReadyChange, status]);
 
   useEffect(() => {
     const scope = createScope();
@@ -276,12 +280,7 @@ const Dapp = () => {
     };
   }, [append]);
 
-  return (
-    <div className="space-y-3">
-      <SessionPanel session={session} role="dapp" entries={entries} onClear={clear} />
-      <Playground isReady={status === SessionStatus.CONNECTED} />
-    </div>
-  );
+  return <SessionPanel session={session} role="dapp" entries={entries} onClear={clear} />;
 };
 
 const createWalletSession = async (
@@ -381,7 +380,7 @@ const Wallet = ({ connector }: { connector: Connector; }) => {
   }, [append, clear, connectionRequest, connector]);
 
   return (
-    <div className="space-y-3">
+    <div>
       <SessionPanel session={session} role="wallet" entries={entries} onClear={clear} />
       <form
         className="flex gap-2"
@@ -417,7 +416,6 @@ const Wallet = ({ connector }: { connector: Connector; }) => {
           </button>
         )}
       </form>
-      <Playground />
     </div>
   );
 };
@@ -425,6 +423,7 @@ const Wallet = ({ connector }: { connector: Connector; }) => {
 const Demo = () => {
   const { address, connector, isConnected } = useConnection();
   const [source, setSource] = useState(connector);
+  const [isDappReady, setIsDappReady] = useState(false);
   const disconnect = useDisconnect();
   const isWallet = source !== undefined && source.type !== "openLv";
 
@@ -432,36 +431,41 @@ const Demo = () => {
   useConnectionEffect({ onConnect: connection => setSource(connection.connector) });
 
   return (
-    <div className="rounded-lg border vocs:border-primary">
-      {isConnected
-        ? (
-            <div className="flex items-center justify-between gap-2 border-b vocs:border-primary px-4 py-3">
-              <div className="flex items-center gap-2">
-                {connector?.icon && <img src={connector.icon} alt="" className="h-8 w-8 rounded-md" />}
-                <span className="text-sm">
-                  {connector?.name}
-                  {" "}
-                  -
-                  {" "}
-                  {trimAddress(address)}
-                </span>
-              </div>
-              <button
-                type="button"
-                className={buttonClass}
-                onClick={() => {
-                  if (isWallet) clearWalletSession();
+    <div className="space-y-3">
+      <div className="rounded-lg border vocs:border-primary">
+        {isConnected
+          ? (
+              <div className="flex items-center justify-between gap-2 border-b vocs:border-primary px-4 py-3">
+                <div className="flex items-center gap-2">
+                  {connector?.icon && <img src={connector.icon} alt="" className="h-8 w-8 rounded-md" />}
+                  <span className="text-sm">
+                    {connector?.name}
+                    {" "}
+                    -
+                    {" "}
+                    {trimAddress(address)}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className={buttonClass}
+                  onClick={() => {
+                    if (isWallet) clearWalletSession();
 
-                  setSource(undefined);
-                  disconnect.mutate();
-                }}
-              >
-                Disconnect
-              </button>
-            </div>
-          )
-        : <Connectors />}
-      <div className="p-4">{isWallet ? <Wallet connector={source} /> : <Dapp />}</div>
+                    setSource(undefined);
+                    disconnect.mutate();
+                  }}
+                >
+                  Disconnect
+                </button>
+              </div>
+            )
+          : <Connectors />}
+        <div className="p-4">
+          {isWallet ? <Wallet connector={source} /> : <Dapp onReadyChange={setIsDappReady} />}
+        </div>
+      </div>
+      {isConnected && <Playground isReady={isWallet || isDappReady} />}
     </div>
   );
 };
