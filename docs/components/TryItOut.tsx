@@ -383,7 +383,7 @@ const Wallet = ({ connector }: { connector: Connector; }) => {
     <div>
       <SessionPanel session={session} role="wallet" entries={entries} onClear={clear} />
       <form
-        className="flex gap-2"
+        className="mt-3 flex gap-2 border-t vocs:border-primary pt-3"
         onSubmit={(event) => {
           event.preventDefault();
           const saved = loadWalletSession();
@@ -439,10 +439,6 @@ const Demo = () => {
                 <div className="flex items-center gap-2">
                   {connector?.icon && <img src={connector.icon} alt="" className="h-8 w-8 rounded-md" />}
                   <span className="text-sm">
-                    {connector?.name}
-                    {" "}
-                    -
-                    {" "}
                     {trimAddress(address)}
                   </span>
                 </div>

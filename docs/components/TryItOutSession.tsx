@@ -178,11 +178,11 @@ export const SessionPanel = ({ session, role, entries, onClear }: {
   const status = useSessionValue(session?.status, SessionStatus.CREATED);
   const remote = useSessionValue(session?.peerInfo, undefined);
   const [isCopied, setIsCopied] = useState(false);
+  const [isLogCopied, setIsLogCopied] = useState(false);
   const parameters = session?.getHandshakeParameters();
   const url = parameters && role === "dapp" ? encodeConnectionURL(parameters) : undefined;
   const icon = remote?.icon;
   const isRenderableIcon = icon?.startsWith("data:image/") || icon?.startsWith("https://");
-
   useEffect(() => {
     if (!isCopied) return;
 
@@ -194,48 +194,74 @@ export const SessionPanel = ({ session, role, entries, onClear }: {
   return (
     <div className="flex flex-col gap-2">
       {session && (
-        <div className="rounded-lg border vocs:border-primary bg-[var(--vocs-color_codeBlockBackground)] px-3 py-2.5 text-sm">
-          <div className="flex items-center gap-2">
-            <span className="font-medium">{statusLabel[status]}</span>
-            <span>{role === "dapp" ? "dApp" : "Wallet"}</span>
-            {isRenderableIcon && <img src={icon} alt="" className="h-4 w-4 rounded" />}
-            {remote?.name}
-          </div>
-          <p className="truncate font-mono text-xs text-[var(--vocs-color_textSecondary)]">
-            {parameters?.sessionId}
-            {" "}
-            -
-            {parameters?.p}
-          </p>
-          {url && (
-            <div className="mt-1.5 flex items-center gap-2">
-              <code className="min-w-0 flex-1 truncate text-xs" title={url}>{url}</code>
-              <button
-                type="button"
-                onClick={async () => {
-                  await navigator.clipboard.writeText(url);
-                  setIsCopied(true);
-                }}
-                className="rounded border vocs:border-primary px-2 py-0.5 text-xs"
-              >
-                {isCopied ? "Copied" : "Copy"}
-              </button>
+        <div className="rounded-lg border vocs:border-primary bg-[var(--vocs-color_codeBlockBackground)] px-3 py-2.5 pl-10">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-x-2 text-sm">
+              <span className="font-medium">{statusLabel[status]}</span>
+              <span className="text-xs text-[var(--vocs-color_textSecondary)]">{role === "dapp" ? "dApp" : "Wallet"}</span>
+              {remote && (
+                <span className="inline-flex items-center gap-1.5 text-xs">
+                  {isRenderableIcon && <img src={icon} alt="" className="h-4 w-4 rounded" />}
+                  {remote.name}
+                </span>
+              )}
             </div>
-          )}
+            <p className="mt-0.5 truncate font-mono text-xs text-[var(--vocs-color_textSecondary)]">
+              {parameters?.sessionId}
+              {" "}
+              -
+              {parameters?.p}
+            </p>
+            {url && (
+              <div className="mt-1.5 flex items-center gap-2">
+                <code className="min-w-0 flex-1 truncate font-mono text-xs text-[var(--vocs-color_textSecondary)]" title={url}>{url}</code>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(url);
+                    setIsCopied(true);
+                  }}
+                  className="rounded border vocs:border-primary px-2 py-0.5 text-xs"
+                >
+                  {isCopied ? "Copied" : "Copy"}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
       {entries.length > 0 && (
         <details className="group overflow-hidden rounded-lg border vocs:border-primary text-xs">
           <summary className="flex w-full cursor-pointer items-center gap-2 bg-[var(--vocs-color_codeBlockBackground)] px-3 py-2 text-sm">
             <span aria-hidden className="group-open:rotate-90">›</span>
-            <span className="flex-1">{`Wire log (${entries.length})`}</span>
+            <span className="font-medium">Wire log</span>
+            <span className="rounded-full border vocs:border-primary px-2 py-0.5 font-mono text-xs tabular-nums text-[var(--vocs-color_textSecondary)]">{entries.length}</span>
+            <button
+              type="button"
+              onClick={async (event) => {
+                event.preventDefault();
+                const text = entries.map((entry) => {
+                  const timestamp = new Date(entry.at).toLocaleTimeString();
+                  const payload = entry.payload === undefined ? "" : `\n${formatPayload(entry.payload)}`;
+
+                  return `[${timestamp}] ${entry.role} ${entry.summary}${payload}`;
+                }).join("\n\n");
+
+                await navigator.clipboard.writeText(text);
+                setIsLogCopied(true);
+                setTimeout(() => setIsLogCopied(false), 2000);
+              }}
+              className="ml-auto hidden shrink-0 text-xs text-[var(--vocs-color_textSecondary)] hover:text-[var(--vocs-color_text)] group-open:inline-flex"
+            >
+              {isLogCopied ? "Copied" : "Copy log"}
+            </button>
             <button
               type="button"
               onClick={(event) => {
                 event.preventDefault();
                 onClear();
               }}
-              className="ml-auto shrink-0 text-xs text-[var(--vocs-color_textSecondary)]"
+              className="hidden shrink-0 text-xs text-[var(--vocs-color_textSecondary)] hover:text-[var(--vocs-color_text)] group-open:inline-flex"
             >
               Clear
             </button>
