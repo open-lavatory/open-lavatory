@@ -27,6 +27,8 @@ import {
 import { DEFAULT_SETTINGS } from "./storage/default.js";
 import {
   createProviderStorage,
+  createSessionStorage,
+  type PersistedSession,
   type ProviderStorageParameters,
   type ProviderStorageR,
 } from "./storage/index.js";
@@ -67,6 +69,7 @@ export type ProviderConfig = {
 export type ProviderBase = {
   storage: ProviderStorageR;
   createSession: (parameters?: SessionLinkParameters) => Promise<Session>;
+  restoreSession: () => Promise<Session>;
   closeSession: () => Promise<void>;
   getAccounts: () => Promise<Address[]>;
   status: Observable<ProviderStatus>;
@@ -96,7 +99,10 @@ export const createProvider = (
   const [error, setError] = observable<string | undefined>(undefined);
 
   const oxEmitter = OxProvider.createEmitter<EventMap>();
-
+  let sessionGeneration = 0;
+  const isCurrentSessionGeneration = (generation: number) => generation === sessionGeneration;
+  let unsubscribeSessionStatus: (() => void) | undefined;
+  const sessionStorage = createSessionStorage(storage);
   const walletRpc = createWalletRpcClient(async (payload) => {
     const current = session.get();
 
@@ -105,7 +111,13 @@ export const createProvider = (
     return await current.send(payload);
   });
 
-  const getAccounts = async () => [...await walletRpc.call({ method: "eth_accounts" })];
+  const getAccounts = async () => {
+    const current = session.get();
+
+    if (!current || current.status.get() !== SessionStatus.CONNECTED) return [];
+
+    return [...await walletRpc.call({ method: "eth_accounts" })];
+  };
 
   // For debug purposes
   status.subscribe(current => log("status", current));
@@ -118,17 +130,11 @@ export const createProvider = (
 
     const notification = walletNotification.safeParse(message).data;
 
-    switch (notification?.method) {
-      case "accountsChanged": {
-        oxEmitter.emit("accountsChanged", notification.params[0]);
+    if (notification) {
+      if (notification.method === "disconnect") oxEmitter.emit("disconnect", OxProvider.parseError(notification.params[0]));
+      else oxEmitter.emit(notification.method, ...notification.params);
 
-        return null;
-      }
-      case "chainChanged": {
-        oxEmitter.emit("chainChanged", notification.params[0]);
-
-        return null;
-      }
+      return null;
     }
 
     const requestIdentifier = jsonRpcRequest.safeParse(message).data?.["id"] ?? null;
@@ -150,41 +156,120 @@ export const createProvider = (
 
     return p ? { p, s: signaling?.s?.[p] ?? DEFAULT_SETTINGS.signaling?.s[p] ?? "" } : undefined;
   };
+  const configuredWebRTCSettings = () => {
+    const settings: NonNullable<PersistedSession["transport"]> = {};
+    const servers = config?.transport?.s?.webrtc?.iceServers ?? [];
+    const stun: string[] = [];
+    const turn: NonNullable<PersistedSession["transport"]["turn"]> = [];
 
-  const start = async (parameters?: SessionLinkParameters) => {
+    for (const server of servers) {
+      const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
+      for (const url of urls) {
+        if (url.startsWith("stun:")) stun.push(url);
+        else {
+          turn.push({
+            urls: url,
+            ...(server.username !== undefined && { username: server.username }),
+            ...(server.credential !== undefined && { credential: String(server.credential) }),
+          });
+        }
+      }
+    }
+    if (stun.length) settings.stun = stun;
+    if (turn.length) settings.turn = turn;
+    return settings;
+  };
+
+
+  const start = async (
+    parameters?: SessionLinkParameters,
+    resumeTransport?: PersistedSession["transport"],
+  ) => {
+    const generation = ++sessionGeneration;
+
     setError(undefined);
     setStatus(ProviderStatus.CREATING);
-    const linkParameters = parameters ?? defaultLinkParameters();
 
-    if (!linkParameters) {
-      throw new Error("No link parameters provided and no signaling defaults configured");
-    }
-
-    const stored = store.settings.get().transport?.s?.webrtc;
-    const iceServers = [
-      ...stored?.stun?.map(urls => ({ urls })) ?? [],
-      ...stored?.turn ?? [],
-    ];
-    const transportOptions = iceServers.length > 0
-      ? { iceServers }
-      : config?.transport?.s?.webrtc;
+    let createdSession: Session | undefined;
 
     try {
+      const linkParameters = parameters ?? defaultLinkParameters();
+
+      if (!linkParameters) {
+        throw new Error("No link parameters provided and no signaling defaults configured");
+      }
+
+      // Stored user settings win over constructor config; both fall back to the
+      // transport's built-in defaults, so an empty list must stay undefined
+      // rather than become an empty iceServers array.
+      const stored = resumeTransport ?? store.settings.get().transport?.s?.webrtc;
+      const iceServers = [
+        ...stored?.stun?.map(urls => ({ urls })) ?? [],
+        ...stored?.turn ?? [],
+      ];
+      const transportOptions = iceServers.length > 0
+        ? { iceServers }
+        : config?.transport?.s?.webrtc;
+
       const next = await createSession(
         linkParameters,
         [webrtc(transportOptions)],
         onMessage,
         { info: config?.info },
       );
+      createdSession = next;
+
+      if (!isCurrentSessionGeneration(generation)) {
+        await next.close();
+
+        return next;
+      }
 
       setSession(next);
       setStatus(ProviderStatus.CONNECTING);
 
+      let wasConnected = false;
+
+      unsubscribeSessionStatus?.();
+
+      unsubscribeSessionStatus = next.status.subscribe((state) => {
+        if (state === SessionStatus.CONNECTED) {
+          wasConnected = true;
+
+          return;
+        }
+
+        // A failed initial handshake is handled by start()'s catch path. Once
+        // established, however, a peer close must reset the provider too.
+        if (
+          !wasConnected
+          || session.get() !== next
+          || state !== SessionStatus.DISCONNECTED
+        ) return;
+
+        unsubscribeSessionStatus?.();
+        unsubscribeSessionStatus = undefined;
+
+        try {
+          sessionStorage.clear();
+        }
+        catch (error_) {
+          log("could not clear saved session", error_);
+        }
+
+        setSession(undefined);
+        setError(undefined);
+        setStatus(ProviderStatus.STANDBY);
+        oxEmitter.emit(
+          "disconnect",
+          new OxProvider.ProviderRpcError(4900, next.error.get() ?? "Session closed by peer"),
+        );
+      });
+
       log("session created");
       await next.connect();
       log("session connected");
-      const handshakeParameters = next.getHandshakeParameters();
-      const url = encodeConnectionURL(handshakeParameters);
+      const url = encodeConnectionURL(next.getHandshakeParameters());
 
       log("session url", url);
 
@@ -197,10 +282,35 @@ export const createProvider = (
         throw new Error(next.error.get() ?? "Session failed to connect");
       }
 
+      if (!isCurrentSessionGeneration(generation)) return next;
+
+      const resumeParameters = next.getResumeParameters();
+      const persistedTransport = stored && (stored.stun?.length || stored.turn?.length)
+        ? stored
+        : configuredWebRTCSettings();
+
+      try {
+        sessionStorage.set({
+          revision: 1,
+          sessionURI: url,
+          connection: resumeParameters,
+          transport: persistedTransport,
+        });
+      }
+      catch (error_) {
+        // Persistence is optional and must not turn a live connection into a
+        // failed one when storage is unavailable or quota-limited.
+        log("could not persist resumable session", error_);
+      }
       log("session linked");
 
       const accounts = await getAccounts();
+
+      if (!isCurrentSessionGeneration(generation)) return next;
+
       const chainId = await walletRpc.call({ method: "eth_chainId" });
+
+      if (!isCurrentSessionGeneration(generation)) return next;
 
       setStatus(ProviderStatus.CONNECTED);
       oxEmitter.emit("connect", { chainId });
@@ -209,20 +319,79 @@ export const createProvider = (
       return next;
     }
     catch (error_) {
+      if (!isCurrentSessionGeneration(generation)) throw error_;
+
+      if (createdSession && session.get() === createdSession) {
+        unsubscribeSessionStatus?.();
+        unsubscribeSessionStatus = undefined;
+        setSession(undefined);
+      }
+
+      if (createdSession) {
+        try {
+          await createdSession.close();
+        }
+        catch (closeError) {
+          log("could not close failed session", closeError);
+        }
+      }
+
+      // Surface the failure to UI consumers (e.g. the modal) instead of
+      // leaving the provider stuck in "connecting".
       setError(
-        session.get()?.error.get()
+        createdSession?.error.get()
         ?? (error_ instanceof Error ? error_.message : "Connection failed"),
       );
       setStatus(ProviderStatus.ERROR);
       throw error_;
     }
   };
+  const restoreSession = async () => {
+    if (session.get()) {
+      throw new Error("Cannot restore a session while a session is already active");
+    }
 
+    const generation = sessionGeneration;
+    const saved = sessionStorage.get();
+
+    if (!saved) throw new Error("No valid saved session to restore");
+
+    if (!isCurrentSessionGeneration(generation)) {
+      throw new Error("Session restoration was cancelled");
+    }
+
+    return await start(saved.connection, saved.transport);
+  };
   const closeSession = async () => {
-    await session.get()?.close();
+    sessionGeneration++;
+
+    const current = session.get();
+    unsubscribeSessionStatus?.();
+    unsubscribeSessionStatus = undefined;
+    try {
+      sessionStorage.clear();
+    }
+    catch (error_) {
+      log("could not clear saved session", error_);
+    }
     setSession(undefined);
     setError(undefined);
     setStatus(ProviderStatus.STANDBY);
+    if (current) {
+      try {
+        await current.close();
+      }
+      catch (closeError) {
+        log("could not close session cleanly", closeError);
+      }
+    }
+
+    if (current) {
+      oxEmitter.emit(
+        "disconnect",
+        new OxProvider.ProviderRpcError(4900, "Session closed by provider"),
+      );
+    }
   };
 
   const request: OxProvider.from.Value<ProviderConfig>["request"] = async (
@@ -276,11 +445,34 @@ export const createProvider = (
     request,
     getAccounts,
     createSession: start,
+    restoreSession,
     closeSession,
     status,
     error,
     session,
   });
+
+  if (store.settings.get().autoReconnect) {
+    const saved = sessionStorage.get();
+    if (saved) {
+      const generation = sessionGeneration;
+
+      // Mark restoration synchronously so connector authorization checks can
+      // distinguish it from a provider with no saved session.
+      setStatus(ProviderStatus.CREATING);
+
+      void (async () => {
+        if (!isCurrentSessionGeneration(generation)) return;
+
+        await restoreSession();
+      })().catch((error_) => {
+        log("automatic session restore failed", error_);
+        if (isCurrentSessionGeneration(generation) && status.get() === ProviderStatus.CREATING) {
+          setStatus(ProviderStatus.STANDBY);
+        }
+      });
+    }
+  }
 
   return oxProvider as OpenLVProvider;
 };

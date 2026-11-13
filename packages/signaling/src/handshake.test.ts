@@ -2,9 +2,11 @@ import {
   createHandshakeCipher,
   generateKeyPair,
   hashPublicKey,
+  type KeyPair,
 } from "@openlv/core/encryption";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { composeFrame, XR_PREFIX } from "./handshake.js";
 import { createSignalingLayer, Status, type SignalingLayer } from "./index.js";
 import type { PeerCapabilities } from "./messages.js";
 import type { SignalingChannel } from "./protocol.js";
@@ -21,6 +23,7 @@ const neverDrop = () => false;
 type Topic = {
   setDrop: (function_: (payload: string, index: number) => boolean) => void;
   setCopies: (copies: number) => void;
+  getPublishedCount: () => number;
   inject: (payload: string) => void;
   channel: () => SignalingChannel;
   // Every published payload, including the dropped ones
@@ -41,6 +44,7 @@ const createTopic = (): Topic => {
     setDrop(function_: (payload: string, index: number) => boolean) {
       drop = function_;
     },
+    getPublishedCount: () => frames.length,
     inject(payload: string) {
       for (const subscriber of subscribers) subscriber(payload);
     },
@@ -78,7 +82,12 @@ const CLIENT_CAPABILITIES: PeerCapabilities = {
 
 const createPeer = async (
   channel: SignalingChannel,
-  { isHost, h, k }: { isHost: boolean; h: string; k: string; },
+  { isHost, h, k, keyPair = generateKeyPair() }: {
+    isHost: boolean;
+    h: string;
+    k: string;
+    keyPair?: KeyPair;
+  },
 ) => {
   let peerCapabilities: PeerCapabilities | undefined;
 
@@ -86,15 +95,15 @@ const createPeer = async (
     isHost,
     h,
     handshakeCipher: await createHandshakeCipher(k),
-    keyPair: generateKeyPair(),
+    keyPair,
     capabilities: CLIENT_CAPABILITIES,
   });
 
-  layer.peerCapabilities.subscribe(async (capabilities) => {
+  layer.peerCapabilities.subscribe((capabilities) => {
     peerCapabilities = capabilities;
   });
 
-  return { layer, getPeerCapabilities: () => peerCapabilities };
+  return { layer, keyPair, getPeerCapabilities: () => peerCapabilities };
 };
 
 const K = "00112233445566778899aabbccddeeff";
@@ -123,7 +132,7 @@ const setupPair = async (topic: ReturnType<typeof createTopic>) => {
     hostPeerCapabilities = capabilities;
   });
 
-  const { layer: client, getPeerCapabilities: getClientPeerCapabilities }
+  const { layer: client, keyPair: clientKeys, getPeerCapabilities: getClientPeerCapabilities }
     = await createPeer(topic.channel(), {
       isHost: false,
       h,
@@ -133,6 +142,9 @@ const setupPair = async (topic: ReturnType<typeof createTopic>) => {
   return {
     host,
     client,
+    hostKeys,
+    clientKeys,
+    h,
     hostCapabilities: HOST_CAPABILITIES,
     getHostPeerCapabilities: () => hostPeerCapabilities,
     getClientPeerCapabilities,
@@ -178,6 +190,20 @@ const recordHistory = (layer: SignalingLayer) => {
   return { statuses, peers };
 };
 
+const waitForStateWithin = async (layer: SignalingLayer, target: string) => {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => reject(new Error(`Timed out waiting for ${target}`)), 500);
+  });
+
+  try {
+    await Promise.race([waitForState(layer, target), timeoutPromise]);
+  }
+  finally {
+    clearTimeout(timeout);
+  }
+};
+
 describe("signaling handshake (in-memory relay)", () => {
   let host: SignalingLayer;
   let client: SignalingLayer;
@@ -207,6 +233,153 @@ describe("signaling handshake (in-memory relay)", () => {
 
     await client.send({ hello: "world" });
     expect(await received).toEqual({ hello: "world" });
+  });
+  it("resumes with pinned keys and exchanges capabilities before data", async () => {
+    const pair = await setupPair(createTopic());
+    await pair.host.setup();
+
+    const initialHandshake = Promise.all([
+      waitForState(pair.host, Status.ENCRYPTED),
+      waitForState(pair.client, Status.ENCRYPTED),
+    ]);
+    await pair.client.setup();
+    await initialHandshake;
+    await pair.host.teardown();
+    await pair.client.teardown();
+
+    const topic = createTopic();
+    host = await createSignalingLayer(topic.channel())({
+      isHost: true,
+      h: pair.h,
+      keyPair: pair.hostKeys,
+      peerKey: pair.clientKeys.publicKey,
+      resume: true,
+      capabilities: pair.hostCapabilities,
+    });
+    client = await createSignalingLayer(topic.channel())({
+      isHost: false,
+      h: pair.h,
+      keyPair: pair.clientKeys,
+      peerKey: pair.hostKeys.publicKey,
+      resume: true,
+      capabilities: CLIENT_CAPABILITIES,
+    });
+
+    expect(host.peer.get()?.peerKey).toEqual(pair.clientKeys.publicKey);
+    expect(client.peer.get()?.peerKey).toEqual(pair.hostKeys.publicKey);
+
+    await host.setup();
+    const resumed = Promise.all([
+      waitForState(host, Status.ENCRYPTED),
+      waitForState(client, Status.ENCRYPTED),
+    ]);
+    await client.setup();
+    await resumed;
+
+    const received = new Promise<object>(resolve => host.on("message", resolve));
+    await client.send({ resumed: true });
+    expect(await received).toEqual({ resumed: true });
+  });
+
+  it.each(["host", "client"] as const)(
+    "resumes when only the %s peer reloads",
+    async (reloadedPeer) => {
+      const topic = createTopic();
+      const pair = await setupPair(topic);
+
+      host = pair.host;
+      client = pair.client;
+
+      await host.setup();
+      const initialHandshake = Promise.all([
+        waitForState(host, Status.ENCRYPTED),
+        waitForState(client, Status.ENCRYPTED),
+      ]);
+      await client.setup();
+      await initialHandshake;
+      host.markTransportConnected();
+      client.markTransportConnected();
+
+      const resumedPeer = await createSignalingLayer(topic.channel())({
+        isHost: reloadedPeer === "host",
+        h: pair.h,
+        keyPair: reloadedPeer === "host" ? pair.hostKeys : pair.clientKeys,
+        peerKey: reloadedPeer === "host" ? pair.clientKeys.publicKey : pair.hostKeys.publicKey,
+        resume: true,
+        capabilities: reloadedPeer === "host"
+          ? pair.hostCapabilities
+          : CLIENT_CAPABILITIES,
+      });
+
+      if (reloadedPeer === "host") {
+        await host.teardown();
+        host = resumedPeer;
+      }
+      else {
+        await client.teardown();
+        client = resumedPeer;
+      }
+
+      const stayedPeer = reloadedPeer === "host" ? client : host;
+      await resumedPeer.setup();
+
+      const resumeAttempt = stayedPeer.resume?.();
+
+      await resumeAttempt;
+
+      await waitForStateWithin(resumedPeer, Status.ENCRYPTED);
+
+      stayedPeer.markTransportConnected();
+      resumedPeer.markTransportConnected();
+
+      const sender = resumedPeer.peer.get();
+
+      if (!sender) throw new Error("Resumed peer identity was not restored");
+
+      const lateCapabilities = await sender.cipher.encrypt(JSON.stringify({
+        type: "capabilities",
+        payload: CLIENT_CAPABILITIES,
+        timestamp: Date.now(),
+      }));
+      const publishedBeforeLateCapabilities = topic.getPublishedCount();
+
+      topic.inject(composeFrame(
+        XR_PREFIX,
+        reloadedPeer === "client" ? "h" : "c",
+        lateCapabilities,
+      ));
+      await new Promise(resolve => setTimeout(resolve, 10));
+      if (reloadedPeer === "host") {
+        expect(topic.getPublishedCount()).toBe(publishedBeforeLateCapabilities);
+      }
+      expect(stayedPeer.status.get()).toBe(Status.ENCRYPTED);
+    },
+  );
+
+  it("fails a resume attempt when the peer does not return", async () => {
+    const hostKeys = generateKeyPair();
+    const clientKeys = generateKeyPair();
+    const topic = createTopic();
+
+    host = await createSignalingLayer(topic.channel())({
+      isHost: true,
+      h: await hashPublicKey(hostKeys.publicKey),
+      handshakeCipher: await createHandshakeCipher(K),
+      keyPair: hostKeys,
+      peerKey: clientKeys.publicKey,
+      resume: true,
+      capabilities: { transports: ["wrtc"] },
+    });
+
+    vi.useFakeTimers();
+    try {
+      await host.setup();
+      await vi.advanceTimersByTimeAsync(45_000);
+      expect(host.status.get()).toBe(Status.ERROR);
+    }
+    finally {
+      vi.useRealTimers();
+    }
   });
 
   it("exchanges capabilities in both directions during the handshake", async () => {

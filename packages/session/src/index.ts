@@ -4,6 +4,7 @@ import {
   type Observable,
   observable,
   OPENLV_PROTOCOL_VERSION,
+  type SessionConnectionParameters,
   type SessionHandshakeParameters,
   type SessionLinkParameters,
 } from "@openlv/core";
@@ -14,6 +15,7 @@ import {
   generateKeyPair,
   generateSessionId,
   hashPublicKey,
+  isValidKeyPair,
 } from "@openlv/core/encryption";
 import {
   type PeerCapabilities,
@@ -69,6 +71,7 @@ export type Session = {
   error: Observable<string | undefined>;
   peerInfo: Observable<PeerInfo | undefined>;
   getHandshakeParameters(): SessionHandshakeParameters;
+  getResumeParameters(): SessionConnectionParameters;
   connect(): Promise<void>;
   close(): Promise<void>;
   send(
@@ -111,11 +114,39 @@ export const createSession = async (
     = "sessionId" in initParameters
       ? initParameters.sessionId
       : generateSessionId();
-  const keyPair = generateKeyPair();
+  const keyPair = "keyPair" in initParameters ? initParameters.keyPair : generateKeyPair();
+  const isResume = "peerKey" in initParameters;
+  const peerKey = "peerKey" in initParameters ? initParameters.peerKey : undefined;
+  const selectedTransportId = "selectedTransportId" in initParameters
+    ? initParameters.selectedTransportId
+    : undefined;
   const k = "k" in initParameters ? initParameters.k : generateHandshakeKey();
   const ownHash = await hashPublicKey(keyPair.publicKey);
   const hash = ("h" in initParameters && initParameters.h) || ownHash;
   const isHost = hash === ownHash;
+  if (isResume) {
+    if (!peerKey || !(peerKey instanceof Uint8Array) || peerKey.length !== 32) {
+      throw new Error("Cannot resume without a valid pinned peer key");
+    }
+
+    if (!isValidKeyPair(keyPair, peerKey)) {
+      throw new Error("Cannot resume with invalid local key pair or peer key");
+    }
+
+    if (!selectedTransportId) {
+      throw new Error("Cannot resume without a selected transport");
+    }
+
+    if (!transportLayers.some(layer => layer.transportId === selectedTransportId)) {
+      throw new Error("Cannot resume with an unsupported selected transport");
+    }
+
+    const resumedPeerHash = isHost ? ownHash : await hashPublicKey(peerKey);
+
+    if (resumedPeerHash !== hash) {
+      throw new Error("Resumed peer identity does not match session");
+    }
+  }
   const protocol = initParameters.p;
   const server = initParameters.s;
   const capabilities: PeerCapabilities = {
@@ -136,9 +167,18 @@ export const createSession = async (
     setStatus(newStatus);
   };
 
+  let hasBeenConnected = false;
   status.subscribe((current) => {
+    if (current === SessionStatus.CONNECTED) {
+      hasBeenConnected = true;
+      return;
+    }
+
     if (current === SessionStatus.DISCONNECTED) {
       messages.emit("ended", lastError.get() ?? "Session closed");
+    }
+    else if (current === SessionStatus.LINKING && hasBeenConnected) {
+      messages.emit("ended", lastError.get() ?? "Transport interrupted");
     }
   });
 
@@ -149,15 +189,21 @@ export const createSession = async (
   });
   const signal = await signaling({
     h: hash,
-    handshakeCipher: await createHandshakeCipher(k),
+    ...(!isResume && { handshakeCipher: await createHandshakeCipher(k) }),
     keyPair,
     capabilities,
     isHost,
+    ...(isResume && peerKey ? { resume: true, peerKey } : {}),
   });
 
   const scope = createScope();
+  let unsubscribeTransportStatus: (() => void) | undefined;
 
   scope.add(signal.teardown);
+  scope.add(() => {
+    unsubscribeTransportStatus?.();
+    unsubscribeTransportStatus = undefined;
+  });
 
   signal.peer.subscribe((peer) => {
     const role = isHost ? "host" : "client";
@@ -243,10 +289,14 @@ export const createSession = async (
   });
 
   /**
-   * Sessions resumed with a known peer key never exchange capabilities and
-   * keep the first configured transport.
+   * A resumed session pins the previously negotiated transport. Fresh sessions
+   * negotiate the preferred common transport from peer capabilities.
    */
   const selectTransportLayer = (): TransportLayerFunction | undefined => {
+    if (selectedTransportId) {
+      return transportLayers.find(layer => layer.transportId === selectedTransportId);
+    }
+
     const peerCaps = signal.peerCapabilities.get();
 
     if (!peerCaps) return transportLayers[0];
@@ -264,22 +314,22 @@ export const createSession = async (
   // connect promptly; if it cannot (e.g. no ICE candidates on a restricted
   // network) fail loudly instead of sitting in "linking" forever.
   const TRANSPORT_LINK_TIMEOUT_MS = 45_000;
-  // From transport start until the session connects or ends
-  const linking = scope.child();
-
-  linking.closeWhen(status, value => value === SessionStatus.CONNECTED || value === SessionStatus.DISCONNECTED);
-
   const onTransportStateChange = (transportStatus: TransportStatus) => {
     log("transport state change", transportStatus);
 
     if (transportStatus === TransportStatus.CONNECTED) {
+      signal.markTransportConnected();
       setLastError(undefined);
       updateStatus(SessionStatus.CONNECTED);
     }
 
     if (transportStatus === TransportStatus.ERROR) {
       setLastErrorIfUnset("Peer-to-peer transport failed");
-      updateStatus(SessionStatus.DISCONNECTED);
+
+      if (status.get() === SessionStatus.CONNECTED) {
+        recoverTransport();
+      }
+      else updateStatus(SessionStatus.DISCONNECTED);
     }
   };
 
@@ -308,8 +358,11 @@ export const createSession = async (
 
       transport = createTransport(layer, peer.cipher);
       scope.add(transport.teardown);
-      scope.add(transport.status.subscribe(onTransportStateChange));
+      unsubscribeTransportStatus = transport.status.subscribe(onTransportStateChange);
       scope.listen(transport.emitter, "error", onTransportError);
+      const linking = scope.child();
+
+      linking.closeWhen(status, value => value === SessionStatus.CONNECTED || value === SessionStatus.DISCONNECTED);
       linking.timeout(TRANSPORT_LINK_TIMEOUT_MS, () => {
         log("transport failed to connect in time");
         setLastErrorIfUnset("Timed out establishing the peer-to-peer connection");
@@ -324,8 +377,48 @@ export const createSession = async (
     });
   };
 
+  const clearCurrentTransport = async () => {
+    unsubscribeTransportStatus?.();
+    unsubscribeTransportStatus = undefined;
+    transport?.emitter.off("error", onTransportError);
+    const previous = transport;
+
+    transport = undefined;
+    await previous?.teardown();
+  };
+
+  async function recoverTransport() {
+    if (status.get() === SessionStatus.LINKING) return;
+
+    updateStatus(SessionStatus.LINKING);
+
+    try {
+      await clearCurrentTransport();
+
+      if (status.get() !== SessionStatus.LINKING) return;
+
+      if (!signal.resume) throw new Error("Signaling protocol cannot resume interrupted sessions");
+
+      await signal.resume();
+
+      if (status.get() !== SessionStatus.LINKING) return;
+
+      startTransport();
+    }
+    catch (error) {
+      log("failed to resume signaling after transport failure", error);
+      setLastErrorIfUnset(error instanceof Error ? error.message : "Session resume failed");
+      updateStatus(SessionStatus.DISCONNECTED);
+    }
+  }
+
   const onSignalMessage = async (message: object) => {
     log("Session: received message from signaling", message);
+    if (status.get() === SessionStatus.CONNECTED) {
+      log("discarding late signaling negotiation after transport connected");
+
+      return;
+    }
 
     const sessionMessage = message as SessionMessage;
 
@@ -354,7 +447,9 @@ export const createSession = async (
     log("signal state change", signalStatus);
 
     if (signalStatus === SignalStatus.READY) {
-      updateStatus(SessionStatus.READY);
+      if (status.get() !== SessionStatus.LINKING) {
+        updateStatus(SessionStatus.READY);
+      }
     }
 
     if (
@@ -365,7 +460,9 @@ export const createSession = async (
         ] as SignalStatus[]
       ).includes(signalStatus)
     ) {
-      updateStatus(SessionStatus.LINKING);
+      if (status.get() !== SessionStatus.LINKING) {
+        updateStatus(SessionStatus.LINKING);
+      }
     }
 
     if (signalStatus === SignalStatus.ENCRYPTED) {
@@ -414,6 +511,25 @@ export const createSession = async (
         s: server,
       };
     },
+    getResumeParameters() {
+      const peer = signal.peer.get();
+
+      if (status.get() !== SessionStatus.CONNECTED || !peer || !transport) {
+        throw new Error("Session is not connected and cannot be resumed");
+      }
+
+      return {
+        version: OPENLV_PROTOCOL_VERSION,
+        sessionId,
+        h: hash,
+        k,
+        p: protocol,
+        s: server,
+        keyPair,
+        peerKey: peer.peerKey,
+        selectedTransportId: transport.type,
+      };
+    },
     async send(
       message: unknown,
       ackTimeout: number = 10_000,
@@ -422,7 +538,6 @@ export const createSession = async (
       if (!transport || signal.status.get() !== SignalStatus.ENCRYPTED) {
         throw new Error("Session not ready");
       }
-
       const messageId = crypto.randomUUID();
       const sessionMessage: SessionMessage = {
         type: "request",

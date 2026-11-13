@@ -1,4 +1,5 @@
 import { encodeConnectionURL } from "@openlv/core";
+import { ProviderStatus } from "@openlv/provider";
 import { createMemo, from } from "solid-js";
 
 import { useModalContext } from "../context.js";
@@ -42,6 +43,14 @@ export const useSessionStart = () => {
   const { provider } = useModalContext();
 
   return {
-    start: () => provider.createSession(),
+    start: () => {
+      return provider.createSession().catch((error: unknown) => {
+        // Back cancels an in-flight session by returning the provider to
+        // standby. Its rejected start promise is not a connection failure.
+        if (provider.status.get() !== ProviderStatus.ERROR) return undefined;
+
+        throw error;
+      });
+    },
   };
 };

@@ -2,58 +2,33 @@
 
 /* eslint-disable no-restricted-syntax */
 import { openlv } from "@openlv/connector";
-import { encodeConnectionURL } from "@openlv/core";
-import { connectSession, type Session, SessionStatus } from "@openlv/session";
+import { createScope, encodeConnectionURL, type Scope, type SessionConnectionParameters } from "@openlv/core";
+import { connectSession, createSession, type Session, SessionStatus } from "@openlv/session";
 import { webrtc } from "@openlv/transport/webrtc";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import classNames from "classnames";
-import { type ReactNode, useEffect, useRef, useState } from "react";
-import { match } from "ts-pattern";
-import { type Address, type EIP1193Provider } from "viem";
+import { useEffect, useState } from "react";
+import type { Address, EIP1193EventMap } from "viem";
 import {
-  type Connector,
-  createConfig,
-  http,
-  useChainId,
-  useChains,
-  useClient,
-  useConnect,
-  useConnection,
-  useConnections,
-  useConnectors,
-  useDisconnect,
-  useSignMessage,
-  useSwitchChain,
-  useVerifyMessage,
-  WagmiProvider,
+  type Connector, createConfig, http, useChainId, useChains, useConnect, useConnection, useConnectionEffect,
+  useConnectors, useDisconnect, useSignMessage, useSwitchChain, useVerifyMessage, WagmiProvider,
 } from "wagmi";
 import { holesky, mainnet, sepolia } from "wagmi/chains";
 
-import {
-  attachTryItSession,
-  OpenLvDappMonitor,
-  peerInfoFromConnectionUrl,
-  shimWalletOnMessage,
-  TryItSessionPanel,
-  TryItSessionProvider,
-  useTryItSession,
-} from "./TryItOutSession.js";
-
-const queryClient = new QueryClient();
+import { type AppendEntry, forwardWalletRequest, isWalletProvider, logSessionSend, observeSession, providerError, SessionPanel, useSessionValue, useWireLog } from "./TryItOutSession.js";
+import { clearWalletSession, loadWalletSession, saveWalletSession } from "./WalletSession.js";
 
 const config = createConfig({
   chains: [mainnet, sepolia, holesky],
-  connectors: [
-    openlv({
-      config: {
-        info: {
-          identity: "sh.openlv.docs",
-          name: "OpenLV Docs",
-          icon: "https://openlv.sh/openlavatory.png",
-        },
+  connectors: [openlv({
+    config: {
+      info: {
+        identity: "sh.openlv.docs",
+        name: "OpenLV Docs",
+        icon: "https://openlv.sh/openlavatory.png",
       },
-    }),
-  ],
+    },
+  })],
   transports: {
     [mainnet.id]: http(),
     [sepolia.id]: http(),
@@ -99,12 +74,10 @@ const AccountSelect = ({
   );
 };
 
-const ChainSelect = () => {
+const ChainSelect = ({ isReady }: { isReady: boolean; }) => {
   const chains = useChains();
   const switchChain = useSwitchChain();
-  const { chainId, connector } = useConnection();
-  const { phase } = useTryItSession();
-  const isReady = connector?.type !== "openLv" || phase === "connected";
+  const { chainId } = useConnection();
 
   return (
     <div className="flex flex-col gap-2">
@@ -146,13 +119,10 @@ const ChainSelect = () => {
   );
 };
 
-const PersonalSign = ({ account }: { account: Address | undefined; }) => {
+const PersonalSign = ({ account, isReady }: { account: Address | undefined; isReady: boolean; }) => {
   const signMessage = useSignMessage();
-  const { connector } = useConnection();
   const { data: signature, error, isPending, reset } = signMessage;
   const chainId = useChainId();
-  const { phase } = useTryItSession();
-  const isReady = connector?.type !== "openLv" || phase === "connected";
 
   const { data: valid, isLoading: verifying } = useVerifyMessage({
     address: account,
@@ -198,7 +168,7 @@ const PersonalSign = ({ account }: { account: Address | undefined; }) => {
   );
 };
 
-const PersonalSignCard = () => {
+const Playground = ({ isReady = true }: { isReady?: boolean; }) => {
   const { address, addresses, isConnected } = useConnection();
   const [picked, setPicked] = useState<Address>();
 
@@ -211,169 +181,10 @@ const PersonalSignCard = () => {
       <h3 className="mb-2 text-sm font-medium">Playground</h3>
       <div className="flex flex-col gap-3">
         <AccountSelect account={account} onChange={setPicked} />
-        <ChainSelect />
-        <PersonalSign account={account} />
+        <ChainSelect isReady={isReady} />
+        <PersonalSign account={account} isReady={isReady} />
       </div>
     </section>
-  );
-};
-
-const WalletUrlConnect = () => {
-  const walletClient = useClient();
-  const connections = useConnections();
-  const [url, setUrl] = useState("");
-  const [connecting, setConnecting] = useState(false);
-  const [active, setActive] = useState(false);
-  const session = useTryItSession();
-  const walletSessionReference = useRef<Session | undefined>(undefined);
-  const detachReference = useRef<(() => void) | undefined>(undefined);
-
-  if (!walletClient) return null;
-
-  const endSession = async () => {
-    detachReference.current?.();
-    detachReference.current = undefined;
-    await walletSessionReference.current?.close();
-    walletSessionReference.current = undefined;
-    setActive(false);
-    session.resetSession();
-  };
-
-  return (
-    <div className="flex flex-col gap-2 border-t vocs:border-primary pt-3">
-      <div className="flex gap-2">
-        <input
-          type="text"
-          value={url}
-          onChange={e => setUrl(e.target.value)}
-          placeholder="openlv://..."
-          disabled={connecting}
-          className={`${buttonClass} block w-full grow border px-3 py-1 placeholder:text-neutral-500`}
-        />
-        <button
-          type="button"
-          disabled={connecting || !url.trim()}
-          onClick={async () => {
-            setConnecting(true);
-            await endSession();
-            session.setPhase("establishing");
-            session.setPeer(peerInfoFromConnectionUrl("wallet", url));
-
-            try {
-              const walletConnector = connections[0]?.connector;
-              const client = (await walletConnector?.getProvider()) as EIP1193Provider;
-              // EIP-6963 icons are data URIs of arbitrary size; anything over
-              // the 8 KB wire limit would make connectSession throw.
-              const walletIcon
-                = walletConnector?.icon && walletConnector.icon.length <= 8192
-                  ? walletConnector.icon
-                  : undefined;
-              const s = await connectSession(
-                url,
-                shimWalletOnMessage("wallet", message => client.request(message as never), session),
-                [webrtc()],
-                walletConnector
-                  ? {
-                      info: {
-                        identity: `sh.openlv.docs.${walletConnector.id}`,
-                        name: walletConnector.name,
-                        ...(walletIcon && { icon: walletIcon }),
-                      },
-                    }
-                  : undefined,
-              );
-
-              walletSessionReference.current = s;
-              detachReference.current = attachTryItSession(s, "wallet", session, {
-                logRequests: false,
-              });
-              setActive(true);
-              await s.connect();
-
-              // The panel's phase follows the session's own status from here,
-              // through the subscription attachTryItSession opened above.
-              const settled = await s.status.until(
-                status => status === SessionStatus.CONNECTED
-                  || status === SessionStatus.DISCONNECTED,
-              );
-
-              if (settled !== SessionStatus.CONNECTED) {
-                throw new Error(s.error.get() ?? "Session failed to connect");
-              }
-            }
-            catch (error) {
-              session.setPhase("error");
-              session.appendEntry({
-                role: "wallet",
-                direction: "in",
-                kind: "info",
-                summary: "Connection failed",
-                payload: error instanceof Error ? { message: error.message } : error,
-              });
-            }
-            finally {
-              setConnecting(false);
-            }
-          }}
-          className={buttonClass}
-        >
-          {connecting ? "..." : "Connect"}
-        </button>
-        {active && (
-          <button type="button" onClick={() => endSession()} className={buttonClass}>
-            End
-          </button>
-        )}
-      </div>
-    </div>
-  );
-};
-
-const Connected = () => {
-  const disconnect = useDisconnect();
-  const { address, connector } = useConnection();
-  const session = useTryItSession();
-
-  return (
-    <div className="px-4 py-4">
-      <div className="mb-3 flex items-center justify-between gap-2 border-b vocs:border-primary pb-3">
-        <div className="flex items-center gap-2">
-          {connector?.icon && (
-            <img src={connector.icon} alt="" className="h-8 w-8 rounded-md" />
-          )}
-          <span className="text-sm">{trimAddress(address)}</span>
-        </div>
-        <button
-          type="button"
-          onClick={() => {
-            session.resetSession();
-            disconnect.mutate();
-          }}
-          className={buttonClass}
-        >
-          Disconnect
-        </button>
-      </div>
-      <div className="flex flex-col gap-3">
-        <TryItSessionPanel />
-        {connector?.type !== "openLv" && <WalletUrlConnect />}
-      </div>
-    </div>
-  );
-};
-
-const ConnectorChip = ({ connector }: { connector: Connector; }) => {
-  const connect = useConnect();
-
-  return (
-    <button
-      type="button"
-      className="inline-flex items-center gap-1 rounded border vocs:border-primary px-1.5 py-0.5 text-sm hover:bg-[var(--vocs-color_codeHighlightBackground)]"
-      onClick={() => connect.mutate({ connector })}
-    >
-      {connector.icon && <img src={connector.icon} alt="" className="h-4 w-4" />}
-      {connector.name}
-    </button>
   );
 };
 
@@ -409,11 +220,11 @@ const Connectors = () => {
       <p className="border-t vocs:border-primary bg-[var(--vocs-color_codeBlockBackground)] px-4 py-3 text-sm text-[var(--vocs-color_textSecondary)]">
         Open two tabs: connect
         {" "}
-        {openLv ? <ConnectorChip connector={openLv} /> : "OpenLV"}
+        {openLv?.name ?? "OpenLV"}
         {" "}
         on one and
         {" "}
-        {wallet ? <ConnectorChip connector={wallet} /> : "your wallet"}
+        {wallet?.name ?? "your wallet"}
         {" "}
         on the other, then paste the connection URL into the wallet tab.
       </p>
@@ -421,68 +232,254 @@ const Connectors = () => {
   );
 };
 
-const TryItOutInner = () => {
-  const { isConnected } = useConnection();
-  const session = useTryItSession();
+const Dapp = ({ onReadyChange }: { onReadyChange: (isReady: boolean) => void; }) => {
+  const [session, setSession] = useState<Session>();
+  const { entries, append, clear } = useWireLog();
+  const status = useSessionValue(session?.status, SessionStatus.CREATED);
+
+  useEffect(() => {
+    onReadyChange(status === SessionStatus.CONNECTED);
+  }, [onReadyChange, status]);
+
+  useEffect(() => {
+    const scope = createScope();
+    let isCancelled = false;
+
+    const connect = async () => {
+      const provider = await config.connectors[0].getProvider();
+
+      if (isCancelled) return;
+
+      let observation = scope.child();
+
+      scope.add(provider.session.subscribe((current) => {
+        void observation.close().catch(console.error);
+        observation = scope.child();
+        setSession(current);
+
+        if (!current) return;
+
+        observation.add(observeSession(current, "dapp", append));
+
+        const send = current.send;
+
+        current.send = logSessionSend(send, "dapp", append);
+        observation.add(() => {
+          current.send = send;
+        });
+      }));
+    };
+
+    void connect().catch((error: unknown) => {
+      if (!isCancelled) append({ role: "dapp", summary: "Connection failed", payload: error });
+    });
+
+    return () => {
+      isCancelled = true;
+      void scope.close().catch(console.error);
+    };
+  }, [append]);
+
+  return <SessionPanel session={session} role="dapp" entries={entries} onClear={clear} />;
+};
+
+const createWalletSession = async (
+  connector: Connector,
+  connection: string | SessionConnectionParameters,
+  append: AppendEntry,
+  scope: Scope,
+) => {
+  const provider = await connector.getProvider();
+
+  if (!isWalletProvider(provider)) throw new Error("Wallet provider unavailable");
+
+  const icon = connector.icon && connector.icon.length <= 8192 ? connector.icon : undefined;
+  const options = {
+    info: { identity: "sh.openlv.docs.wallet", name: connector.name, ...(icon && { icon }) },
+  };
+  const onMessage = forwardWalletRequest(request => provider.request(request), append);
+
+  const session = typeof connection === "string"
+    ? await connectSession(connection, onMessage, [webrtc()], options)
+    : await createSession(connection, [webrtc()], onMessage, options);
+
+  session.send = logSessionSend(session.send, "wallet", append);
+  scope.add(() => session.close());
+
+  const forward = (event: keyof EIP1193EventMap, encode = (value: unknown): unknown => value) => {
+    const listener = (value: unknown) => {
+      if (session.status.get() !== SessionStatus.CONNECTED) return;
+
+      void session.send({ jsonrpc: "2.0", method: event, params: [encode(value)] }).catch(console.error);
+    };
+
+    provider.on(event, listener);
+    scope.add(() => provider.removeListener(event, listener));
+  };
+
+  forward("accountsChanged");
+  forward("chainChanged");
+  forward("connect");
+  forward("disconnect", error => providerError.safeParse(error).data ?? error);
+  forward("message");
+
+  return session;
+};
+
+const Wallet = ({ connector }: { connector: Connector; }) => {
+  const [connectionRequest, setConnectionRequest] = useState<string | SessionConnectionParameters | undefined>(loadWalletSession);
+  const [url, setUrl] = useState(() => (typeof connectionRequest === "object" ? encodeConnectionURL(connectionRequest) : ""));
+  const [session, setSession] = useState<Session>();
+  const { entries, append, clear } = useWireLog();
+  const status = useSessionValue(session?.status, SessionStatus.CREATED);
+  const isConnecting = connectionRequest !== undefined && status !== SessionStatus.CONNECTED;
+
+  useEffect(() => {
+    if (!connector || connectionRequest === undefined) return;
+
+    const scope = createScope();
+    let isCancelled = false;
+
+    clear();
+    setSession(undefined);
+
+    void createWalletSession(connector, connectionRequest, append, scope).then((current) => {
+      if (isCancelled) return;
+
+      setSession(current);
+      scope.add(observeSession(current, "wallet", append));
+      scope.add(current.status.subscribe((value) => {
+        if (value === SessionStatus.CONNECTED) {
+          saveWalletSession(current.getResumeParameters());
+        }
+
+        if (value === SessionStatus.DISCONNECTED) {
+          clearWalletSession();
+          setConnectionRequest(undefined);
+        }
+      }));
+
+      return current.connect();
+    })
+      .catch((error: unknown) => {
+        if (isCancelled) return;
+
+        setConnectionRequest(undefined);
+        clearWalletSession();
+        append({
+          role: "wallet",
+          summary: "Connection failed",
+          payload: error instanceof Error ? { message: error.message } : error,
+        });
+      });
+
+    return () => {
+      isCancelled = true;
+      void scope.close().catch(console.error);
+    };
+  }, [append, clear, connectionRequest, connector]);
 
   return (
-    <>
-      <OpenLvDappMonitor
-        onSessionBound={(s) => {
-          const h = s.getHandshakeParameters();
-          const connectionUrl = encodeConnectionURL(h);
+    <div>
+      <SessionPanel session={session} role="wallet" entries={entries} onClear={clear} />
+      <form
+        className="mt-3 flex gap-2 border-t vocs:border-primary pt-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const saved = loadWalletSession();
 
-          // Rebinding happens after the handshake too -- carry the already
-          // known peer info over instead of clobbering it.
-          session.setPeer(previous => ({
-            role: "dapp",
-            connectionUrl,
-            sessionId: h.sessionId,
-            protocol: h.p,
-            signalingServer: h.s,
-            remote: previous?.remote ?? s.peerInfo.get(),
-          }));
+          setConnectionRequest(saved && url.trim() === encodeConnectionURL(saved) ? saved : url.trim());
         }}
-      />
-      {match(isConnected)
-        .with(true, () => <Connected />)
-        .with(false, () => <Connectors />)
-        .exhaustive()}
-    </>
+      >
+        <input
+          value={url}
+          onChange={event => setUrl(event.target.value)}
+          placeholder="openlv://..."
+          aria-label="Connection URL"
+          disabled={isConnecting}
+          className={`${buttonClass} min-w-0 flex-1 border px-3 py-1`}
+        />
+        <button type="submit" disabled={isConnecting || !url.trim()} className={buttonClass}>
+          {isConnecting ? "..." : "Connect"}
+        </button>
+        {connectionRequest !== undefined && (
+          <button
+            type="button"
+            className={buttonClass}
+            onClick={() => {
+              setConnectionRequest(undefined);
+              setSession(undefined);
+              clearWalletSession();
+            }}
+          >
+            End
+          </button>
+        )}
+      </form>
+    </div>
   );
 };
 
-const TryItOutProviders = ({ children }: { children: ReactNode; }) => (
-  <QueryClientProvider client={queryClient}>
-    <WagmiProvider config={config}>
-      <TryItSessionProvider>{children}</TryItSessionProvider>
-    </WagmiProvider>
-  </QueryClientProvider>
-);
+const Demo = () => {
+  const { address, connector, isConnected } = useConnection();
+  const [source, setSource] = useState(connector);
+  const [isDappReady, setIsDappReady] = useState(false);
+  const disconnect = useDisconnect();
+  const isWallet = source !== undefined && source.type !== "openLv";
 
-export const TryItOut = () => {
-  // Branching on `window` during render makes the first client render differ
-  // from the server's, which React rejects as a hydration mismatch. Mounting
-  // is the signal that the client has taken over.
-  const [isMounted, setIsMounted] = useState(false);
-
-  useEffect(() => {
-    (globalThis as { OPENLV_DEBUG?: boolean; }).OPENLV_DEBUG ??= true;
-    setIsMounted(true);
-  }, []);
-
-  if (!isMounted) {
-    return <div className="rounded-lg border vocs:border-primary" />;
-  }
+  // Keep the selected provider while its RPC connection is temporarily down.
+  useConnectionEffect({ onConnect: connection => setSource(connection.connector) });
 
   return (
-    <TryItOutProviders>
-      <div className="space-y-3" suppressHydrationWarning>
-        <div className="rounded-lg border vocs:border-primary">
-          <TryItOutInner />
+    <div className="space-y-3">
+      <div className="rounded-lg border vocs:border-primary">
+        {isConnected
+          ? (
+              <div className="flex items-center justify-between gap-2 border-b vocs:border-primary px-4 py-3">
+                <div className="flex items-center gap-2">
+                  {connector?.icon && <img src={connector.icon} alt="" className="h-8 w-8 rounded-md" />}
+                  <span className="text-sm">
+                    {trimAddress(address)}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className={buttonClass}
+                  onClick={() => {
+                    if (isWallet) clearWalletSession();
+
+                    setSource(undefined);
+                    disconnect.mutate();
+                  }}
+                >
+                  Disconnect
+                </button>
+              </div>
+            )
+          : <Connectors />}
+        <div className="p-4">
+          {isWallet ? <Wallet connector={source} /> : <Dapp onReadyChange={setIsDappReady} />}
         </div>
-        <PersonalSignCard />
       </div>
-    </TryItOutProviders>
+      {isConnected && <Playground isReady={isWallet || isDappReady} />}
+    </div>
+  );
+};
+
+const queryClient = new QueryClient();
+
+export const TryItOut = () => {
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => setIsMounted(true), []);
+
+  if (!isMounted) return <div className="rounded-lg border vocs:border-primary" />;
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <WagmiProvider config={config}>
+        <Demo />
+      </WagmiProvider>
+    </QueryClientProvider>
   );
 };

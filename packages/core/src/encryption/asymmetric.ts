@@ -48,6 +48,49 @@ export const generateKeyPair = (): KeyPair => {
   };
 };
 
+/**
+ * Check that restored static keys match and, when supplied, that their peer
+ * public key is a distinct, valid X25519 point.
+ */
+export const isValidKeyPair = (value: unknown, peerValue?: unknown): value is KeyPair => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  if (!("publicKey" in value) || !("secretKey" in value)) return false;
+
+  const publicKey = value.publicKey;
+  const secretKey = value.secretKey;
+
+  if (!(publicKey instanceof Uint8Array)
+    || publicKey.length !== PUBLIC_KEY_BYTES
+    || !(secretKey instanceof Uint8Array)
+    || secretKey.length !== PUBLIC_KEY_BYTES) {
+    return false;
+  }
+
+  if (peerValue !== undefined
+    && (!(peerValue instanceof Uint8Array)
+      || peerValue.length !== PUBLIC_KEY_BYTES
+      || equalBytes(publicKey, peerValue))) {
+    return false;
+  }
+
+  try {
+    const derivedPublicKey = x25519.getPublicKey(secretKey);
+
+    if (!derivedPublicKey.every((byte, index) => byte === publicKey[index])) return false;
+
+    if (peerValue instanceof Uint8Array) {
+      const sharedSecret = x25519.getSharedSecret(secretKey, peerValue);
+
+      if (sharedSecret.every(byte => byte === 0)) return false;
+    }
+
+    return true;
+  }
+  catch {
+    return false;
+  }
+};
+
 export const parsePublicKey = (encoded: string): PublicKey | undefined => {
   try {
     const publicKey = fromBase64(encoded);
