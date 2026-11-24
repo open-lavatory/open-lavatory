@@ -33,6 +33,7 @@ export type SessionCreationParameters = Pick<
 export type SessionConnectionParameters = SessionHandshakeParameters & {
   keyPair: KeyPair;
   peerKey: PublicKey;
+  transport: { p: string; s?: { iceServers?: { urls: string | string[]; username?: string; credential?: string; }[]; }; };
 };
 
 export type SessionLinkParameters

@@ -5,6 +5,7 @@ export type SignalingRecipient = "h" | "c";
 
 export const HANDSHAKE_TIMEOUT_MS = 30_000;
 export const HANDSHAKE_RESEND_INTERVAL_MS = 2000;
+export const RESUME_CAPABILITIES_MAX_AGE_MS = 60_000;
 
 export const composeFrame = (
   prefix: SignalingPrefix,

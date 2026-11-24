@@ -64,29 +64,38 @@ export const openlv = ({
     };
 
     const connect = async (
-      { withCapabilities = false },
+      { withCapabilities = false, isReconnecting = false },
     ) => {
       log("connect");
 
-      const modal = await getTriggerModal();
+      if (isReconnecting && config.resume) {
+        const saved = provider.storage.getSessionRecord();
 
-      const modalDismissed = new Promise<void>((resolve) => {
-        modal?.({ theme, provider, onClose: () => resolve() });
-      });
+        if (!saved) throw new Error("No saved session to resume");
 
-      const connectionCompleted = provider.status.until(
-        providerStatus => providerStatus === ProviderStatus.CONNECTED,
-      );
+        await provider.createSession(saved);
+      }
+      else {
+        const modal = await getTriggerModal();
 
-      await Promise.race([modalDismissed, connectionCompleted]);
+        const modalDismissed = new Promise<void>((resolve) => {
+          modal?.({ theme, provider, onClose: () => resolve() });
+        });
 
-      if (
-        !provider.session.get()
-        || provider.status.get() !== ProviderStatus.CONNECTED
-      ) {
-        await provider.closeSession();
+        const connectionCompleted = provider.status.until(
+          providerStatus => providerStatus === ProviderStatus.CONNECTED,
+        );
 
-        throw new UserRejectedRequestError(new Error("User closed modal"));
+        await Promise.race([modalDismissed, connectionCompleted]);
+
+        if (
+          !provider.session.get()
+          || provider.status.get() !== ProviderStatus.CONNECTED
+        ) {
+          await provider.closeSession();
+
+          throw new UserRejectedRequestError(new Error("User closed modal"));
+        }
       }
 
       const accounts = await provider.getAccounts();
@@ -126,6 +135,8 @@ export const openlv = ({
        */
       async isAuthorized() {
         log("isAuthorized");
+
+        if (config.resume && provider.storage.getSessionRecord()) return true;
 
         const accounts = await getAccounts();
 

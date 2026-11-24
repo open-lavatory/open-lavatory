@@ -136,7 +136,7 @@ export const webrtc: Transport = (
       if (!connection) throw new Error("Connection not found");
 
       return match(message)
-        .with({ type: "offer" }, async ({ payload }) => {
+        .with({ type: "offer" }, async ({ payload, messageId }) => {
           const offer = JSON.parse(payload) as RTCSessionDescriptionInit;
 
           await connection!.setRemoteDescription(
@@ -147,7 +147,7 @@ export const webrtc: Transport = (
           const answer = await connection!.createAnswer();
 
           await connection!.setLocalDescription(answer);
-          emitter.emit("negotiate", { type: "answer", payload: JSON.stringify(answer) });
+          emitter.emit("negotiate", { type: "answer", messageId, payload: JSON.stringify(answer) });
         })
         .with({ type: "answer" }, async ({ payload }) => {
           const answer = JSON.parse(payload) as RTCSessionDescriptionInit;

@@ -39,14 +39,10 @@ type DecodedCiphertext = {
   ciphertext: Uint8Array;
 };
 
-export const generateKeyPair = (): KeyPair => {
-  const secretKey = x25519.utils.randomSecretKey();
-
-  return {
-    publicKey: Uint8Array.from(x25519.getPublicKey(secretKey)),
-    secretKey,
-  };
-};
+export const generateKeyPair = (secretKey: Uint8Array = x25519.utils.randomSecretKey()): KeyPair => ({
+  publicKey: Uint8Array.from(x25519.getPublicKey(secretKey)),
+  secretKey: Uint8Array.from(secretKey),
+});
 
 export const parsePublicKey = (encoded: string): PublicKey | undefined => {
   try {

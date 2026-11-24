@@ -203,15 +203,16 @@ Two hardening rules worth knowing:
 
 ## Transport negotiation
 
-Once signaling is `ENCRYPTED`, the selected [transport](/api/transport) negotiates a direct connection by exchanging `data` packets. For WebRTC the payloads are:
+Once signaling is `ENCRYPTED`, the selected [transport](/api/transport) negotiates a direct connection by exchanging `data` packets. Each packet carries a `request` with its own `messageId` that is not acknowledged. For WebRTC the request payloads are:
 
 ```json
 { "type": "offer",     "payload": "<JSON-encoded SDP offer>" }
-{ "type": "answer",    "payload": "<JSON-encoded SDP answer>" }
+{ "type": "answer",    "messageId": "<messageId of the offer's request>", "payload": "<JSON-encoded SDP answer>" }
 { "type": "candidate", "payload": "<JSON-encoded ICE candidate>" }
 ```
 
 The host creates the [WebRTC](/api/transport/webrtc) data channel and sends the `offer`; the client answers; both sides trickle ICE `candidate` messages until the channel opens.
+The host drops an `answer` that does not name its current `offer`, so a late answer to an earlier offer cannot end the negotiation.
 From that point all application traffic flows over the direct transport using the session envelope:
 
 ```json
