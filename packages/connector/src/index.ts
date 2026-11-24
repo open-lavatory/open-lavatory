@@ -37,10 +37,7 @@ export const openlv = ({
     config,
   });
 
-  const onDisconnect = async () => {
-    log("onDisconnect called");
-    await provider.closeSession();
-  };
+  const onDisconnect = () => provider.closeSession({ emitDisconnect: false });
 
   const getAccounts = async () => {
     log("getAccounts");
@@ -128,6 +125,7 @@ export const openlv = ({
       async setup() {
         provider.on("accountsChanged", onAccountsChanged);
         provider.on("chainChanged", onChainChanged);
+        provider.on("disconnect", () => wagmiConfig.emitter.emit("disconnect"));
       },
       /**
        * Note on isAuthorized, upon page load `getProvider` is called, followed by `isAuthorized` if the result is true, the `connect` function is called.

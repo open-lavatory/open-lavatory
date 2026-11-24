@@ -70,7 +70,7 @@ export type ProviderConfig = {
 export type ProviderBase = {
   storage: ProviderStorageR;
   createSession: (parameters?: SessionLinkParameters) => Promise<Session>;
-  closeSession: () => Promise<void>;
+  closeSession: (options?: { emitDisconnect?: boolean; }) => Promise<void>;
   getAccounts: () => Promise<Address[]>;
   status: Observable<ProviderStatus>;
   error: Observable<string | undefined>;
@@ -265,8 +265,9 @@ export const createProvider = (
     }
   };
 
-  const closeSession = async () => {
+  const closeSession: ProviderBase["closeSession"] = async ({ emitDisconnect: shouldEmitDisconnect = true } = {}) => {
     const closing = session.get();
+    const wasActive = status.get() !== ProviderStatus.STANDBY;
 
     setStarting(undefined);
     store.setSessionRecord(undefined);
@@ -278,6 +279,10 @@ export const createProvider = (
     setSession(undefined);
     setError(undefined);
     setStatus(ProviderStatus.STANDBY);
+
+    if (wasActive && shouldEmitDisconnect) {
+      oxEmitter.emit("disconnect", new OxProvider.ProviderRpcError(4900, "Session closed by provider"));
+    }
   };
 
   const request: OxProvider.from.Value<ProviderConfig>["request"] = async (
