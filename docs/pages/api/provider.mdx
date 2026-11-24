@@ -35,7 +35,7 @@ const chainId = await provider.request({ method: 'eth_chainId' })
 ## Parameters
 
 - `config?`: protocol defaults (signaling + transport)
-  - `config.resume`: save the pairing and resume it when its transport closes. Resuming when the page loads is done by `@openlv/connector`, not by `createProvider()` alone.
+  - `config.resume`: save the pairing for reload recovery through `@openlv/connector`. A connected session attempts transport recovery automatically.
 - `storage?`: custom storage backend (defaults to localStorage where available)
 - `openModal?`: optional UI hook used by connector/modal integrations
 

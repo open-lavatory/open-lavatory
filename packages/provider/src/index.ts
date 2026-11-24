@@ -45,7 +45,7 @@ export type OpenLVProviderConfig = {
     p?: TransportProtocol;
     s?: Record<TransportProtocol, WebRTCConfig>;
   };
-  /** Save the pairing and resume it when the transport closes; the connector also resumes it when the page loads. */
+  /** Save the pairing so the connector can restore it when the page loads. */
   resume?: boolean;
 };
 
@@ -229,28 +229,23 @@ export const createProvider = (
       if (pairing) {
         const saved = { ...pairing, transport: { p: pairing.transport.p, s: transportOptions } };
 
-        next.status.subscribe(async (state) => {
-          if (state !== SessionStatus.DISCONNECTED || starting.get() !== own) return;
-
-          // A disconnect without an error is a clean close from the peer
-          if (next.error.get() === undefined) {
-            if (store.getSessionRecord()?.sessionId === saved.sessionId) store.setSessionRecord(undefined);
-
-            return;
-          }
-
-          try {
-            await start(saved);
-          }
-          catch (error) {
-            log("failed to resume", error);
-          }
-        });
-
         const canSave = !resumed || seenSessionId === undefined || seenSessionId === saved.sessionId;
 
         if (canSave && store.getSessionRecord()?.sessionId === seenSessionId) store.setSessionRecord(saved);
       }
+
+      next.status.subscribe((state) => {
+        if (state !== SessionStatus.DISCONNECTED || starting.get() !== own) return;
+
+        const reason = next.error.get();
+
+        if (pairing && !reason && store.getSessionRecord()?.sessionId === pairing.sessionId) store.setSessionRecord(undefined);
+
+        setStarting(undefined);
+        setSession(undefined);
+        setStatus(ProviderStatus.STANDBY);
+        oxEmitter.emit("disconnect", new OxProvider.ProviderRpcError(4900, reason ?? "Session closed by peer"));
+      });
 
       setStatus(ProviderStatus.CONNECTED);
       oxEmitter.emit("connect", { chainId });

@@ -68,6 +68,7 @@ export type SignalingContext = {
   // Sends now and every 2 s until `done` settles
   repeatUntil: (message: object, done: Promise<unknown>) => Promise<void>;
   sendCapabilities: () => Promise<void>;
+  resume: (ended: Promise<unknown>) => void;
   setup: () => Promise<void>;
   teardown: () => Promise<void>;
 
@@ -104,6 +105,7 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
   );
   const [peerCapabilities, setPeerCapabilities] = observable<PeerCapabilities | undefined>(undefined);
   const [isTornDown, setTornDown] = observable(false);
+  let isResuming = hooks.resume !== undefined;
 
   const emitter = new EventEmitter<SignalEventMap>();
   const scope = createScope();
@@ -208,7 +210,7 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
   };
 
   const handleEncryptedFrame = async (message: SignalMessage) => {
-    await match({ msg: message, status: status.get(), isHost, isResumed: hooks.resume !== undefined })
+    await match({ msg: message, status: status.get(), isHost, isResuming })
       .with(
         { msg: { type: "capabilities" }, status: Status.HANDSHAKE_PARTIAL },
         async ({ msg: { payload: messagePayload } }) => {
@@ -221,7 +223,7 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
         },
       )
       .with(
-        { msg: { type: "capabilities" }, status: Status.ENCRYPTED, isResumed: true },
+        { msg: { type: "capabilities" }, status: Status.ENCRYPTED, isResuming: true },
         ({ msg: { payload: messagePayload, timestamp } }) => {
           if (!Number.isFinite(timestamp) || Date.now() - timestamp > RESUME_CAPABILITIES_MAX_AGE_MS) {
             log("Ignoring capabilities with an invalid or too old timestamp");
@@ -275,6 +277,12 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
     }
   };
 
+  const resume = (ended: Promise<unknown>) => {
+    isResuming = true;
+
+    if (!isHost) void repeatUntil(XR_PREFIX, capabilitiesMessage(), ended);
+  };
+
   const setup = async () => {
     setStatus(Status.CONNECTING);
     await channel.setup();
@@ -285,7 +293,7 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
     if (hooks.resume) {
       setStatus(Status.ENCRYPTED);
 
-      if (!isHost) void repeatUntil(XR_PREFIX, capabilitiesMessage(), Promise.race([peerCapabilities.until(value => value !== undefined), hooks.resume.ended]));
+      resume(hooks.resume.ended);
 
       return;
     }
@@ -303,6 +311,7 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
     send: (message: object) => publish(XR_PREFIX, { type: "data", payload: message, timestamp: Date.now() }),
     repeatUntil: (message: object, done: Promise<unknown>) => repeatUntil(XR_PREFIX, { type: "data", payload: message, timestamp: Date.now() }, done),
     sendCapabilities: () => publish(XR_PREFIX, capabilitiesMessage()),
+    resume,
     status,
     peer,
     peerCapabilities,

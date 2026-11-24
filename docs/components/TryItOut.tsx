@@ -264,7 +264,7 @@ const WalletUrlConnect = () => {
         <button
           type="button"
           disabled={connecting || active || !url.trim()}
-          onClick={async function connectWallet(): Promise<void> {
+          onClick={async () => {
             setConnecting(true);
             const saved = loadWalletSession();
             const previous = walletSessionReference.current;
@@ -288,15 +288,15 @@ const WalletUrlConnect = () => {
                   ? walletConnector.icon
                   : undefined;
               const onMessage = shimWalletOnMessage("wallet", message => client.request(message as never), session);
-              const options = walletConnector
-                ? {
-                    info: {
-                      identity: `sh.openlv.docs.${walletConnector.id}`,
-                      name: walletConnector.name,
-                      ...(walletIcon && { icon: walletIcon }),
-                    },
-                  }
-                : undefined;
+              const options = {
+                ...(walletConnector && {
+                  info: {
+                    identity: `sh.openlv.docs.${walletConnector.id}`,
+                    name: walletConnector.name,
+                    ...(walletIcon && { icon: walletIcon }),
+                  },
+                }),
+              };
               const s = saved && encodeConnectionURL(saved) === url.trim()
                 ? await createSession(saved, [webrtc()], onMessage, options)
                 : await connectSession(url, onMessage, [webrtc()], options);
@@ -328,8 +328,7 @@ const WalletUrlConnect = () => {
 
                 setActive(false);
 
-                if (connection && s.error.get()) void connectWallet();
-                else clearWalletSession();
+                if (!s.error.get()) clearWalletSession();
               });
             }
             catch (error) {
