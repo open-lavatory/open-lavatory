@@ -247,6 +247,12 @@ export const createProvider = (
         oxEmitter.emit("disconnect", new OxProvider.ProviderRpcError(4900, reason ?? "Session closed by peer"));
       });
 
+      if (starting.get() !== own) throw new Error("Session start was replaced");
+
+      if (next.status.get() !== SessionStatus.CONNECTED) {
+        throw new Error(next.error.get() ?? "Session failed to connect");
+      }
+
       setStatus(ProviderStatus.CONNECTED);
       oxEmitter.emit("connect", { chainId });
       oxEmitter.emit("accountsChanged", accounts);
