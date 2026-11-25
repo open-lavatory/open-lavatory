@@ -29,6 +29,7 @@ export type ConnectionPhase
   = | "idle"
     | "establishing"
     | "linked"
+    | "reconnecting"
     | "connected"
     | "error";
 
@@ -78,12 +79,12 @@ const nextLogId = () =>
   `${Date.now().toString(36)}-${Math.random().toString(36)
     .slice(2, 8)}`;
 
-const sessionToPhase = (status: SessionStatus): ConnectionPhase => {
+const sessionToPhase = (status: SessionStatus, error?: string): ConnectionPhase => {
   if (status === SessionStatus.CONNECTED) return "connected";
 
-  if (status === SessionStatus.DISCONNECTED) return "error";
+  if (status === SessionStatus.DISCONNECTED) return error ? "error" : "idle";
 
-  if (status === SessionStatus.LINKING) return "linked";
+  if (status === SessionStatus.LINKING) return error ? "reconnecting" : "linked";
 
   return "establishing";
 };
@@ -222,7 +223,7 @@ export const attachTryItSession = (
   // the session as it stands before it reports any change to it.
   const unsubscribes = [
     session.status.subscribe((status) => {
-      actions.setPhase(sessionToPhase(status));
+      actions.setPhase(sessionToPhase(status, session.error.get()));
       logSession();
     }),
     session.signalStatus.subscribe(logSession),
@@ -354,6 +355,7 @@ const phaseLabel: Record<ConnectionPhase, string> = {
   idle: "Not connected",
   establishing: "Connecting...",
   linked: "Opening channel",
+  reconnecting: "Reconnecting…",
   connected: "Connected",
   error: "Failed",
 };
@@ -362,6 +364,7 @@ const phaseDotClass: Record<ConnectionPhase, string> = {
   idle: "bg-[var(--vocs-color_textSecondary)]",
   establishing: "bg-[var(--vocs-color_textSecondary)] animate-pulse",
   linked: "bg-[var(--vocs-color_textSecondary)] animate-pulse",
+  reconnecting: "bg-[var(--vocs-color_textSecondary)] animate-pulse",
   connected: "bg-[var(--vocs-color_text)]",
   error: "bg-[var(--vocs-color_textSecondary)]",
 };
@@ -685,7 +688,7 @@ const walletSessionSchema = z.object({
   h: z.string().check(z.regex(/^[0-9a-f]{16}$/)),
   k: z.string().check(z.regex(/^[0-9a-f]{32}$/)),
   p: nonEmptyString,
-  s: nonEmptyString,
+  s: z.string(),
   keyPair: z.object({ publicKey: keyBytes, secretKey: keyBytes }),
   peerKey: keyBytes,
   transport: z.object({ p: z.literal("wrtc") }),

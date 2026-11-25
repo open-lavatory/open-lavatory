@@ -244,10 +244,11 @@ const WalletUrlConnect = () => {
     const current = walletSessionReference.current;
 
     walletSessionReference.current = undefined;
-    await current?.close();
     clearWalletSession();
     setActive(false);
+    setConnecting(false);
     session.resetSession();
+    await current?.close();
   };
 
   return (
@@ -268,6 +269,7 @@ const WalletUrlConnect = () => {
             setConnecting(true);
             const saved = loadWalletSession();
             const previous = walletSessionReference.current;
+            let attempt: Session | undefined;
 
             walletSessionReference.current = undefined;
             detachReference.current?.();
@@ -301,6 +303,7 @@ const WalletUrlConnect = () => {
                 ? await createSession(saved, [webrtc()], onMessage, options)
                 : await connectSession(url, onMessage, [webrtc()], options);
 
+              attempt = s;
               walletSessionReference.current = s;
               detachReference.current = attachTryItSession(s, "wallet", session, {
                 logRequests: false,
@@ -314,6 +317,8 @@ const WalletUrlConnect = () => {
                 status => status === SessionStatus.CONNECTED
                   || status === SessionStatus.DISCONNECTED,
               );
+
+              if (walletSessionReference.current !== s) return;
 
               if (settled !== SessionStatus.CONNECTED) {
                 throw new Error(s.error.get() ?? "Session failed to connect");
@@ -332,6 +337,8 @@ const WalletUrlConnect = () => {
               });
             }
             catch (error) {
+              if (attempt && walletSessionReference.current !== attempt) return;
+
               setActive(false);
               session.setPhase("error");
               session.appendEntry({
@@ -343,7 +350,7 @@ const WalletUrlConnect = () => {
               });
             }
             finally {
-              setConnecting(false);
+              if (!attempt || walletSessionReference.current === attempt) setConnecting(false);
             }
           }}
           className={buttonClass}
@@ -351,7 +358,7 @@ const WalletUrlConnect = () => {
           {connecting ? "..." : "Connect"}
         </button>
         {active && (
-          <button type="button" disabled={connecting} onClick={() => endSession()} className={buttonClass}>
+          <button type="button" onClick={() => endSession()} className={buttonClass}>
             End
           </button>
         )}
@@ -453,7 +460,10 @@ const Connectors = () => {
 };
 
 const TryItOutInner = () => {
-  const { isConnected } = useConnection();
+  const { status, connector } = useConnection();
+  const disconnect = useDisconnect();
+  const pendingConnector = config.connectors.find(candidate => candidate.id === connector?.id)
+    ?? config.connectors.find(candidate => candidate.type === "openLv");
   const session = useTryItSession();
 
   return (
@@ -475,9 +485,21 @@ const TryItOutInner = () => {
           }));
         }}
       />
-      {match(isConnected)
-        .with(true, () => <Connected />)
-        .with(false, () => <Connectors />)
+      {match(status)
+        .with("connected", () => <Connected />)
+        .with("connecting", "reconnecting", () => (
+          <div className="flex items-center justify-between gap-2 p-4">
+            <p role="status" className="text-sm text-(--vocs-color_textSecondary)">
+              {status === "reconnecting" ? "Reconnecting…" : "Connecting…"}
+            </p>
+            {pendingConnector && (
+              <button type="button" onClick={() => disconnect.mutate({ connector: pendingConnector })} className={buttonClass}>
+                Cancel
+              </button>
+            )}
+          </div>
+        ))
+        .with("disconnected", () => <Connectors />)
         .exhaustive()}
     </>
   );
