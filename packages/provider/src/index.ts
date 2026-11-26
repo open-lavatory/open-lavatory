@@ -154,6 +154,10 @@ export const createProvider = (
     return p ? { p, s: signaling?.s?.[p] ?? DEFAULT_SETTINGS.signaling?.s[p] ?? "" } : undefined;
   };
 
+  const revokeSavedPairing = (sessionId: string | undefined) => {
+    if (sessionId !== undefined && store.getSessionRecord()?.sessionId === sessionId) store.setSessionRecord(undefined);
+  };
+
   const start = async (parameters?: SessionLinkParameters): Promise<Session> => {
     const linkParameters = parameters ?? defaultLinkParameters();
 
@@ -176,12 +180,12 @@ export const createProvider = (
     const transportOptions = resumed
       ? resumed.transport.s
       : (iceServers.length > 0 ? { iceServers } : config?.transport?.s?.webrtc ?? {});
+    const seenSessionId = config?.resume ? store.getSessionRecord()?.sessionId : undefined;
+    let attempt: Session | undefined;
 
     try {
-      const seenSessionId = config?.resume ? store.getSessionRecord()?.sessionId : undefined;
-
       if (resumed && resumed.h !== await hashPublicKey(resumed.keyPair.publicKey) && resumed.h !== await hashPublicKey(resumed.peerKey)) {
-        if (store.getSessionRecord()?.sessionId === resumed.sessionId) store.setSessionRecord(undefined);
+        revokeSavedPairing(resumed.sessionId);
 
         throw new Error("The saved pairing does not match its host identity");
       }
@@ -193,7 +197,10 @@ export const createProvider = (
         { info: config?.info },
       );
 
-      void starting.until(value => value !== own).then(next.close);
+      attempt = next;
+      void starting.until(value => value !== own)
+        .then(() => (next.status.get() === SessionStatus.DISCONNECTED ? undefined : next.close()))
+        .catch(error => log("failed to close session", error));
 
       if (starting.get() !== own) throw new Error("Session start was replaced");
 
@@ -239,7 +246,7 @@ export const createProvider = (
 
         const reason = next.error.get();
 
-        if (pairing && !reason && store.getSessionRecord()?.sessionId === pairing.sessionId) store.setSessionRecord(undefined);
+        if (reason === undefined) revokeSavedPairing(pairing?.sessionId ?? resumed?.sessionId);
 
         setStarting(undefined);
         setSession(undefined);
@@ -262,10 +269,16 @@ export const createProvider = (
     catch (error_) {
       if (starting.get() !== own) throw error_;
 
-      setError(
-        session.get()?.error.get()
-        ?? (error_ instanceof Error ? error_.message : "Connection failed"),
-      );
+      const reason = attempt?.error.get();
+
+      if (reason === undefined && attempt?.status.get() === SessionStatus.DISCONNECTED) {
+        revokeSavedPairing(resumed?.sessionId);
+      }
+
+      setStarting(undefined);
+      void attempt?._internal.teardown().catch(error => log("failed to tear down session", error));
+      setSession(undefined);
+      setError(reason ?? (error_ instanceof Error ? error_.message : "Connection failed"));
       setStatus(ProviderStatus.ERROR);
       throw error_;
     }

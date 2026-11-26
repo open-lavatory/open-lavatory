@@ -82,6 +82,8 @@ export type Session = {
   emitter: EventEmitter<SessionEvents>;
   _internal: {
     signal: SignalingLayer;
+    /** Releases local resources after a failed start without ending the pairing. */
+    teardown: () => Promise<void>;
     /** Instantiated when signaling reaches ENCRYPTED and a transport is selected. */
     transport: TransportLayer | undefined;
   };
@@ -487,6 +489,7 @@ export const createSession = async (
     },
     _internal: {
       signal,
+      teardown,
       get transport() {
         return transport;
       },

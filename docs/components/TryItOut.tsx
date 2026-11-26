@@ -460,10 +460,7 @@ const Connectors = () => {
 };
 
 const TryItOutInner = () => {
-  const { status, connector } = useConnection();
-  const disconnect = useDisconnect();
-  const pendingConnector = config.connectors.find(candidate => candidate.id === connector?.id)
-    ?? config.connectors.find(candidate => candidate.type === "openLv");
+  const { status } = useConnection();
   const session = useTryItSession();
 
   return (
@@ -488,16 +485,9 @@ const TryItOutInner = () => {
       {match(status)
         .with("connected", () => <Connected />)
         .with("connecting", "reconnecting", () => (
-          <div className="flex items-center justify-between gap-2 p-4">
-            <p role="status" className="text-sm text-(--vocs-color_textSecondary)">
-              {status === "reconnecting" ? "Reconnecting…" : "Connecting…"}
-            </p>
-            {pendingConnector && (
-              <button type="button" onClick={() => disconnect.mutate({ connector: pendingConnector })} className={buttonClass}>
-                Cancel
-              </button>
-            )}
-          </div>
+          <p role="status" className="p-4 text-sm text-(--vocs-color_textSecondary)">
+            {status === "reconnecting" ? "Reconnecting..." : "Connecting..."}
+          </p>
         ))
         .with("disconnected", () => <Connectors />)
         .exhaustive()}
