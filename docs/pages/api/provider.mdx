@@ -41,8 +41,8 @@ const chainId = await provider.request({ method: 'eth_chainId' })
 
 ## Provider helpers
 
-- `createSession(parameters?)`: a saved pairing resumes with its saved `transport`. A start supersedes the current start or session and closes it, so do not start a pairing that is already connected.
-- `closeSession()`: also deletes the saved pairing. `wallet_revokePermissions` closes the session and then rejects if the storage could not delete the pairing.
+- `createSession(parameters?)`
+- `closeSession()`
 - `getAccounts()`
 - `status`
 - `error`
