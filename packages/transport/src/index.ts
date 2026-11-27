@@ -41,6 +41,8 @@ export type TransportLayerParameters = {
 export type TransportMessage = {
   type: string;
   payload: string;
+  // The `messageId` of the offer request: the session sets it on an offer, and the transport copies it to that offer's answer
+  messageId?: string;
 };
 export type TransportLayer = {
   type: TransportProtocol;

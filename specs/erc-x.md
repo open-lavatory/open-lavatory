@@ -194,14 +194,16 @@ After the handshake selects a transport, peers negotiate the direct connection t
 These negotiation objects are carried over signaling before the direct transport exists.
 The shape of negotiation payloads is owned by the selected transport; receivers MUST ignore unknown negotiation message types.
 
-For the `wrtc` transport, version 1 standardizes carriage of WebRTC negotiation payloads as signaling `data` messages whose payload is one of:
+For the `wrtc` transport, version 1 standardizes carriage of WebRTC negotiation payloads as signaling `data` messages.
+The `data` payload has the `request` shape of the [Session Envelope](#session-envelope), with its own `messageId`, and is not acknowledged.
+Its `payload` is one of:
 
 ```json
 { "type": "offer", "payload": "<sdp-json-string>" }
 ```
 
 ```json
-{ "type": "answer", "payload": "<sdp-json-string>" }
+{ "type": "answer", "messageId": "<offer request messageId>", "payload": "<sdp-json-string>" }
 ```
 
 ```json
@@ -209,6 +211,8 @@ For the `wrtc` transport, version 1 standardizes carriage of WebRTC negotiation 
 ```
 
 The advertising peer sends the `offer` with its available transports, the joining peer replies with a decisive `answer`.
+The `messageId` of an `answer` is the `messageId` of the `request` that carried the `offer` it answers.
+The advertising peer MUST drop an `answer` whose `messageId` is missing or is not the `messageId` of its current `offer`.
 
 When a protocol has negotiated a transport, both peers send `candidate` messages as they discover them.
 
@@ -278,8 +282,10 @@ The joining peer resumes on explicit user intent, and MAY also resume if transpo
 
 A resuming peer connects to the prior used signaling infrastructure.
 The joining peer sends `capabilities` at a 2 second interval until acknowledgement.
+A resuming peer ignores a `capabilities` whose `timestamp` is more than 60 seconds older than its own clock.
 The advertising peer answers with `capabilities`, and both peers collect their offer info.
 Both peers share `offer`s and `answer` until a new transport is in place or a timeout is reached.
+A repeated `offer` keeps its `messageId`, so an `answer` to it stays valid; a new `offer` replaces the current one.
 Once a new transport is opened any late-arriving or remaining `capabilities`, `offer`, or `answer` requests are discarded.
 
 Requests that were open during transport failure fail locally and are not re-sent after resumed transport.

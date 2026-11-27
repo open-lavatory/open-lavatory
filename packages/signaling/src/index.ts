@@ -15,6 +15,7 @@ import {
   HANDSHAKE_RESEND_INTERVAL_MS,
   HANDSHAKE_TIMEOUT_MS,
   parseFrame,
+  RESUME_CAPABILITIES_MAX_AGE_MS,
   type SignalingPrefix,
   XR_H_PREFIX,
   XR_PREFIX,
@@ -43,6 +44,7 @@ export type Status = (typeof Status)[keyof typeof Status];
 
 export type SignalEventMap = {
   message: (message: object) => void;
+  capabilities: () => void;
 };
 
 export type SignalingHooks = {
@@ -51,6 +53,7 @@ export type SignalingHooks = {
   handshakeCipher: Cipher;
   keyPair: KeyPair;
   capabilities: PeerCapabilities;
+  resume?: { peerKey: PublicKey; ended: Promise<unknown>; };
 };
 
 export type Peer = {
@@ -62,6 +65,10 @@ export type SignalingContext = {
   type: string;
 
   send: (message: object) => Promise<void>;
+  // Sends now and every 2 s until `done` settles
+  repeatUntil: (message: object, done: Promise<unknown>) => Promise<void>;
+  sendCapabilities: () => Promise<void>;
+  resume: (ended: Promise<unknown>) => void;
   setup: () => Promise<void>;
   teardown: () => Promise<void>;
 
@@ -93,13 +100,20 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
   } = hooks;
 
   const [status, setStatus] = observable<Status>(Status.STANDBY);
-  const [peer, setPeer] = observable<Peer | undefined>(undefined);
+  const [peer, setPeer] = observable<Peer | undefined>(
+    hooks.resume && { peerKey: hooks.resume.peerKey, cipher: await createPeerCipher(keyPair, hooks.resume.peerKey) },
+  );
   const [peerCapabilities, setPeerCapabilities] = observable<PeerCapabilities | undefined>(undefined);
+  const [isTornDown, setTornDown] = observable(false);
+  let isResuming = hooks.resume !== undefined;
 
   const emitter = new EventEmitter<SignalEventMap>();
   const scope = createScope();
 
   scope.add(channel.teardown);
+  scope.add(() => {
+    setTornDown(true);
+  });
 
   const handshake = scope.child();
 
@@ -111,6 +125,8 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
     if (!cipher) throw new Error("Cannot encrypt message before keys are exchanged");
 
     const ciphertext = await cipher.encrypt(JSON.stringify(message));
+
+    if (isTornDown.get()) return;
 
     await channel.publish(composeFrame(prefix, isHost ? "c" : "h", ciphertext));
   };
@@ -125,6 +141,14 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
 
     step.closeWhen(status, value => value !== next);
     step.repeat(HANDSHAKE_RESEND_INTERVAL_MS, () => publish(prefix, message));
+  };
+
+  const repeatUntil = async (prefix: SignalingPrefix, message: SignalMessage, done: Promise<unknown>) => {
+    const repeat = scope.child();
+
+    repeat.repeat(HANDSHAKE_RESEND_INTERVAL_MS, () => publish(prefix, message));
+    await Promise.allSettled([done]);
+    await repeat.close();
   };
 
   const capabilitiesMessage = (): SignalMessage => ({
@@ -186,7 +210,7 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
   };
 
   const handleEncryptedFrame = async (message: SignalMessage) => {
-    await match({ msg: message, status: status.get(), isHost })
+    await match({ msg: message, status: status.get(), isHost, isResuming })
       .with(
         { msg: { type: "capabilities" }, status: Status.HANDSHAKE_PARTIAL },
         async ({ msg: { payload: messagePayload } }) => {
@@ -196,6 +220,20 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
           if (isHost) return;
 
           return await publish(XR_PREFIX, capabilitiesMessage());
+        },
+      )
+      .with(
+        { msg: { type: "capabilities" }, status: Status.ENCRYPTED, isResuming: true },
+        ({ msg: { payload: messagePayload, timestamp } }) => {
+          if (!Number.isFinite(timestamp) || Date.now() - timestamp > RESUME_CAPABILITIES_MAX_AGE_MS) {
+            log("Ignoring capabilities with an invalid or too old timestamp");
+
+            return;
+          }
+
+          setPeerCapabilities(peerCapabilities.get() ?? messagePayload);
+
+          emitter.emit("capabilities");
         },
       )
       .with(
@@ -239,12 +277,26 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
     }
   };
 
+  const resume = (ended: Promise<unknown>) => {
+    isResuming = true;
+
+    if (!isHost) void repeatUntil(XR_PREFIX, capabilitiesMessage(), ended);
+  };
+
   const setup = async () => {
     setStatus(Status.CONNECTING);
     await channel.setup();
     await channel.subscribe(onReceive);
 
     setStatus(Status.READY);
+
+    if (hooks.resume) {
+      setStatus(Status.ENCRYPTED);
+
+      resume(hooks.resume.ended);
+
+      return;
+    }
 
     if (!isHost) {
       handshake.timeout(HANDSHAKE_TIMEOUT_MS, () => setStatus(Status.ERROR));
@@ -257,6 +309,9 @@ export const createSignalingLayer: CreateSignalingLayerFunction = channel => asy
     setup,
     teardown: () => scope.close(),
     send: (message: object) => publish(XR_PREFIX, { type: "data", payload: message, timestamp: Date.now() }),
+    repeatUntil: (message: object, done: Promise<unknown>) => repeatUntil(XR_PREFIX, { type: "data", payload: message, timestamp: Date.now() }, done),
+    sendCapabilities: () => publish(XR_PREFIX, capabilitiesMessage()),
+    resume,
     status,
     peer,
     peerCapabilities,

@@ -75,3 +75,26 @@ const peerInfo = session.peerInfo.get();
 
 The transport array passed to `createSession`/`connectSession` doubles as your preference list.
 During the handshake both peers exchange their supported transports and the first entry in the dApp's list that the wallet also supports is used — see [transport selection](/api/handshake#transport-selection).
+
+## Resuming a session
+
+A connected session automatically attempts to recover from a transport failure.
+The same session returns to `LINKING`, then to `CONNECTED` if recovery succeeds. Existing listeners keep working.
+
+Once the transport is open, `session.getConnectionParameters()` returns the pairing: the handshake parameters, your `keyPair`, the `peerKey` and the `transport` it connected with.
+Save it where your platform keeps secrets, with the transport's configuration in `transport.s`.
+To resume, pass it to `createSession` with a transport of that `transport.p`, configured as it was.
+
+```typescript
+const pairing = session.getConnectionParameters();
+
+if (pairing) {
+  // `iceServers` is what the session's WebRTC transport was created with
+  const saved = { ...pairing, transport: { ...pairing.transport, s: { iceServers } } };
+
+  // Later, with `saved` read back from storage:
+  const resumed = await createSession(saved, [webrtc(saved.transport.s)], onMessage);
+
+  await resumed.connect();
+}
+```

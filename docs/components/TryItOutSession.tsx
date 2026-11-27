@@ -1,6 +1,7 @@
 "use client";
 
-import type { Observable } from "@openlv/core";
+import type { Observable, SessionConnectionParameters } from "@openlv/core";
+import { generateKeyPair } from "@openlv/core/encryption";
 import {
   type PeerInfo,
   type Session,
@@ -20,6 +21,7 @@ import {
   useState,
 } from "react";
 import { useConnection } from "wagmi";
+import * as z from "zod/mini";
 
 export type TryItRole = "dapp" | "wallet";
 
@@ -27,6 +29,7 @@ export type ConnectionPhase
   = | "idle"
     | "establishing"
     | "linked"
+    | "reconnecting"
     | "connected"
     | "error";
 
@@ -76,12 +79,12 @@ const nextLogId = () =>
   `${Date.now().toString(36)}-${Math.random().toString(36)
     .slice(2, 8)}`;
 
-const sessionToPhase = (status: SessionStatus): ConnectionPhase => {
+const sessionToPhase = (status: SessionStatus, error?: string): ConnectionPhase => {
   if (status === SessionStatus.CONNECTED) return "connected";
 
-  if (status === SessionStatus.DISCONNECTED) return "error";
+  if (status === SessionStatus.DISCONNECTED) return error ? "error" : "idle";
 
-  if (status === SessionStatus.LINKING) return "linked";
+  if (status === SessionStatus.LINKING) return error ? "reconnecting" : "linked";
 
   return "establishing";
 };
@@ -220,7 +223,7 @@ export const attachTryItSession = (
   // the session as it stands before it reports any change to it.
   const unsubscribes = [
     session.status.subscribe((status) => {
-      actions.setPhase(sessionToPhase(status));
+      actions.setPhase(sessionToPhase(status, session.error.get()));
       logSession();
     }),
     session.signalStatus.subscribe(logSession),
@@ -352,6 +355,7 @@ const phaseLabel: Record<ConnectionPhase, string> = {
   idle: "Not connected",
   establishing: "Connecting...",
   linked: "Opening channel",
+  reconnecting: "Reconnecting…",
   connected: "Connected",
   error: "Failed",
 };
@@ -360,6 +364,7 @@ const phaseDotClass: Record<ConnectionPhase, string> = {
   idle: "bg-[var(--vocs-color_textSecondary)]",
   establishing: "bg-[var(--vocs-color_textSecondary)] animate-pulse",
   linked: "bg-[var(--vocs-color_textSecondary)] animate-pulse",
+  reconnecting: "bg-[var(--vocs-color_textSecondary)] animate-pulse",
   connected: "bg-[var(--vocs-color_text)]",
   error: "bg-[var(--vocs-color_textSecondary)]",
 };
@@ -667,4 +672,63 @@ export const OpenLvDappMonitor = ({
   }, [isConnected, connector, actions]);
 
   return null;
+};
+
+const STORAGE_KEY = "@openlv/docs/wallet-session";
+
+const byte = z.number().check(z.int(), z.minimum(0), z.maximum(255));
+const keyBytes = z.pipe(
+  z.array(byte).check(z.length(32)),
+  z.transform((bytes: number[]) => Uint8Array.from(bytes)),
+);
+const nonEmptyString = z.string().check(z.minLength(1));
+const walletSessionSchema = z.object({
+  version: z.literal(1),
+  sessionId: z.string().check(z.regex(/^[A-Za-z0-9_-]{16}$/)),
+  h: z.string().check(z.regex(/^[0-9a-f]{16}$/)),
+  k: z.string().check(z.regex(/^[0-9a-f]{32}$/)),
+  p: nonEmptyString,
+  s: z.string(),
+  keyPair: z.object({ publicKey: keyBytes, secretKey: keyBytes }),
+  peerKey: keyBytes,
+  transport: z.object({ p: z.literal("wrtc") }),
+}).check(z.refine(({ keyPair, peerKey }) =>
+  generateKeyPair(keyPair.secretKey).publicKey.every((byte, index) => byte === keyPair.publicKey[index])
+  && peerKey.some((byte, index) => byte !== keyPair.publicKey[index]),
+));
+
+export const loadWalletSession = (): SessionConnectionParameters | undefined => {
+  try {
+    const raw = globalThis.localStorage.getItem(STORAGE_KEY);
+
+    return raw ? walletSessionSchema.safeParse(JSON.parse(raw)).data : undefined;
+  }
+  catch {
+    return undefined;
+  }
+};
+
+export const saveWalletSession = (connection: SessionConnectionParameters) => {
+  try {
+    globalThis.localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      ...connection,
+      keyPair: {
+        publicKey: Array.from(connection.keyPair.publicKey),
+        secretKey: Array.from(connection.keyPair.secretKey),
+      },
+      peerKey: Array.from(connection.peerKey),
+    }));
+  }
+  catch {
+    // Storage can be unavailable in privacy-restricted browsers.
+  }
+};
+
+export const clearWalletSession = () => {
+  try {
+    globalThis.localStorage.removeItem(STORAGE_KEY);
+  }
+  catch {
+    // Storage can be unavailable in privacy-restricted browsers.
+  }
 };

@@ -5,6 +5,7 @@ import {
   observable,
   type SessionLinkParameters,
 } from "@openlv/core";
+import { hashPublicKey } from "@openlv/core/encryption";
 import {
   createSession,
   type Session,
@@ -44,6 +45,8 @@ export type OpenLVProviderConfig = {
     p?: TransportProtocol;
     s?: Record<TransportProtocol, WebRTCConfig>;
   };
+  /** Save the pairing so the connector can restore it when the page loads. */
+  resume?: boolean;
 };
 
 export type OpenLVProviderParameters = {
@@ -67,7 +70,7 @@ export type ProviderConfig = {
 export type ProviderBase = {
   storage: ProviderStorageR;
   createSession: (parameters?: SessionLinkParameters) => Promise<Session>;
-  closeSession: () => Promise<void>;
+  closeSession: (options?: { emitDisconnect?: boolean; }) => Promise<void>;
   getAccounts: () => Promise<Address[]>;
   status: Observable<ProviderStatus>;
   error: Observable<string | undefined>;
@@ -94,6 +97,7 @@ export const createProvider = (
   const [session, setSession] = observable<Session | undefined>(undefined);
   const [status, setStatus] = observable<ProviderStatus>(ProviderStatus.STANDBY);
   const [error, setError] = observable<string | undefined>(undefined);
+  const [starting, setStarting] = observable<SessionLinkParameters | undefined>(undefined);
 
   const oxEmitter = OxProvider.createEmitter<EventMap>();
 
@@ -110,13 +114,12 @@ export const createProvider = (
   // For debug purposes
   status.subscribe(current => log("status", current));
 
-  const onMessage = async (message: unknown): Promise<unknown> => {
+  const onMessage = async (message: unknown, owner: SessionLinkParameters): Promise<unknown> => {
     log("onMessage received from remote peer", message);
 
-    // Emit on the session emitter so observers (e.g. modal) can react.
-    session.get()?.emitter.emit("request", message);
-
     const notification = walletNotification.safeParse(message).data;
+
+    if (notification && starting.get() !== owner) return null;
 
     switch (notification?.method) {
       case "accountsChanged": {
@@ -151,31 +154,55 @@ export const createProvider = (
     return p ? { p, s: signaling?.s?.[p] ?? DEFAULT_SETTINGS.signaling?.s[p] ?? "" } : undefined;
   };
 
-  const start = async (parameters?: SessionLinkParameters) => {
-    setError(undefined);
-    setStatus(ProviderStatus.CREATING);
+  const revokeSavedPairing = (sessionId: string | undefined) => {
+    if (sessionId !== undefined && store.getSessionRecord()?.sessionId === sessionId) store.setSessionRecord(undefined);
+  };
+
+  const start = async (parameters?: SessionLinkParameters): Promise<Session> => {
     const linkParameters = parameters ?? defaultLinkParameters();
 
     if (!linkParameters) {
       throw new Error("No link parameters provided and no signaling defaults configured");
     }
 
+    const resumed = parameters && "peerKey" in parameters ? parameters : undefined;
+    const own = { ...linkParameters };
+
+    setStarting(own);
+    setError(undefined);
+    setStatus(ProviderStatus.CREATING);
+
     const stored = store.settings.get().transport?.s?.webrtc;
     const iceServers = [
       ...stored?.stun?.map(urls => ({ urls })) ?? [],
       ...stored?.turn ?? [],
     ];
-    const transportOptions = iceServers.length > 0
-      ? { iceServers }
-      : config?.transport?.s?.webrtc;
+    const transportOptions = resumed
+      ? resumed.transport.s
+      : (iceServers.length > 0 ? { iceServers } : config?.transport?.s?.webrtc ?? {});
+    const seenSessionId = config?.resume ? store.getSessionRecord()?.sessionId : undefined;
+    let attempt: Session | undefined;
 
     try {
+      if (resumed && resumed.h !== await hashPublicKey(resumed.keyPair.publicKey) && resumed.h !== await hashPublicKey(resumed.peerKey)) {
+        revokeSavedPairing(resumed.sessionId);
+
+        throw new Error("The saved pairing does not match its host identity");
+      }
+
       const next = await createSession(
-        linkParameters,
+        own,
         [webrtc(transportOptions)],
-        onMessage,
+        async message => await onMessage(message, own),
         { info: config?.info },
       );
+
+      attempt = next;
+      void starting.until(value => value !== own)
+        .then(() => (next.status.get() === SessionStatus.DISCONNECTED ? undefined : next.close()))
+        .catch(error => log("failed to close session", error));
+
+      if (starting.get() !== own) throw new Error("Session start was replaced");
 
       setSession(next);
       setStatus(ProviderStatus.CONNECTING);
@@ -202,6 +229,37 @@ export const createProvider = (
       const accounts = await getAccounts();
       const chainId = await walletRpc.call({ method: "eth_chainId" });
 
+      if (starting.get() !== own) throw new Error("Session start was replaced");
+
+      const pairing = config?.resume ? next.getConnectionParameters() : undefined;
+
+      if (pairing) {
+        const saved = { ...pairing, transport: { p: pairing.transport.p, s: transportOptions } };
+
+        const canSave = !resumed || seenSessionId === undefined || seenSessionId === saved.sessionId;
+
+        if (canSave && store.getSessionRecord()?.sessionId === seenSessionId) store.setSessionRecord(saved);
+      }
+
+      next.status.subscribe((state) => {
+        if (state !== SessionStatus.DISCONNECTED || starting.get() !== own) return;
+
+        const reason = next.error.get();
+
+        if (reason === undefined) revokeSavedPairing(pairing?.sessionId ?? resumed?.sessionId);
+
+        setStarting(undefined);
+        setSession(undefined);
+        setStatus(ProviderStatus.STANDBY);
+        oxEmitter.emit("disconnect", new OxProvider.ProviderRpcError(4900, reason ?? "Session closed by peer"));
+      });
+
+      if (starting.get() !== own) throw new Error("Session start was replaced");
+
+      if (next.status.get() !== SessionStatus.CONNECTED) {
+        throw new Error(next.error.get() ?? "Session failed to connect");
+      }
+
       setStatus(ProviderStatus.CONNECTED);
       oxEmitter.emit("connect", { chainId });
       oxEmitter.emit("accountsChanged", accounts);
@@ -209,20 +267,41 @@ export const createProvider = (
       return next;
     }
     catch (error_) {
-      setError(
-        session.get()?.error.get()
-        ?? (error_ instanceof Error ? error_.message : "Connection failed"),
-      );
+      if (starting.get() !== own) throw error_;
+
+      const reason = attempt?.error.get();
+
+      if (reason === undefined && attempt?.status.get() === SessionStatus.DISCONNECTED) {
+        revokeSavedPairing(resumed?.sessionId);
+      }
+
+      setStarting(undefined);
+      void attempt?._internal.teardown().catch(error => log("failed to tear down session", error));
+      setSession(undefined);
+      setError(reason ?? (error_ instanceof Error ? error_.message : "Connection failed"));
       setStatus(ProviderStatus.ERROR);
       throw error_;
     }
   };
 
-  const closeSession = async () => {
-    await session.get()?.close();
+  const closeSession: ProviderBase["closeSession"] = async ({ emitDisconnect: shouldEmitDisconnect = true } = {}) => {
+    const closing = session.get();
+    const wasActive = status.get() !== ProviderStatus.STANDBY;
+
+    setStarting(undefined);
+    store.setSessionRecord(undefined);
+
+    await closing?.status.until(state => state === SessionStatus.DISCONNECTED);
+
+    if (starting.get() !== undefined) return;
+
     setSession(undefined);
     setError(undefined);
     setStatus(ProviderStatus.STANDBY);
+
+    if (wasActive && shouldEmitDisconnect) {
+      oxEmitter.emit("disconnect", new OxProvider.ProviderRpcError(4900, "Session closed by provider"));
+    }
   };
 
   const request: OxProvider.from.Value<ProviderConfig>["request"] = async (
@@ -232,7 +311,15 @@ export const createProvider = (
 
     if (request.method === "eth_chainId" && !session.get()) return "0x1";
 
-    if (request.method === "wallet_revokePermissions") return await closeSession();
+    if (request.method === "wallet_revokePermissions") {
+      const revoked = store.getSessionRecord()?.sessionId;
+
+      await closeSession();
+
+      if (revoked && store.getSessionRecord()?.sessionId === revoked) throw new Error("The saved pairing could not be deleted");
+
+      return;
+    }
 
     if (request.method === "eth_requestAccounts") {
       log("eth_requestAccounts");

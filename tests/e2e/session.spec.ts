@@ -81,6 +81,17 @@ const openSandbox = async (page: Page) => {
     (globalThis as { OPENLV_DEBUG?: boolean; }).OPENLV_DEBUG = true;
   });
   await page.goto(SANDBOX_URL);
+  // Remember transient connections even if the provider's startup RPCs fail.
+  await page.getByText(/^Session Status:/).evaluate((element) => {
+    const observer = new globalThis.MutationObserver(() => {
+      if (!/"status":"connected"/.test(element.textContent ?? "")) return;
+
+      element.dataset["wasConnected"] = "";
+      observer.disconnect();
+    });
+
+    observer.observe(element, { childList: true, characterData: true, subtree: true });
+  });
 };
 
 /** Whether this environment can produce any local ICE candidates at all. */
@@ -154,8 +165,8 @@ test("dApp and wallet link over at least one public relay", async ({ browser }) 
 
       if (candidates > 0) {
         await Promise.all([
-          dappLog.waitFor(/updateStatus connected/, 30_000),
-          walletLog.waitFor(/updateStatus connected/, 30_000),
+          expect(dapp.getByText(/^Session Status:/)).toHaveAttribute("data-was-connected", "", { timeout: 30_000 }),
+          expect(wallet.getByText(/^Session Status:/)).toHaveAttribute("data-was-connected", "", { timeout: 30_000 }),
         ]);
       }
 

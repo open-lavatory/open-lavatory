@@ -3,7 +3,7 @@
 /* eslint-disable no-restricted-syntax */
 import { openlv } from "@openlv/connector";
 import { encodeConnectionURL } from "@openlv/core";
-import { connectSession, type Session, SessionStatus } from "@openlv/session";
+import { connectSession, createSession, type Session, SessionStatus } from "@openlv/session";
 import { webrtc } from "@openlv/transport/webrtc";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import classNames from "classnames";
@@ -31,8 +31,11 @@ import { holesky, mainnet, sepolia } from "wagmi/chains";
 
 import {
   attachTryItSession,
+  clearWalletSession,
+  loadWalletSession,
   OpenLvDappMonitor,
   peerInfoFromConnectionUrl,
+  saveWalletSession,
   shimWalletOnMessage,
   TryItSessionPanel,
   TryItSessionProvider,
@@ -46,6 +49,7 @@ const config = createConfig({
   connectors: [
     openlv({
       config: {
+        resume: true,
         info: {
           identity: "sh.openlv.docs",
           name: "OpenLV Docs",
@@ -221,7 +225,11 @@ const PersonalSignCard = () => {
 const WalletUrlConnect = () => {
   const walletClient = useClient();
   const connections = useConnections();
-  const [url, setUrl] = useState("");
+  const [url, setUrl] = useState(() => {
+    const saved = loadWalletSession();
+
+    return saved ? encodeConnectionURL(saved) : "";
+  });
   const [connecting, setConnecting] = useState(false);
   const [active, setActive] = useState(false);
   const session = useTryItSession();
@@ -233,10 +241,14 @@ const WalletUrlConnect = () => {
   const endSession = async () => {
     detachReference.current?.();
     detachReference.current = undefined;
-    await walletSessionReference.current?.close();
+    const current = walletSessionReference.current;
+
     walletSessionReference.current = undefined;
+    clearWalletSession();
     setActive(false);
+    setConnecting(false);
     session.resetSession();
+    await current?.close();
   };
 
   return (
@@ -245,21 +257,30 @@ const WalletUrlConnect = () => {
         <input
           type="text"
           value={url}
-          onChange={e => setUrl(e.target.value)}
+          onChange={event => setUrl(event.target.value)}
           placeholder="openlv://..."
-          disabled={connecting}
+          disabled={connecting || active}
           className={`${buttonClass} block w-full grow border px-3 py-1 placeholder:text-neutral-500`}
         />
         <button
           type="button"
-          disabled={connecting || !url.trim()}
+          disabled={connecting || active || !url.trim()}
           onClick={async () => {
             setConnecting(true);
-            await endSession();
+            const saved = loadWalletSession();
+            const previous = walletSessionReference.current;
+            let attempt: Session | undefined;
+
+            walletSessionReference.current = undefined;
+            detachReference.current?.();
+            detachReference.current = undefined;
+            session.resetSession();
             session.setPhase("establishing");
             session.setPeer(peerInfoFromConnectionUrl("wallet", url));
 
             try {
+              await previous?.close();
+
               const walletConnector = connections[0]?.connector;
               const client = (await walletConnector?.getProvider()) as EIP1193Provider;
               // EIP-6963 icons are data URIs of arbitrary size; anything over
@@ -268,21 +289,21 @@ const WalletUrlConnect = () => {
                 = walletConnector?.icon && walletConnector.icon.length <= 8192
                   ? walletConnector.icon
                   : undefined;
-              const s = await connectSession(
-                url,
-                shimWalletOnMessage("wallet", message => client.request(message as never), session),
-                [webrtc()],
-                walletConnector
-                  ? {
-                      info: {
-                        identity: `sh.openlv.docs.${walletConnector.id}`,
-                        name: walletConnector.name,
-                        ...(walletIcon && { icon: walletIcon }),
-                      },
-                    }
-                  : undefined,
-              );
+              const onMessage = shimWalletOnMessage("wallet", message => client.request(message as never), session);
+              const options = {
+                ...(walletConnector && {
+                  info: {
+                    identity: `sh.openlv.docs.${walletConnector.id}`,
+                    name: walletConnector.name,
+                    ...(walletIcon && { icon: walletIcon }),
+                  },
+                }),
+              };
+              const s = saved && encodeConnectionURL(saved) === url.trim()
+                ? await createSession(saved, [webrtc()], onMessage, options)
+                : await connectSession(url, onMessage, [webrtc()], options);
 
+              attempt = s;
               walletSessionReference.current = s;
               detachReference.current = attachTryItSession(s, "wallet", session, {
                 logRequests: false,
@@ -297,11 +318,28 @@ const WalletUrlConnect = () => {
                   || status === SessionStatus.DISCONNECTED,
               );
 
+              if (walletSessionReference.current !== s) return;
+
               if (settled !== SessionStatus.CONNECTED) {
                 throw new Error(s.error.get() ?? "Session failed to connect");
               }
+
+              const connection = s.getConnectionParameters();
+
+              if (connection) saveWalletSession(connection);
+
+              void s.status.until(status => status === SessionStatus.DISCONNECTED).then(() => {
+                if (walletSessionReference.current !== s) return;
+
+                setActive(false);
+
+                if (!s.error.get()) clearWalletSession();
+              });
             }
             catch (error) {
+              if (attempt && walletSessionReference.current !== attempt) return;
+
+              setActive(false);
               session.setPhase("error");
               session.appendEntry({
                 role: "wallet",
@@ -312,7 +350,7 @@ const WalletUrlConnect = () => {
               });
             }
             finally {
-              setConnecting(false);
+              if (!attempt || walletSessionReference.current === attempt) setConnecting(false);
             }
           }}
           className={buttonClass}
@@ -422,7 +460,7 @@ const Connectors = () => {
 };
 
 const TryItOutInner = () => {
-  const { isConnected } = useConnection();
+  const { status } = useConnection();
   const session = useTryItSession();
 
   return (
@@ -444,9 +482,14 @@ const TryItOutInner = () => {
           }));
         }}
       />
-      {match(isConnected)
-        .with(true, () => <Connected />)
-        .with(false, () => <Connectors />)
+      {match(status)
+        .with("connected", () => <Connected />)
+        .with("connecting", "reconnecting", () => (
+          <p role="status" className="p-4 text-sm text-(--vocs-color_textSecondary)">
+            {status === "reconnecting" ? "Reconnecting..." : "Connecting..."}
+          </p>
+        ))
+        .with("disconnected", () => <Connectors />)
         .exhaustive()}
     </>
   );
